@@ -4,12 +4,15 @@ import type { BullpenModel } from "../model";
 import { DEFAULT_PROFILE } from "../profile";
 import { band, footer, header } from "./header";
 import { beside, glyphLines, type Line, textLine } from "./lines";
+import { operationsView } from "./operations";
 import { hallway, huddles } from "./regions";
 
 export type Focus = "floor" | "huddles" | "talk";
 export type PaneView = {
 	header: Line[];
 	floorRows: number;
+	floorColumns: number;
+	sidebar: Line[];
 	regions: Line[];
 	footer: Line[];
 	band: Line;
@@ -48,26 +51,84 @@ export function paneView(
 	};
 	const github = options.github ?? { filter: "", burndown: [], checkedAt: 0 };
 	const profile = options.profile ?? DEFAULT_PROFILE;
-	const heading = header(model, github, columns, now).slice(
+	if (
+		profile.style === "operations" &&
+		options.focus !== "huddles" &&
+		options.focus !== "talk" &&
+		columns >= 60 &&
+		rows >= 16
+	) {
+		const view = operationsView(model, github, profile, columns, rows - 3, now);
+		return {
+			header: view.header,
+			floorRows: 0,
+			floorColumns: columns,
+			sidebar: [],
+			regions: view.regions,
+			footer: glyphLines(
+				[
+					...footer(github, columns),
+					textLine(
+						"f topology · h workstreams · t events · r restore",
+						columns,
+					),
+				],
+				profile.glyphs,
+			),
+			band: band(model, github, profile, columns, options.seenAt ?? -1),
+		};
+	}
+	const heading = header(model, github, columns, now, profile).slice(
 		0,
 		Math.max(0, rows - 3),
 	);
 	const bottom = [
 		...footer(github, columns),
-		textLine("f floor · h huddles · t talk · r restore", columns),
+		textLine(
+			profile.style === "operations"
+				? "f topology · h workstreams · t events · r restore"
+				: "f floor · h huddles · t talk · r restore",
+			columns,
+		),
 	].slice(0, Math.max(0, rows - heading.length - 1));
 	const available = Math.max(0, rows - heading.length - bottom.length - 1);
+	const studio =
+		columns >= 110 &&
+		rows >= 28 &&
+		!options.focus &&
+		options.raster !== false &&
+		profile.glyphs !== "ascii";
+	const floorColumns = studio ? Math.floor((columns - 3) * 0.64) : columns;
 	const floorHeight =
 		options.raster === false ||
 		options.focus === "huddles" ||
 		options.focus === "talk"
 			? 0
-			: options.focus === "floor"
-				? available
-				: Math.min(floorRows(columns), Math.max(1, available - 7));
+			: profile.glyphs === "ascii"
+				? Math.min(1, available)
+				: options.focus === "floor"
+					? available
+					: studio
+						? Math.max(0, available - 6)
+						: Math.min(
+								available,
+								floorRows(columns),
+								Math.max(1, available - 7),
+							);
 	const room = Math.max(0, available - floorHeight);
+	const sidebar = studio
+		? huddles(
+				model,
+				github,
+				profile,
+				columns - floorColumns - 3,
+				floorHeight,
+				now,
+			)
+		: [];
 	let regions: Line[] = [];
-	if (options.focus === "huddles")
+	if (studio) regions = hallway(model, profile, columns, room, now);
+	else if (options.focus === "huddles")
 		regions = huddles(model, github, profile, columns, room, now);
 	else if (options.focus === "talk")
 		regions = hallway(model, profile, columns, room, now);
@@ -90,6 +151,8 @@ export function paneView(
 	return {
 		header: glyphLines(heading, profile.glyphs),
 		floorRows: Math.max(0, floorHeight),
+		floorColumns,
+		sidebar: glyphLines(sidebar, profile.glyphs),
 		regions: glyphLines(regions.slice(0, room), profile.glyphs),
 		footer: glyphLines(bottom, profile.glyphs),
 		band: band(model, github, profile, columns, options.seenAt ?? -1),

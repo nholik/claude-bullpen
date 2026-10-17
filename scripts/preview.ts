@@ -23,7 +23,6 @@ const { demoAt, demoGithubAt, demoProfile } = await import(
 );
 const { demoClock } = await import("../src/demo");
 const { DEFAULT_PROFILE } = await import("../src/profile");
-const profile = demoProfile(DEFAULT_PROFILE);
 const { motionFor, createMotion } = await import("../src/motion");
 const { buildModel } = await import("../src/model");
 const { drawFloor } = await import("../src/floor");
@@ -37,9 +36,17 @@ for (let i = 0; i < args.length; i += 2) {
 	const value = args[i + 1];
 	if (
 		!key ||
-		!["--cols", "--rows", "--at", "--frames", "--out", "--story"].includes(
-			key,
-		) ||
+		![
+			"--cols",
+			"--rows",
+			"--at",
+			"--frames",
+			"--out",
+			"--story",
+			"--style",
+			"--glyphs",
+			"--animations",
+		].includes(key) ||
 		value === undefined
 	)
 		throw new Error(
@@ -63,6 +70,21 @@ function number(
 		throw new Error(`Invalid ${key}: expected ${min}..${max}`);
 	return value;
 }
+const style = options.get("--style") ?? "studio";
+const glyphs = options.get("--glyphs") ?? "unicode";
+const animations = options.get("--animations") ?? "on";
+if (style !== "studio" && style !== "operations")
+	throw new Error("Invalid --style: studio or operations");
+if (glyphs !== "unicode" && glyphs !== "ascii")
+	throw new Error("Invalid --glyphs: unicode or ascii");
+if (animations !== "on" && animations !== "off")
+	throw new Error("Invalid --animations: on or off");
+const profile = demoProfile({
+	...DEFAULT_PROFILE,
+	style,
+	glyphs,
+	animations: animations === "on",
+});
 const columns = number("--cols", 160, 20, 512);
 const rows = number("--rows", 48, 8, 200);
 const at = number("--at", 12, 0, 86400) * 1000;
@@ -96,6 +118,7 @@ for (let frame = 0; frame < frames; frame++) {
 			rows - 2,
 		);
 		view.floorRows = 0;
+		view.sidebar = [];
 		view.regions = [];
 		view.footer = [[{ text: "r Back to Bullpen" }]];
 	}
@@ -103,9 +126,9 @@ for (let frame = 0; frame < frames; frame++) {
 	if (view.floorRows > 0) {
 		const floor = drawFloor(
 			members,
-			columns,
+			view.floorColumns,
 			view.floorRows,
-			Math.floor(now / 250),
+			profile.animations ? Math.floor(now / 250) : 0,
 			Object.fromEntries(
 				(source.result?.status === "ok" ? source.result.issues : []).map(
 					(i) => [i.number, i.title],
@@ -116,25 +139,28 @@ for (let frame = 0; frame < frames; frame++) {
 				motionFor(
 					replay.events,
 					members,
-					columns,
+					view.floorColumns,
 					view.floorRows,
 					now,
 					profile,
 				),
 			).sample(now),
 			model.morale.score,
+			{ model, now },
 		);
 		const bytes = Buffer.from(floor.cells, "base64");
 		for (let y = 0; y < view.floorRows; y++) {
 			let row = "";
-			for (let x = 0; x < columns; x++) {
-				const offset = (y * columns + x) * 12;
+			for (let x = 0; x < view.floorColumns; x++) {
+				const offset = (y * view.floorColumns + x) * 12;
 				row +=
 					color(bytes.readUInt32LE(offset + 4)) +
 					color(bytes.readUInt32LE(offset + 8), true) +
 					String.fromCodePoint(bytes.readUInt32LE(offset));
 			}
-			output.push(`${row}\x1b[0m`);
+			output.push(
+				`${row}\x1b[0m${view.sidebar.length ? line([{ text: " │ ", dim: true }, ...(view.sidebar[y] ?? [])]) : ""}`,
+			);
 		}
 	}
 	output.push(...view.regions.map(line));

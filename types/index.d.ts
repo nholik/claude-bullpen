@@ -65,6 +65,8 @@ export type Profile = {
 	roles: Record<string, ProfileRole>;
 	animations: boolean;
 	glyphs: "unicode" | "ascii";
+	/** Studio characters or an abstract workstream console. */
+	style: "studio" | "operations";
 	/** Member colors as 0xRRGGBB, in assignment order. */
 	palette: number[];
 };

@@ -53,7 +53,7 @@ import {
 	teamOf,
 	toLine,
 } from "../src/journal";
-import { buildModel } from "../src/model";
+import { type BullpenModel, buildModel } from "../src/model";
 import { confirmedToolCloses } from "../src/model/detect";
 import { createMotion, motionFor } from "../src/motion";
 import { DEFAULT_PROFILE, parseProfile } from "../src/profile";
@@ -123,6 +123,7 @@ let scene:
 			config: Profile;
 			titles: Record<number, string>;
 			morale: number;
+			model: BullpenModel;
 			offset: number;
 			motion: ReturnType<typeof createMotion>;
 	  }
@@ -154,6 +155,7 @@ async function tickAnimation($: $) {
 		current.config,
 		current.motion.sample(sampledAt),
 		current.morale,
+		{ model: current.model, now: sampledAt },
 	);
 	await $.ui.blit({ requestId: PANE, key: FLOOR_KEY, cells });
 	if (
@@ -194,6 +196,7 @@ function renderLines(
 				const text = (
 					<Text
 						color={seg.fg === undefined ? undefined : hex(seg.fg)}
+						backgroundColor={seg.bg === undefined ? undefined : hex(seg.bg)}
 						bold={seg.bold}
 						dimColor={seg.dim}
 					>
@@ -482,7 +485,7 @@ async function loadProfile($: $) {
 async function openPane($: $) {
 	const at = (await readScene($)).now;
 	await update($, seenAt, () => at);
-	return $.ui.open({ id: PANE, title: "Bullpen" });
+	return $.ui.open({ id: PANE, title: "Bullpen", columns: 160, rows: 40 });
 }
 
 export function register(on: On) {
@@ -726,9 +729,9 @@ export function register(on: On) {
 		scene = undefined;
 		if (e.surface === "terminal" && floorHeight > 0) {
 			const { Raster } = $.ui.resolve(e);
-			floorSize = { columns, rows: floorHeight };
+			floorSize = { columns: view.floorColumns, rows: floorHeight };
 			const motion = createMotion(
-				motionFor(log, list, columns, floorHeight, at, config),
+				motionFor(log, list, view.floorColumns, floorHeight, at, config),
 			);
 			scene = {
 				list,
@@ -736,17 +739,19 @@ export function register(on: On) {
 				titles,
 				motion,
 				morale: model.morale.score,
+				model,
 				offset: snapshot.offset,
 			};
 			const { cells } = drawFloor(
 				list,
-				columns,
+				view.floorColumns,
 				floorHeight,
 				config.animations ? Math.floor(at / 250) : 0,
 				titles,
 				config,
 				motion.sample(at),
 				model.morale.score,
+				{ model, now: at },
 			);
 			if (
 				config.animations &&
@@ -756,7 +761,7 @@ export function register(on: On) {
 			floor = (
 				<Raster
 					key={FLOOR_KEY}
-					columns={columns}
+					columns={view.floorColumns}
 					rows={floorHeight}
 					cells={cells}
 				/>
@@ -766,7 +771,22 @@ export function register(on: On) {
 		return (
 			<Box flexDirection="column">
 				{renderLines(Text, view.header, { Box, Button }, $)}
-				{floor}
+				<Box flexDirection="row">
+					{floor}
+					{view.sidebar.length > 0 && (
+						<Box flexDirection="column">
+							{renderLines(
+								Text,
+								view.sidebar.map((line) => [
+									{ text: " │ ", dim: true },
+									...line,
+								]),
+								{ Box, Button },
+								$,
+							)}
+						</Box>
+					)}
+				</Box>
 				{renderLines(Text, view.regions, { Box, Button }, $)}
 				{renderLines(Text, view.footer.slice(0, -1), { Box, Button }, $)}
 				<Box>
@@ -776,7 +796,7 @@ export function register(on: On) {
 						hotkey="f"
 						onPress={() => void focusRegion($, "floor")}
 					>
-						floor{" "}
+						{config.style === "operations" ? "topology" : "floor"}{" "}
 					</Button>
 					<Button
 						key="huddles-focus"
@@ -784,7 +804,7 @@ export function register(on: On) {
 						hotkey="h"
 						onPress={() => void focusRegion($, "huddles")}
 					>
-						huddles{" "}
+						{config.style === "operations" ? "workstreams" : "huddles"}{" "}
 					</Button>
 					<Button
 						key="talk-focus"
@@ -792,7 +812,7 @@ export function register(on: On) {
 						hotkey="t"
 						onPress={() => void focusRegion($, "talk")}
 					>
-						talk{" "}
+						{config.style === "operations" ? "events" : "talk"}{" "}
 					</Button>
 					<Button
 						key="restore"
@@ -886,6 +906,7 @@ export function register(on: On) {
 				{line.slice(1).map((seg) => (
 					<Text
 						color={seg.fg === undefined ? undefined : hex(seg.fg)}
+						backgroundColor={seg.bg === undefined ? undefined : hex(seg.bg)}
 						bold={seg.bold}
 						dimColor={seg.dim}
 					>
