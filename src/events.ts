@@ -80,7 +80,7 @@ export function argText(args: Record<string, unknown>): string {
 		.join(" ");
 }
 
-/** Text scanned for issue refs: the arguments, plus `gh issue|pr <n>` targets. */
+/** Text scanned for issue refs: the arguments, plus `gh issue <n>` targets. */
 export function toolText(args: Record<string, unknown>): string {
 	const command = typeof args.command === "string" ? args.command : "";
 	const targets = ghTargets(command).map((n) => `#${n}`);

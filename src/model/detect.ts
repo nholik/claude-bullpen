@@ -162,15 +162,19 @@ export function briefIssue(brief: string): number | undefined {
 	const assigned = ASSIGNED.exec(text);
 	if (assigned?.[1]) return Number(assigned[1]);
 	const first = text.trim().split(/(?<=[.!?])\s+|\n/, 1)[0] ?? "";
-	const refs = [...new Set([...first.matchAll(/(?:^|[^\w&])#(\d{1,7})\b/g)])];
-	const only = refs.length === 1 ? refs[0]?.[1] : undefined;
+	const refs = [
+		...new Set(
+			[...first.matchAll(/(?:^|[^\w&])#(\d{1,7})\b/g)].map((m) => m[1]),
+		),
+	];
+	const only = refs.length === 1 ? refs[0] : undefined;
 	return only === undefined ? undefined : Number(only);
 }
 
 const GH_TARGET =
-	/\bgh\s+(?:issue|pr)\s+(?:view|comment|edit|close|reopen|review|checkout|diff|checks|ready|merge)\s+#?(\d{1,7})\b/g;
+	/\bgh\s+issue\s+(?:view|comment|edit|close|reopen)\s+#?(\d{1,7})\b/g;
 
-/** Numbers named by `gh issue|pr <verb> <n>` in a shell command. */
+/** Numbers named by `gh issue <verb> <n>` (a PR number is not an issue) in a shell command. */
 export function ghTargets(command: string): number[] {
 	const found: number[] = [];
 	for (const m of command.matchAll(GH_TARGET)) {

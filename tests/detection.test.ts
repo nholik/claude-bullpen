@@ -120,6 +120,7 @@ test("a spawn brief assigns one issue, ignoring quoted examples and round lists"
 		["Heuristics. Say `closed #9` when done. Work on issue #64", 64],
 		["Review the round: #59, #44, #45, #46 and #47", undefined],
 		['Quote only: "Can confirm #12 is closed"', undefined],
+		["Issue #12 (see #12) is yours", 12],
 		["No refs at all", undefined],
 	] as const)
 		expect(briefIssue(brief)).toBe(expected);
@@ -129,8 +130,9 @@ test("gh issue and pr commands name the issue they act on", () => {
 	for (const [command, expected] of [
 		["gh issue view 59", [59]],
 		["gh issue view 59 --json title", [59]],
-		["gh pr comment #62 --body hi", [62]],
-		["gh pr review 62 && gh issue close 46", [62, 46]],
+		["gh pr comment #62 --body hi", []],
+		["gh pr view 61", []],
+		["gh pr review 62 && gh issue close 46", [46]],
 		["gh issue list --limit 5", []],
 		["echo gh issue view 7x", []],
 	] as const)
