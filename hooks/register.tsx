@@ -11,7 +11,7 @@ import {
 import { hex } from "../src/color";
 import { DEMO_PREFIX, DEMO_SCRIPT, type DemoStep } from "../src/demo";
 import { argText, describeTool, issueRefs, oneLine } from "../src/events";
-import { drawFloor, PALETTE } from "../src/floor";
+import { drawFloor, floorRows, PALETTE } from "../src/floor";
 import {
 	type BullpenEvent,
 	type Chunk,
@@ -29,7 +29,6 @@ import type { BullpenEventKind } from "../types";
 
 const PANE = "bullpen";
 const FLOOR_KEY = "floor";
-const FLOOR_ROWS = 6;
 /** How often flushed events are appended to the journal file. */
 const JOURNAL_FLUSH_MS = 1000;
 
@@ -347,20 +346,21 @@ export function register(on: On) {
 		const list = Object.values(all);
 		const log = await read($, events);
 		const columns = Math.max(20, Math.min(512, e.props.bodyColumns ?? 60));
+		const floorHeight = floorRows(columns);
 		const viewportRows = e.viewport?.rows ?? 30;
-		const logRoom = Math.max(3, viewportRows - FLOOR_ROWS - list.length - 6);
+		const logRoom = Math.max(3, viewportRows - floorHeight - list.length - 6);
 
 		// Only the terminal draws a Raster; elsewhere the roster below stands alone.
 		let floor: RenderChildren = null;
 		if (e.surface === "terminal") {
 			const { Raster } = $.ui.resolve(e);
-			floorSize = { columns, rows: FLOOR_ROWS };
-			const { cells } = drawFloor(list, columns, FLOOR_ROWS, frame);
+			floorSize = { columns, rows: floorHeight };
+			const { cells } = drawFloor(list, columns, floorHeight, frame);
 			floor = (
 				<Raster
 					key={FLOOR_KEY}
 					columns={columns}
-					rows={FLOOR_ROWS}
+					rows={floorHeight}
 					cells={cells}
 				/>
 			);

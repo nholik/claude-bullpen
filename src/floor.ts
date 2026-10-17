@@ -5,6 +5,8 @@
 
 import type { Member } from "../types";
 import { mix } from "./color";
+import { oneLine } from "./events";
+import stringWidth from "./vendor/string-width.js";
 
 /** Member colors, 0xRRGGBB, chosen to stay distinct on dark and light themes. */
 export const PALETTE = [
@@ -74,99 +76,225 @@ export type TextCell = {
 export type FloorLayout = {
 	columns: number;
 	rows: number;
-	/** Table top-left in cells, keyed by issue number. */
-	tables: Map<number, { col: number; row: number }>;
+	/** Table top-left in cells; width includes room for a short title. */
+	tables: Map<number, { col: number; row: number; width: number }>;
+	overflow: number[];
+	lobbyCol: number;
 };
 
-const TABLE_COLS = 8;
-const TABLE_ROWS = 2;
+/** Below 110 columns the caller only needs a single raster row. */
+export const floorRows = (columns: number) => (columns < 110 ? 1 : 13);
 
-/** Places one table per issue across the floor, lobby on the right. */
+/** Spread table groups across both dimensions, reserving a right-hand lobby. */
 export function layout(
 	columns: number,
 	rows: number,
 	issues: number[],
 ): FloorLayout {
-	const tables = new Map<number, { col: number; row: number }>();
-	const usable = Math.max(TABLE_COLS + 2, columns - 12);
-	const perRow = Math.max(1, Math.floor(usable / (TABLE_COLS + 4)));
-	issues
-		.slice(0, perRow * Math.max(1, Math.floor((rows - 1) / 4)))
-		.forEach((issue, i) => {
-			tables.set(issue, {
-				col: 2 + (i % perRow) * (TABLE_COLS + 4),
-				row: 1 + Math.floor(i / perRow) * 4,
-			});
+	const unique = [...new Set(issues)];
+	const tables: FloorLayout["tables"] = new Map();
+	const lobbyCol = Math.max(0, columns - 17);
+	const across =
+		columns < 110 ? 0 : Math.max(0, Math.floor((lobbyCol - 3) / 20));
+	const down = Math.max(0, Math.floor((rows * 2 - 2) / 12));
+	const visible = unique.slice(0, across * down);
+	const cols = Math.min(across, Math.ceil(visible.length / Math.max(1, down)));
+	const bands = cols > 0 ? Math.ceil(visible.length / cols) : 0;
+	visible.forEach((issue, i) => {
+		const span = (lobbyCol - 3) / cols;
+		const bandHeight = (rows * 2 - 2) / bands;
+		const width = Math.min(26, Math.floor(span) - 6);
+		tables.set(issue, {
+			col: 2 + Math.floor((i % cols) * span + (span - width) / 2),
+			row: Math.floor(
+				(1 + Math.floor(i / cols) * bandHeight + (bandHeight - 2) / 2) / 2,
+			),
+			width,
 		});
-	return { columns, rows, tables };
+	});
+	return {
+		columns,
+		rows,
+		tables,
+		overflow: unique.slice(visible.length),
+		lobbyCol,
+	};
 }
 
-/**
- * Draws one frame. `frame` advances the idle animation: members whose loop is
- * running bob a pixel, everyone else sits still, so an idle team draws the
- * same cells every frame.
- */
+type Seat = { col: number; pixel: number };
+export type FloorFrame = {
+	cells: string;
+	labels: TextCell[];
+	/** Actual rendered seats; overflow members are accounted for separately. */
+	seats: Map<string, Seat>;
+	overflowMembers: string[];
+};
+
+/** Raster text must use one cell per code point, including user-supplied titles. */
+function cellText(text: string, width: number): string {
+	const safe = Array.from(text.replace(/\s+/g, " "), (ch) =>
+		stringWidth(ch) === 1 ? ch : "?",
+	).join("");
+	return oneLine(safe, Math.max(1, width));
+}
+
+function memberColor(m: Member): number {
+	const color = PALETTE[m.color % PALETTE.length] ?? WHITE;
+	return m.status === "idle" ? dim(color) : color;
+}
+
+/** Compact grouped blocks, with overflow kept visible even on tiny terminals. */
+function strip(members: Member[], columns: number, rows: number): FloorFrame {
+	const p = canvas(columns, rows * 2);
+	rect(p, 0, 0, columns, rows * 2, FLOOR);
+	const labels: TextCell[] = [];
+	const seats = new Map<string, Seat>();
+	const groups = new Map<number | undefined, Member[]>();
+	for (const m of members) {
+		const group = groups.get(m.issue) ?? [];
+		group.push(m);
+		groups.set(m.issue, group);
+	}
+	// Reserve a marker if necessary; every member is seated or counted in it.
+	const required = [...groups].reduce(
+		(n, [issue, group]) =>
+			n +
+			(issue === undefined ? 5 : String(issue).length + 1) +
+			1 +
+			group.length * 2 +
+			2,
+		0,
+	);
+	const reserve =
+		required > columns
+			? Math.min(columns, `+${members.length} more`.length + 1)
+			: 0;
+	const limit = columns - reserve;
+	let col = 0;
+	for (const [issue, group] of groups) {
+		const text = issue === undefined ? "lobby" : `#${issue}`;
+		if (col + text.length + 3 > limit) break;
+		labels.push({ col, row: 0, text, fg: 0xc9bba8, bg: FLOOR });
+		col += text.length + 1;
+		for (const m of group) {
+			if (col + 2 > limit) break;
+			labels.push({ col, row: 0, text: "█", fg: memberColor(m), bg: FLOOR });
+			seats.set(m.id, { col, pixel: 0 });
+			col += 2;
+		}
+		col += 2;
+	}
+	const overflowMembers = members
+		.filter((m) => !seats.has(m.id))
+		.map((m) => m.id);
+	if (overflowMembers.length > 0 && columns > 0 && rows > 0) {
+		const text = cellText(`+${overflowMembers.length} more`, columns);
+		labels.push({
+			col: columns - text.length,
+			row: 0,
+			text,
+			fg: WHITE,
+			bg: FLOOR,
+		});
+	}
+	return { cells: pack(p, labels), labels, seats, overflowMembers };
+}
+
+/** Idle frames stay identical; running members retain their one-pixel bob. */
 export function drawFloor(
 	members: Member[],
 	columns: number,
 	rows: number,
 	frame: number,
-): { cells: string; labels: TextCell[] } {
+	titles: Record<number, string> = {},
+): FloorFrame {
+	const active = members.filter((m) => m.status !== "gone");
+	if (columns < 110 || rows < 6) return strip(active, columns, rows);
 	const p = canvas(columns, rows * 2);
-	const issues = [
-		...new Set(
-			members.map((m) => m.issue).filter((n): n is number => n !== undefined),
-		),
-	];
-	const plan = layout(columns, rows, issues);
+	const plan = layout(
+		columns,
+		rows,
+		active.flatMap((m) => (m.issue === undefined ? [] : [m.issue])),
+	);
 	const labels: TextCell[] = [];
-
-	// Lobby for members with no issue yet.
-	const lobbyCol = columns - 10;
-	rect(p, lobbyCol, 1, 9, rows * 2 - 2, LOBBY);
-	labels.push({
-		col: lobbyCol + 1,
-		row: rows - 1,
-		text: "lobby",
-		fg: 0x9aa4ae,
-		bg: LOBBY,
-	});
-
+	const seats = new Map<string, Seat>();
+	const overflowMembers: string[] = [];
+	const label = (
+		col: number,
+		row: number,
+		text: string,
+		fg = 0xfff3e0,
+		bg = FLOOR,
+	) => labels.push({ col, row, text, fg, bg });
+	// Quiet lobby with a bottom door gap.
+	rect(p, plan.lobbyCol, 1, columns - plan.lobbyCol - 1, rows * 2 - 2, LOBBY);
+	rect(p, plan.lobbyCol + 5, rows * 2 - 1, 6, 1, LOBBY);
+	label(plan.lobbyCol + 5, 0, "lobby", 0x9aa4ae, LOBBY);
 	for (const [issue, at] of plan.tables) {
-		rect(p, at.col, at.row * 2 + 1, TABLE_COLS, TABLE_ROWS * 2 - 1, TABLE);
-		rect(p, at.col, at.row * 2 + TABLE_ROWS * 2 - 1, TABLE_COLS, 1, TABLE_EDGE);
-		labels.push({
-			col: at.col + 1,
-			row: at.row,
-			text: `#${issue}`.slice(0, TABLE_COLS - 1),
-			fg: 0xfff3e0,
-			bg: TABLE,
+		rect(p, at.col, at.row * 2, at.width, 2, TABLE);
+		rect(p, at.col, at.row * 2 + 2, at.width, 1, TABLE_EDGE);
+		const title = titles[issue];
+		label(
+			at.col + 1,
+			at.row,
+			cellText(`#${issue}${title ? ` ${title}` : ""}`, at.width - 2),
+			0xfff3e0,
+			TABLE,
+		);
+		const group = active.filter((m) => m.issue === issue);
+		group.forEach((m, i) => {
+			if (i >= 6) {
+				overflowMembers.push(m.id);
+				return;
+			}
+			const col = at.col + Math.floor((((i % 3) + 1) * at.width) / 4) - 1;
+			const pixel = at.row * 2 + (i < 3 ? -3 : 4);
+			seats.set(m.id, { col, pixel });
 		});
+		if (group.length > 6)
+			label(
+				at.col + at.width - 6,
+				at.row + 1,
+				`+${group.length - 6}`,
+				0xc9bba8,
+			);
 	}
-
-	const seats = new Map<string, number>();
 	let lobbyIndex = 0;
-	for (const m of members) {
-		if (m.status === "gone") continue;
-		const color = PALETTE[m.color % PALETTE.length] ?? 0xffffff;
-		const bob = m.status === "running" && (frame + m.color) % 4 < 2 ? 1 : 0;
-		const table = m.issue === undefined ? undefined : plan.tables.get(m.issue);
-		let x: number;
-		let y: number;
-		if (table) {
-			const seat = seats.get(String(m.issue)) ?? 0;
-			seats.set(String(m.issue), seat + 1);
-			x = table.col + (seat % 3) * 3;
-			y = (table.row + TABLE_ROWS) * 2 + (seat >= 3 ? 3 : 0);
-		} else {
-			x = lobbyCol + 1 + (lobbyIndex % 3) * 3;
-			y = 2 + Math.floor(lobbyIndex / 3) * 4;
-			lobbyIndex++;
+	const lobbyCapacity = 4 * Math.max(0, Math.floor((rows * 2 - 4) / 4));
+	for (const m of active) {
+		if (m.issue !== undefined) {
+			if (!plan.tables.has(m.issue)) overflowMembers.push(m.id);
+			continue;
 		}
-		person(p, x, y - bob, m.status === "idle" ? dim(color) : color);
+		if (lobbyIndex >= lobbyCapacity) {
+			overflowMembers.push(m.id);
+			continue;
+		}
+		seats.set(m.id, {
+			col: plan.lobbyCol + 2 + (lobbyIndex % 4) * 3,
+			pixel: 3 + Math.floor(lobbyIndex / 4) * 4,
+		});
+		lobbyIndex++;
 	}
-
-	return { cells: pack(p, labels), labels };
+	for (const m of active) {
+		const seat = seats.get(m.id);
+		if (!seat) continue;
+		const bob = m.status === "running" && (frame + m.color) % 4 < 2 ? 1 : 0;
+		person(p, seat.col, seat.pixel - bob, memberColor(m));
+	}
+	if (plan.overflow.length > 0)
+		label(2, rows - 1, `+${plan.overflow.length} more issues`);
+	const lobbyOverflow =
+		active.filter((m) => m.issue === undefined).length - lobbyIndex;
+	if (lobbyOverflow > 0)
+		label(
+			plan.lobbyCol + 1,
+			rows - 1,
+			cellText(`+${lobbyOverflow} more`, 14),
+			0xc9bba8,
+			LOBBY,
+		);
+	return { cells: pack(p, labels), labels, seats, overflowMembers };
 }
 
 /** Packs pixels (and text overlays) into a Raster's base64 `cells`. */
@@ -183,6 +311,7 @@ function pack(p: Pixels, labels: TextCell[]): string {
 		}
 	}
 	for (const label of labels) {
+		if (label.row < 0 || label.row >= rows || label.col < 0) continue;
 		for (let k = 0; k < label.text.length && label.col + k < columns; k++) {
 			const i = (label.row * columns + label.col + k) * 3;
 			words[i] = label.text.charCodeAt(k);
