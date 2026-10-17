@@ -131,13 +131,12 @@ export function applyEvent(
 	const known = isKnown(e.kind);
 	let issue = actor?.issue;
 	if (spawned === e.who) issue = actor?.issue ?? refs[0];
-	else if (known) issue = nextIssue(e.kind, actor?.issue, refs);
+	else if (known && e.kind !== "leave")
+		issue = nextIssue(e.kind, actor?.issue, refs);
 	let status = actor?.status ?? "running";
 	if (known) status = e.kind === "turn-end" ? "idle" : "running";
-	// `leave`: `who` dropped off the roster (#13 adds the kind; until this
-	// branch is rebased on it, it's read by name).
-	const kind: string = e.kind;
-	if (kind === "leave") status = "gone";
+	// A typed leave event is the journal evidence that a member departed.
+	if (e.kind === "leave") status = "gone";
 	teammates[e.who] = step(teammates, e.who, e, {
 		agentId: e.agentId ?? actor?.agentId,
 		status,

@@ -1,5 +1,6 @@
 import { expect, test } from "claude-code/testing";
 
+import { readJournal } from "../src/journal";
 import {
 	applyEvent,
 	buildModel,
@@ -19,17 +20,16 @@ import type { BullpenEvent } from "../types";
 import demoJournal from "./fixtures/demo";
 import roughJournal from "./fixtures/rough-day";
 
-function parseJournal(text: string): BullpenEvent[] {
-	return text
-		.split("\n")
-		.filter((line) => line.trim() !== "")
-		.map((line) => JSON.parse(line));
-}
-
 const MINUTE = 60_000;
 const T = Date.UTC(2026, 9, 17, 14, 0, 0);
-const demo = parseJournal(demoJournal);
-const rough = parseJournal(roughJournal);
+const demo = readJournal(demoJournal).events;
+const rough = readJournal(roughJournal).events;
+test("fixtures pass through the journal reader", async () => {
+	expect(readJournal(demoJournal).skipped).toBe(0);
+	// The future pr kind is intentionally skipped by the current schema.
+	expect(readJournal(roughJournal).skipped).toBe(1);
+});
+
 const demoEnd = demo[demo.length - 1]?.at ?? T;
 
 const ev = (
@@ -39,6 +39,7 @@ const ev = (
 	detail: string,
 	extra: Partial<BullpenEvent> = {},
 ): BullpenEvent => ({
+	version: 1,
 	at: T + minutes * MINUTE,
 	kind,
 	who,
@@ -283,10 +284,10 @@ test("rough day: closes come from gh and messages, once each", async () => {
 
 test("rough day: unknown kinds and fields are ignored, not fatal", async () => {
 	const model = buildModel(rough, T + 55 * MINUTE);
-	// The `pr` event names #31 but moves no one; ada stays on #14.
+	// The reader skips the future `pr` kind; ada stays on #14.
 	expect(model.teammates.ada?.issue).toBe(14);
 	expect(model.teammates.ada?.trail.map((s) => s.kind)).toEqual([
-		"pr",
+		"message",
 		"tool",
 		"message",
 	]);
@@ -433,19 +434,22 @@ test("live presence: gone teammates leave huddles and stop idling", async () => 
 });
 
 test("a leave event takes a teammate off the floor until it's heard from", async () => {
-	const left = parseJournal(
+	const left = readJournal(
 		'{"version":1,"at":0,"kind":"leave","who":"ada","detail":"ada left","issues":[]}',
-	).map((e) => ({ ...e, at: T + 2 * MINUTE }));
+	);
+	expect(left.skipped).toBe(0);
+	expect(left.events.length).toBe(1);
+	const departures = left.events.map((e) => ({ ...e, at: T + 2 * MINUTE }));
 	const before = [
 		ev(0, "ada", "tool", "edit", { issues: [4] }),
 		ev(1, "smith", "tool", "edit", { issues: [4] }),
 	];
-	const gone = buildModel([...before, ...left], T + 3 * MINUTE);
+	const gone = buildModel([...before, ...departures], T + 3 * MINUTE);
 	expect(gone.teammates.ada?.status).toBe("gone");
 	expect(gone.teammates.ada?.issue).toBe(4);
 	expect(gone.huddles.map((h) => h.members)).toEqual([["smith"]]);
 	const back = buildModel(
-		[...before, ...left, ev(4, "ada", "turn-start", "started a turn")],
+		[...before, ...departures, ev(4, "ada", "turn-start", "started a turn")],
 		T + 5 * MINUTE,
 	);
 	expect(back.teammates.ada?.status).toBe("running");
