@@ -203,8 +203,7 @@ export function teamStudioView(
 	// SHIPPING keeps its rows: cards give way before the path to merge does.
 	const reserve = Math.min(shipping.length + 1, 6) + 1;
 	const capacity =
-		across *
-		Math.max(0, Math.floor((room - 3 - reserve) / (CARD_ROWS + 1)));
+		across * Math.max(0, Math.floor((room - 3 - reserve) / (CARD_ROWS + 1)));
 	const shown = team.slice(0, capacity);
 	const left: Line[] = [section("WORKSTATIONS / teammates", leftWidth)];
 	for (let index = 0; index < shown.length; index += across) {

@@ -13,15 +13,18 @@ import {
 import type { BullpenEvent } from "../types";
 
 let clock = 0;
-const msg = (who: string, target: string, detail: string): BullpenEvent => ({
-	version: 1,
-	at: (clock += 1000),
-	kind: "message",
-	who,
-	target,
-	detail,
-	issues: [],
-});
+const msg = (who: string, target: string, detail: string): BullpenEvent => {
+	clock += 1000;
+	return {
+		version: 1,
+		at: clock,
+		kind: "message",
+		who,
+		target,
+		detail,
+		issues: [],
+	};
+};
 const flat = (line: Line) => line.map((s) => s.text).join("");
 const pr = "https://github.com/o/r/pull";
 
