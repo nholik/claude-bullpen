@@ -111,7 +111,10 @@ export function band(
 	columns: number,
 	seenAt: number,
 ): Line {
-	const segments: Line = [{ text: `☰ bullpen ${model.morale.glyph} ` }];
+	const segments: Line = [
+		{ text: "☰ bullpen" },
+		{ text: ` ${model.morale.glyph} ` },
+	];
 	for (const h of model.huddles) {
 		const name = h.members[0] ?? "";
 		const running = h.members.some(
