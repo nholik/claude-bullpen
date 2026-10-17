@@ -90,3 +90,8 @@ test("paths normalize Windows separators while retaining drive and UNC roots", (
 		"//server/share/repo/.claude/bullpen.json",
 	);
 });
+
+test("truncation keeps its ellipsis in unicode mode", () => {
+	expect(glyphText("a…")).toBe("a…");
+	expect(glyphText("a…", "ascii")).toBe("a.");
+});

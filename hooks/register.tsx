@@ -412,7 +412,11 @@ async function pollGithub($: $, generation = pollGeneration) {
 	const result = await $.process
 		.run(issueListArgv(prev.filter))
 		.then(readIssueList, runFailure);
-	let { repo, host, burndown } = prev;
+	let { repo, host, burndown, workspace } = prev;
+	if (!workspace)
+		workspace = (await $.session.cwd().catch(() => ""))
+			.split(/[\\/]/)
+			.findLast(Boolean);
 	if (result.status === "ok") {
 		if (!repo || !host) {
 			const resolved = await $.process.run(REPO_ARGV).catch(() => undefined);
@@ -442,6 +446,7 @@ async function pollGithub($: $, generation = pollGeneration) {
 		result,
 		repo,
 		host,
+		workspace,
 		burndown,
 		checkedAt: at,
 	}));

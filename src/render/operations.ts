@@ -280,13 +280,10 @@ export function operationsView(
 		),
 		align(
 			text(
-				` ${github.repo ?? "workspace"} · ${Object.values(model.teammates).filter((m) => m.status !== "gone").length} agents · ${model.huddles.length} workstreams`,
+				` ${github.repo ?? github.workspace ?? "workspace"} · ${Object.values(model.teammates).filter((m) => m.status !== "gone").length} agents · ${model.huddles.length} workstreams`,
 				STUDIO.muted,
 			),
-			text(
-				`${github.result ? headerText(github.result) : "no GitHub data"} `,
-				STUDIO.muted,
-			),
+			text(`${github.result ? headerText(github.result) : ""} `, STUDIO.muted),
 			columns,
 		),
 	];

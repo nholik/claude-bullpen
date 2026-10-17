@@ -184,7 +184,7 @@ export function teamStudioView(
 			hint
 				? text(` ${hint}`, STUDIO.amber)
 				: text(
-						` ${github.repo ?? "workspace"} · ${team.length} teammates · ${inFlight} in flight`,
+						` ${github.repo ?? github.workspace ?? "workspace"} · ${team.length} teammates · ${inFlight} in flight`,
 						STUDIO.muted,
 					),
 			text(`${model.shipped} shipped this session `, STUDIO.muted),
