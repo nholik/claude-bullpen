@@ -1,7 +1,7 @@
 import { expect, test } from "claude-code/testing";
 
 import { mix } from "../src/color";
-import { describeTool, issueRefs, oneLine } from "../src/events";
+import { describeTool, issueRefs, nextIssue, oneLine } from "../src/events";
 import { base64, drawFloor, layout } from "../src/floor";
 import type { Member } from "../types";
 
@@ -89,4 +89,18 @@ test("an idle team draws the same frame every tick", async () => {
 		member("gate", 2, 204, "idle"),
 	];
 	expect(drawFloor(team, 40, 6, 0).cells).toBe(drawFloor(team, 40, 6, 3).cells);
+});
+
+test("nextIssue: mentions don't drag a teammate to someone else's table", async () => {
+	// Acknowledging gate's #102 while on #101 keeps smith at #101.
+	expect(nextIssue("message", 101, [102])).toBe(101);
+	// A message can give a newcomer its first issue.
+	expect(nextIssue("message", undefined, [102])).toBe(102);
+	// Work that still references the current issue stays put.
+	expect(nextIssue("tool", 101, [102, 101])).toBe(101);
+	// Work on a different issue moves you.
+	expect(nextIssue("tool", 101, [204])).toBe(204);
+	// No refs, spawns and turn ends never move anyone.
+	expect(nextIssue("tool", 101, [])).toBe(101);
+	expect(nextIssue("spawn", 101, [5])).toBe(101);
 });

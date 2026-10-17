@@ -1,7 +1,14 @@
 import type { EngineInterface, On, RenderChildren } from "claude-code";
 import { atom, read, update } from "claude-code";
 import { hex } from "../src/color";
-import { argText, describeTool, issueRefs, oneLine } from "../src/events";
+import { DEMO_PREFIX, DEMO_SCRIPT, type DemoStep } from "../src/demo";
+import {
+	argText,
+	describeTool,
+	issueRefs,
+	nextIssue,
+	oneLine,
+} from "../src/events";
 import { drawFloor, PALETTE } from "../src/floor";
 import type { BullpenEvent, BullpenEventKind, Member } from "../types";
 
@@ -69,10 +76,13 @@ async function record(
 		issues,
 	};
 	await update($, events, (list) => [...(list ?? []), event].slice(-300));
-	// The doer moves to the last issue it mentioned, unless the event is about someone else.
-	const last =
-		extra.attribute === false ? undefined : issues[issues.length - 1];
-	await touch($, agentId ?? LEAD, last === undefined ? {} : { issue: last });
+	if (extra.attribute === false) {
+		await touch($, agentId ?? LEAD, {});
+		return;
+	}
+	const current = (await read($, members))[agentId ?? LEAD]?.issue;
+	const issue = nextIssue(kind, current, issues);
+	await touch($, agentId ?? LEAD, issue === undefined ? {} : { issue });
 }
 
 async function reconcile($: $) {
@@ -93,11 +103,59 @@ async function reconcile($: $) {
 			};
 		}
 		for (const [id, member] of Object.entries(next)) {
-			if (id !== LEAD && !listed.some((a) => a.id === id))
+			const isDemo = id.startsWith(DEMO_PREFIX);
+			if (id !== LEAD && !isDemo && !listed.some((a) => a.id === id))
 				next[id] = { ...member, status: "gone" };
 		}
 		return next;
 	});
+}
+
+/** Plays one step of the demo script through the same path real events take. */
+async function playStep($: $, step: DemoStep) {
+	const id = `${DEMO_PREFIX}${step.who}`;
+	const act = step.do;
+	switch (act.kind) {
+		case "join":
+			await touch($, id, {
+				name: step.who,
+				status: "running",
+				issue: act.issue,
+			});
+			await record($, "spawn", id, `${step.who} joined`, { attribute: false });
+			return;
+		case "work":
+			await touch($, id, { status: "running", issue: act.issue });
+			await record($, "tool", id, act.detail);
+			return;
+		case "rest":
+			await touch($, id, { status: "idle" });
+			await record($, "turn-end", id, "finished a turn");
+			return;
+		case "say":
+			await record($, "message", id, act.text, {
+				target: act.to,
+				text: act.text,
+			});
+			return;
+		case "leave":
+			await touch($, id, { status: "gone" });
+			return;
+	}
+}
+
+/** Clears earlier demo members and plays the script on the session clock. */
+async function playDemo($: $) {
+	await update($, members, (all) =>
+		Object.fromEntries(
+			Object.entries(all ?? {}).filter(([id]) => !id.startsWith(DEMO_PREFIX)),
+		),
+	);
+	let at = 0;
+	for (const step of DEMO_SCRIPT) {
+		at += step.wait;
+		$.clock.after(at, () => void playStep($, step).catch(() => {}));
+	}
 }
 
 async function openPane($: $) {
@@ -109,6 +167,7 @@ export function register(on: On) {
 		await $.command.register({
 			name: "bullpen",
 			description: "Open the Bullpen: a live view of your agent team",
+			argumentHint: "[demo]",
 		});
 
 		$.clock.every(4000, () => void reconcile($));
@@ -131,8 +190,12 @@ export function register(on: On) {
 		return next(e);
 	});
 
-	on("command.run", { command: "bullpen" }, async ($) => {
+	on("command.run", { command: "bullpen" }, async ($, e) => {
 		const opened = await openPane($);
+		if (e.args.trim() === "demo") {
+			await playDemo($);
+			return { text: "Bullpen demo: a scripted team is joining the floor." };
+		}
 		return {
 			text: opened.isPlaced
 				? "Bullpen opened."

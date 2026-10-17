@@ -78,3 +78,23 @@ export function argText(args: Record<string, unknown>): string {
 		.filter((v): v is string => typeof v === "string")
 		.join(" ");
 }
+
+/**
+ * Which issue a teammate is on after an event, given the issues it referenced.
+ *
+ * Mentions are noisy: acknowledging someone else's issue in a message must not
+ * walk you over to their table. So messages only adopt an issue when the
+ * teammate has none yet, and work (tool calls, new turns) moves a teammate
+ * only when it no longer references the issue it's on.
+ */
+export function nextIssue(
+	kind: "spawn" | "turn-start" | "turn-end" | "tool" | "message",
+	current: number | undefined,
+	refs: number[],
+): number | undefined {
+	if (refs.length === 0 || kind === "spawn" || kind === "turn-end")
+		return current;
+	if (kind === "message") return current ?? refs[0];
+	if (current !== undefined && refs.includes(current)) return current;
+	return refs[0];
+}
