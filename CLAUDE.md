@@ -12,9 +12,12 @@ npm run check          # Biome + tsc + vendor freshness + plugin validate + test
 npm run format         # Biome format + safe fixes
 npm run vendor         # recompile borrowed libraries into src/vendor/
 scripts/snap.sh        # real screenshot: runs `/bullpen demo` in tmux → .scratch/snaps/*.ansi + .png
+scripts/ci-types.sh    # write .claude-plugin/types/ without signing in (what CI does)
 ```
 
 `tsc` needs `.claude-plugin/types/`, which Claude Code writes when it loads the mod (`claude --plugin-dir .`).
+CI (`.github/workflows/ci.yml`) runs every step of `npm run check` against the Claude Code version it
+pins in `CLAUDE_CODE_VERSION`; bump it when you move to a newer build.
 
 ## The mod API
 
