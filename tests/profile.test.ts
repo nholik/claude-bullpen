@@ -21,31 +21,32 @@ test("missing or empty text gives the defaults and no warnings", async () => {
 test("a valid file overrides the defaults", async () => {
 	const { profile, warnings } = parseProfile(
 		JSON.stringify({
-			issueFilter: "is:open label:bug",
+			issues: { filter: "is:open label:bug", pollSeconds: 30 },
 			animations: false,
-			pollSeconds: 30,
+			palette: ["#111111", "#222222"],
 			roles: { gate: { role: "reviewer", color: "#112233" } },
 		}),
 	);
 	expect(warnings).toEqual([]);
-	expect(profile.issueFilter).toBe("is:open label:bug");
+	expect(profile.issues).toEqual({
+		filter: "is:open label:bug",
+		pollSeconds: 30,
+	});
 	expect(profile.animations).toBe(false);
-	expect(profile.pollSeconds).toBe(30);
+	expect(profile.palette).toEqual([0x111111, 0x222222]);
 	expect(profile.roles.gate).toEqual({ role: "reviewer", color: "#112233" });
 });
 
 test("invalid fields fall back with a warning each", async () => {
 	const { profile, warnings } = parseProfile(
 		JSON.stringify({
-			issueFilter: 3,
+			issues: { filter: 3, pollSeconds: 5 },
 			animations: "yes",
-			pollSeconds: 5,
 			roles: { a: { color: "teal" }, b: "x", c: { role: "ok" } },
 		}),
 	);
-	expect(profile.issueFilter).toBe(DEFAULT_PROFILE.issueFilter);
+	expect(profile.issues).toEqual(DEFAULT_PROFILE.issues);
 	expect(profile.animations).toBe(true);
-	expect(profile.pollSeconds).toBe(60);
 	expect(profile.roles.a).toEqual({});
 	expect(profile.roles.b).toBeUndefined();
 	expect(profile.roles.c).toEqual({ role: "ok" });
@@ -61,17 +62,18 @@ test("bad JSON and non-objects never throw", async () => {
 test("project wins over user, which wins over defaults", async () => {
 	const user = parsePartial(
 		JSON.stringify({
-			issueFilter: "user",
-			pollSeconds: 20,
+			issues: { filter: "user", pollSeconds: 20 },
 			roles: { a: { role: "u" }, b: { role: "u" } },
 		}),
 	).set;
 	const project = parsePartial(
-		JSON.stringify({ issueFilter: "project", roles: { a: { role: "p" } } }),
+		JSON.stringify({
+			issues: { filter: "project" },
+			roles: { a: { role: "p" } },
+		}),
 	).set;
 	const merged = mergeProfiles(project, user);
-	expect(merged.issueFilter).toBe("project");
-	expect(merged.pollSeconds).toBe(20);
+	expect(merged.issues).toEqual({ filter: "project", pollSeconds: 20 });
 	expect(merged.animations).toBe(true);
 	expect(merged.roles).toEqual({ a: { role: "p" }, b: { role: "u" } });
 });
@@ -86,4 +88,23 @@ test("colorFor: hex, palette index, case-insensitive name, fallback", async () =
 	expect(colorFor("builder", profile, 0)).toBe(PALETTE[1]);
 	expect(colorFor("other", profile, 2)).toBe(PALETTE[2]);
 	expect(colorFor("other", profile, PALETTE.length + 3)).toBe(PALETTE[3]);
+});
+
+test("palette: bad entries dropped, empty falls back, colorFor uses it", async () => {
+	const a = parseProfile(
+		JSON.stringify({ palette: ["#aabbcc", "red", "#12"] }),
+	);
+	expect(a.profile.palette).toEqual([0xaabbcc]);
+	expect(a.warnings.length).toBe(2);
+	const b = parseProfile(JSON.stringify({ palette: [] }));
+	expect(b.profile.palette).toEqual(PALETTE);
+	expect(b.warnings.length).toBe(1);
+	const c = parseProfile(
+		JSON.stringify({
+			palette: ["#010101", "#020202"],
+			roles: { x: { color: 3 } },
+		}),
+	).profile;
+	expect(colorFor("y", c, 3)).toBe(0x020202);
+	expect(colorFor("x", c, 0)).toBe(0x020202);
 });

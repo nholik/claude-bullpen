@@ -47,18 +47,23 @@ export type Member = {
 /** A teammate's role entry in `.claude/bullpen.json`. */
 export type ProfileRole = {
 	role?: string;
-	/** `#rrggbb`, or an index into the floor palette. */
+	/** `#rrggbb`, or an index into the palette. */
 	color?: string | number;
 };
 
 /** `.claude/bullpen.json` merged over the defaults (`src/profile.ts`). */
 export type Profile = {
-	/** A `gh search issues` query string. */
-	issueFilter: string;
+	issues: {
+		/** A `gh search issues` query string. */
+		filter: string;
+		/** Seconds between GitHub polls; at least 15. */
+		pollSeconds: number;
+	};
 	/** Teammate name or agent type to role and color. */
 	roles: Record<string, ProfileRole>;
 	animations: boolean;
-	pollSeconds: number;
+	/** Member colors as 0xRRGGBB, in assignment order. */
+	palette: number[];
 };
 
 declare module "claude-code" {

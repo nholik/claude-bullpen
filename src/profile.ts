@@ -1,10 +1,11 @@
 // The profile: `.claude/bullpen.json`, the one place home and work setups
-// differ (issue filter, who plays what role in what color, animations).
+// differ (issue filter, palette, who plays what role in what color, animations).
 // Parsing never throws: a bad field falls back to its default and says so.
 
 import type { Profile, ProfileRole } from "../types";
 import { PALETTE } from "./floor";
 import {
+	array,
 	boolean,
 	integer,
 	looseObject,
@@ -26,25 +27,32 @@ const RoleSchema = looseObject({
 	color: optional(union([pipe(number(), integer(), minValue(0)), string()])),
 });
 
+const IssuesSchema = looseObject({
+	filter: optional(string()),
+	pollSeconds: optional(pipe(number(), minValue(MIN_POLL_SECONDS))),
+});
+
 const ProfileSchema = looseObject({
-	issueFilter: optional(string()),
+	issues: optional(IssuesSchema),
 	roles: optional(record(string(), RoleSchema)),
 	animations: optional(boolean()),
-	pollSeconds: optional(pipe(number(), minValue(MIN_POLL_SECONDS))),
+	palette: optional(array(string())),
 });
 
 export type { Profile };
 export type Role = ProfileRole;
 
 export const DEFAULT_PROFILE: Profile = {
-	issueFilter: "is:open",
+	issues: { filter: "is:open", pollSeconds: 60 },
 	roles: {},
 	animations: true,
-	pollSeconds: 60,
+	palette: [...PALETTE],
 };
 
 /** The fields a file actually set; what `mergeProfiles` layers. */
-export type PartialProfile = Partial<Profile>;
+export type PartialProfile = Partial<Omit<Profile, "issues">> & {
+	issues?: Partial<Profile["issues"]>;
+};
 
 export type Parsed = {
 	/** Defaults with the file's valid fields on top. */
@@ -55,17 +63,21 @@ export type Parsed = {
 	warnings: string[];
 };
 
-const HEX = /^#?[0-9a-f]{6}$/i;
+const HEX = /^#[0-9a-f]{6}$/i;
 
-/** A 0xRRGGBB number from `#rrggbb` or a palette index; undefined if neither. */
-export function parseColor(color: unknown): number | undefined {
+const hexToNumber = (color: string) => Number.parseInt(color.slice(1), 16);
+
+/** A 0xRRGGBB number from `#rrggbb` or an index into `palette`; else undefined. */
+export function parseColor(
+	color: unknown,
+	palette: readonly number[] = PALETTE,
+): number | undefined {
 	if (typeof color === "number") {
-		return Number.isInteger(color) && color >= 0
-			? (PALETTE[color % PALETTE.length] ?? undefined)
+		return Number.isInteger(color) && color >= 0 && palette.length > 0
+			? palette[color % palette.length]
 			: undefined;
 	}
-	if (typeof color === "string" && HEX.test(color))
-		return Number.parseInt(color.replace("#", ""), 16);
+	if (typeof color === "string" && HEX.test(color)) return hexToNumber(color);
 	return undefined;
 }
 
@@ -90,25 +102,54 @@ export function parsePartial(text: string | undefined): {
 		return { set, warnings: ["bullpen.json must be a JSON object"] };
 
 	const fields = ProfileSchema.entries;
+	type Obj = Record<string, unknown>;
 	const obj = json as Record<string, unknown>;
 
-	if (obj.issueFilter !== undefined) {
-		const r = safeParse(fields.issueFilter, obj.issueFilter);
-		if (r.success && r.output !== undefined) set.issueFilter = r.output;
-		else warnings.push(`issueFilter: ${message(r)}; using the default`);
+	if (obj.issues !== undefined) {
+		const raw = obj.issues;
+		if (typeof raw !== "object" || raw === null || Array.isArray(raw))
+			warnings.push("issues: must be an object; using the defaults");
+		else {
+			const issues: Partial<Profile["issues"]> = {};
+			const f = safeParse(IssuesSchema.entries.filter, (raw as Obj).filter);
+			if ((raw as Obj).filter !== undefined) {
+				if (f.success && f.output !== undefined) issues.filter = f.output;
+				else warnings.push(`issues.filter: ${message(f)}; using the default`);
+			}
+			const p = safeParse(
+				IssuesSchema.entries.pollSeconds,
+				(raw as Obj).pollSeconds,
+			);
+			if ((raw as Obj).pollSeconds !== undefined) {
+				if (p.success && p.output !== undefined) issues.pollSeconds = p.output;
+				else
+					warnings.push(
+						`issues.pollSeconds: must be a number of at least ${MIN_POLL_SECONDS}; using the default`,
+					);
+			}
+			set.issues = issues;
+		}
 	}
 	if (obj.animations !== undefined) {
 		const r = safeParse(fields.animations, obj.animations);
 		if (r.success) set.animations = r.output;
 		else warnings.push(`animations: ${message(r)}; using the default`);
 	}
-	if (obj.pollSeconds !== undefined) {
-		const r = safeParse(fields.pollSeconds, obj.pollSeconds);
-		if (r.success) set.pollSeconds = r.output;
-		else
-			warnings.push(
-				`pollSeconds: must be a number of at least ${MIN_POLL_SECONDS}; using the default`,
-			);
+	if (obj.palette !== undefined) {
+		const r = safeParse(fields.palette, obj.palette);
+		if (!r.success || r.output === undefined)
+			warnings.push("palette: must be a list of #rrggbb colors; ignoring it");
+		else {
+			const good: number[] = [];
+			for (const c of r.output) {
+				if (HEX.test(c)) good.push(hexToNumber(c));
+				else warnings.push(`palette: "${c}" is not #rrggbb; dropping it`);
+			}
+			if (good.length > 0) set.palette = good;
+			else if (r.output.length === 0)
+				warnings.push("palette: empty; using the default palette");
+			else warnings.push("palette: no valid colors; using the default palette");
+		}
 	}
 	if (obj.roles !== undefined) {
 		const raw = obj.roles;
@@ -125,7 +166,7 @@ export function parsePartial(text: string | undefined): {
 				const out: Role = {};
 				if (r.output.role !== undefined) out.role = r.output.role;
 				if (r.output.color !== undefined) {
-					if (parseColor(r.output.color) === undefined)
+					if (parseColor(r.output.color, set.palette) === undefined)
 						warnings.push(
 							`roles.${name}.color: use #rrggbb or a palette index; ignoring it`,
 						);
@@ -150,12 +191,15 @@ export function mergeProfiles(
 	project: PartialProfile,
 	user: PartialProfile,
 ): Profile {
-	const layers = [DEFAULT_PROFILE, user, project];
-	const out: Profile = { ...DEFAULT_PROFILE, roles: {} };
-	for (const layer of layers) {
-		out.issueFilter = layer.issueFilter ?? out.issueFilter;
+	const out: Profile = {
+		...DEFAULT_PROFILE,
+		issues: { ...DEFAULT_PROFILE.issues },
+		roles: {},
+	};
+	for (const layer of [user, project]) {
+		out.issues = { ...out.issues, ...layer.issues };
 		out.animations = layer.animations ?? out.animations;
-		out.pollSeconds = layer.pollSeconds ?? out.pollSeconds;
+		out.palette = layer.palette?.length ? layer.palette : out.palette;
 		out.roles = { ...out.roles, ...layer.roles };
 	}
 	return out;
@@ -177,8 +221,9 @@ export function colorFor(
 	profile: Profile,
 	fallbackIndex: number,
 ): number {
-	const chosen = parseColor(roleFor(name, profile)?.color);
+	const chosen = parseColor(roleFor(name, profile)?.color, profile.palette);
 	if (chosen !== undefined) return chosen;
 	const i = Math.max(0, Math.trunc(fallbackIndex));
-	return PALETTE[i % PALETTE.length] ?? 0xffffff;
+	const palette = profile.palette.length > 0 ? profile.palette : PALETTE;
+	return palette[i % palette.length] ?? 0xffffff;
 }

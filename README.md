@@ -40,20 +40,21 @@ Optional. Put a `bullpen.json` in your project's `.claude/` folder (`/bullpen re
 
 ```json
 {
-	"issueFilter": "is:open label:ready",
+	"issues": { "filter": "is:open label:ready", "pollSeconds": 60 },
 	"roles": {
 		"smith": { "role": "builder", "color": "#4fc3f7" },
 		"gate": { "role": "reviewer", "color": 3 }
 	},
 	"animations": true,
-	"pollSeconds": 60
+	"palette": ["#4fc3f7", "#ffb74d", "#81c784", "#f06292"]
 }
 ```
 
-- `issueFilter`: a `gh search issues` query (default `is:open`).
-- `roles`: a teammate name or agent type to `{ role, color }`. `color` is `#rrggbb` or an index into the floor palette.
+- `issues.filter`: a `gh search issues` query (default `is:open`).
+- `issues.pollSeconds`: how often GitHub is polled (default 60, minimum 15).
+- `roles`: a teammate name or agent type to `{ role, color }`. `color` is `#rrggbb` or an index into the palette.
 - `animations`: set `false` to stop the floor animating (default `true`).
-- `pollSeconds`: how often GitHub is polled (default 60, minimum 15).
+- `palette`: member colors in assignment order, as `#rrggbb` (default: the built-in palette). Bad entries are dropped with a warning; an empty list keeps the default.
 
 Colors by role are parsed and available as `colorFor` in `src/profile.ts`; the floor and band don't use them yet (#8).
 
