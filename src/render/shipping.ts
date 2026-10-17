@@ -137,12 +137,16 @@ export function shippingSection(
 	);
 	const idWidth = Math.max(...shown.map((r) => `#${r.issue}`.length));
 	// The title takes what the fixed columns leave; below a few cells it is dropped.
-	const titleWidth = columns - idWidth - ownerWidth - chainWidth - 4;
+	const titles = new Map(
+		github.result?.status === "ok"
+			? github.result.issues.map((i) => [i.number, i.title])
+			: [],
+	);
+	const titleWidth = titles.size
+		? columns - idWidth - ownerWidth - chainWidth - 4
+		: 0;
 	for (const row of shown) {
-		const title =
-			github.result?.status === "ok"
-				? github.result.issues.find((i) => i.number === row.issue)?.title
-				: undefined;
+		const title = titles.get(row.issue);
 		const owner = row.owners.map((name) => ({
 			text: `${name} `,
 			fg: colorFor(name, profile, colorIndex(name)),

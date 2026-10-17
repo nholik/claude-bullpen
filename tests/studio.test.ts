@@ -189,14 +189,14 @@ test("studio compact and sidebar layouts retain open decisions and teammate over
 		const view = paneView(model, [], columns, 16, now, {
 			github: demoGithubAt(16000),
 		});
-		const content = view.regions
+		const content = [...view.header, ...view.regions]
 			.map((line) => line.map((s) => s.text).join(" "))
 			.join("\n");
 		expect(content).toContain("more teammates");
 		expect(content).toContain(
 			model.asks.find((ask) => ask.open)?.from ?? "missing ask",
 		);
-		expect(content).toContain(columns >= 120 ? "NEEDS YOU" : "needs you");
+		expect(content).toContain("NEEDS YOU");
 	}
 });
 

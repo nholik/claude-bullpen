@@ -151,3 +151,28 @@ test("gh pr review verdicts", () => {
 	] as const)
 		expect(commandVerdict(command)).toBe(expected);
 });
+
+test("a merge said in a message counts only for a known PR and a plain statement", () => {
+	const start = [msg("gate", "PR #91 (#87): PASS. The check is green.")];
+	for (const [text, stage] of [
+		["Lead: #91 merged. Your queue isn't empty.", "merged"],
+		["PR #91 merged, thanks", "merged"],
+		["merged PR #91", "merged"],
+		["#91 is merged", "merged"],
+		["Is #91 merged?", "approved"],
+		["#91 is not merged yet", "approved"],
+		["I will get #91 merged after review", "approved"],
+		["#87 merged", "approved"],
+		["#99 merged", "approved"],
+	] as const)
+		expect(shipPaths([...start, msg("lead", text)])[87]?.stage).toBe(stage);
+	expect(shipPaths([msg("lead", "#91 merged")])).toEqual({});
+});
+
+test("a bounced review stays flagged after it passes", () => {
+	const paths = shipPaths([
+		msg("gate", "PR #61 (#44) CHANGES: wrong diff"),
+		msg("gate", "PR #61 (#44): PASS"),
+	]);
+	expect(paths[44]).toMatchObject({ stage: "approved", bounced: true });
+});

@@ -48,6 +48,13 @@ const REVIEW_ASK =
 // "PR #61 (#44) CHANGES", "PR #62 (#46): PASS", "#61 (#44) PASS now"
 const VERDICT =
 	/(?:\bPR\s+)?#(\d{1,7})\s+\(#(\d{1,7})\)\s*:?\s*(PASS|CHANGES)\b/g;
+// "#91 merged", "PR #91 merged", "merged PR #91": tied to an issue only when
+// the number is a PR an earlier event announced, since "#87 merged" is rarely
+// about an issue number. Clauses that ask, negate or only promise are skipped.
+const MERGED_AT =
+	/(?:\bPR\s+)?#(\d{1,7})\s+(?:is\s+|was\s+|now\s+|also\s+|just\s+)?merged\b|\bmerged\s+(?:PR\s+)?#(\d{1,7})\b/gi;
+const NOT_MERGED =
+	/\?|\b(?:not|never|no|yet|until|once|when|after|before|if|whether|will|should|to be|can)\b|n't\b/i;
 const GH_PR = /\bgh\s+pr\s+(create|review|merge|comment)\b/;
 
 /** Numbers in `gh pr <verb> 61` or a `for p in 61 62; do gh pr ...` loop. */
@@ -121,6 +128,15 @@ export function applyShip(state: ShipState, e: BullpenEvent): ShipState {
 				stage: pass ? "approved" : "changes",
 				verdict: pass ? "pass" : "changes",
 			});
+		}
+		for (const clause of e.detail.split(/(?<=[.!?])\s+|[;\n]/)) {
+			if (NOT_MERGED.test(clause)) continue;
+			for (const m of clause.matchAll(MERGED_AT)) {
+				const pr = Number(m[1] ?? m[2]);
+				const issue = next.prIssue[pr];
+				if (issue !== undefined)
+					next = move(next, issue, e.at, { stage: "merged" });
+			}
 		}
 	}
 	if (e.kind === "tool" && e.target === "Bash" && GH_PR.test(e.detail)) {
