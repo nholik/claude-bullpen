@@ -40,6 +40,7 @@ import {
 	teamOf,
 	toLine,
 } from "../src/journal";
+import { DEFAULT_PROFILE, parseProfile } from "../src/profile";
 import type { BullpenEventKind } from "../types";
 
 const PANE = "bullpen";
@@ -50,6 +51,10 @@ const JOURNAL_FLUSH_MS = 1000;
 
 const events = atom({ plugin: "bullpen", key: "events" } as const, []);
 const members = atom({ plugin: "bullpen", key: "members" } as const, {});
+const profile = atom(
+	{ plugin: "bullpen", key: "profile" } as const,
+	DEFAULT_PROFILE,
+);
 const github = atom({ plugin: "bullpen", key: "github" } as const, {
 	filter: "",
 	burndown: [],
@@ -285,6 +290,23 @@ async function playDemo($: $) {
 	}
 }
 
+/** Reads `.claude/bullpen.json` from the project; a bad file warns once and never blocks. */
+async function loadProfile($: $) {
+	let text: string | undefined;
+	try {
+		const path = `${await $.session.root()}/.claude/bullpen.json`;
+		if (await $.fs.exists(path)) text = await $.fs.read(path);
+	} catch (error) {
+		$.ui.log(`bullpen: can't read bullpen.json (${error})`, { to: "debug" });
+	}
+	const parsed = parseProfile(text);
+	await update($, profile, () => parsed.profile);
+	if (parsed.warnings.length > 0)
+		$.ui.toast(`bullpen.json: ${parsed.warnings.join("; ")}`, {
+			timeoutMs: 10000,
+		});
+}
+
 async function openPane($: $) {
 	return $.ui.open({ id: PANE, title: "Bullpen" });
 }
@@ -296,10 +318,12 @@ export function register(on: On) {
 		journal = undefined;
 		journalWarned = false;
 
+		await loadProfile($);
+
 		await $.command.register({
 			name: "bullpen",
 			description: "Open the Bullpen: a live view of your agent team",
-			argumentHint: "[demo]",
+			argumentHint: "[demo|reload]",
 		});
 
 		$.clock.every(4000, () => void reconcile($));
@@ -310,6 +334,7 @@ export function register(on: On) {
 		// Animate only while someone is working; an idle office draws nothing new.
 		$.clock.every(250, async () => {
 			if (!floorSize) return;
+			if (!(await read($, profile)).animations) return;
 			const list = Object.values(await read($, members));
 			if (!list.some((m) => m.status === "running")) return;
 			frame++;
@@ -333,6 +358,10 @@ export function register(on: On) {
 	});
 
 	on("command.run", { command: "bullpen" }, async ($, e) => {
+		if (e.args.trim() === "reload") {
+			await loadProfile($);
+			return { text: "Bullpen: reloaded .claude/bullpen.json." };
+		}
 		const opened = await openPane($);
 		if (e.args.trim() === "demo") {
 			await playDemo($);

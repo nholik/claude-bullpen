@@ -34,6 +34,30 @@ claude plugin install bullpen --marketplace nholik/claude-bullpen
 - Once a teammate joins, a one-line band shows the team above the prompt. Press `☰ bullpen` in the band to open the pane.
 - Ask Claude to spawn named teammates, for example "Spawn teammates named smith and gate to work on #12 and #14". Each teammate appears on the floor at its issue's table, and bobs while it's working.
 
+## Configure
+
+Optional. Put a `bullpen.json` in your project's `.claude/` folder (`/bullpen reload` rereads it). Every field is optional; a bad field falls back to its default and shows a toast.
+
+```json
+{
+	"issues": { "filter": "is:open label:ready", "pollSeconds": 60 },
+	"roles": {
+		"smith": { "role": "builder", "color": "#4fc3f7" },
+		"gate": { "role": "reviewer", "color": 3 }
+	},
+	"animations": true,
+	"palette": ["#4fc3f7", "#ffb74d", "#81c784", "#f06292"]
+}
+```
+
+- `issues.filter`: a `gh search issues` query (default `is:open`). *Not used yet: the GitHub source (#3) will read it.*
+- `issues.pollSeconds`: how often GitHub is polled (default 60, minimum 15). *Not used yet (#3).*
+- `roles`: a teammate name or agent type to `{ role, color }`. `color` is `#rrggbb` or an index into the palette.
+- `animations`: set `false` to stop the floor animating (default `true`).
+- `palette`: member colors in assignment order, as `#rrggbb` (default: the built-in palette). Bad entries are dropped with a warning; an empty list keeps the default.
+
+Colors by role are parsed and available as `colorFor` in `src/profile.ts`; the floor and band don't use them yet (#8).
+
 ## Develop
 
 Requires Node 24+ and Claude Code 2.1.287+.
