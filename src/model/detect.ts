@@ -36,12 +36,12 @@ function unnegatedFailure(text: string): boolean {
 
 /**
  * Whether `before`, the text ahead of a send-back phrase, negates it: a
- * negation within three words, in the same comma-delimited phrase. An earlier
- * "not ready," or "no fix here," leaves the send-back standing.
+ * negation anywhere in the same phrase. An earlier "not ready," or
+ * "no fix here -" leaves the send-back standing.
  */
 function negatesSendBack(before: string): boolean {
-	const phrase = before.split(/[.,;:!?\n]/).pop() ?? "";
-	return NEGATED.test(phrase.trim().split(/\s+/).slice(-3).join(" "));
+	const phrase = before.split(/[.,;:!?\n\u2014\u2013]|\s-\s/).pop() ?? "";
+	return NEGATED.test(phrase);
 }
 
 /**

@@ -86,6 +86,9 @@ test("send-back negation covers only the phrase it modifies", () => {
 		["won't kick it back", false],
 		["never kicked this back", false],
 		["not ready, but not sending it back", false],
+		["I don't think we should send it back", false],
+		["I do not think we need to kick it back", false],
+		["Not green yet \u2014 kicking this back", true],
 	] as const)
 		expect(isKickback(text, false)).toBe(expected);
 });
