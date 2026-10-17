@@ -844,8 +844,17 @@ export function register(on: On) {
 		return (
 			<Box>
 				<Button key="open" plain onPress={() => void openPane($)}>
-					{renderLines(Text, [line], { Box, Button }, $)}
+					{line[0]?.text}
 				</Button>
+				{line.slice(1).map((seg) => (
+					<Text
+						color={seg.fg === undefined ? undefined : hex(seg.fg)}
+						bold={seg.bold}
+						dimColor={seg.dim}
+					>
+						{seg.text}
+					</Text>
+				))}
 			</Box>
 		);
 	});
