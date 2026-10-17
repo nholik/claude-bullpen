@@ -27,7 +27,27 @@ function segments(command: string): string[] {
 			while (ENV_ASSIGNMENT.test(rest)) rest = rest.replace(ENV_ASSIGNMENT, "");
 			return rest.trim();
 		})
-		.filter((part) => part && !/^(?:for|while|until|if|done|fi)\b/.test(part));
+		.filter((part) => part && !/^(?:while|until|if|done|fi)\b/.test(part));
+}
+
+/**
+ * PR numbers a chain merges: every `gh pr merge N` segment, plus `gh pr merge
+ * $p` inside a `for p in 92 94; do ...` loop.
+ */
+export function mergedPrs(command: string): number[] {
+	const loops = new Map<string, number[]>();
+	const merged: number[] = [];
+	for (const part of segments(command)) {
+		const loop = /^for\s+(\w+)\s+in\s+([#\d\s]+)$/.exec(part);
+		if (loop?.[1] && loop[2]) {
+			loops.set(loop[1], loop[2].match(/\d+/g)?.map(Number) ?? []);
+			continue;
+		}
+		const m = /^gh\s+pr\s+merge\s+(?:#?(\d+)|\$\{?(\w+)\}?)/.exec(part);
+		if (m?.[1]) merged.push(Number(m[1]));
+		else if (m?.[2]) merged.push(...(loops.get(m[2]) ?? []));
+	}
+	return merged;
 }
 
 const PHRASES: [RegExp, (m: RegExpExecArray) => string][] = [

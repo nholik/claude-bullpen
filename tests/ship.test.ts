@@ -176,3 +176,35 @@ test("a bounced review stays flagged after it passes", () => {
 	]);
 	expect(paths[44]).toMatchObject({ stage: "approved", bounced: true });
 });
+
+test("merges inside shell chains and loops move every PR", () => {
+	const announce = [
+		msg("ada", `#92 PR: ${pr}/101 (x)`),
+		msg("kit", `#94 PR: ${pr}/103 (x)`),
+	];
+	for (const detail of [
+		"cd /repo && gh pr merge 101 --squash && gh pr merge 103 --squash && git pull",
+		"for p in 101 103; do gh pr merge $p --squash --delete-branch; done",
+		`for p in 101 103; do echo merging $p; gh pr merge \${p} --squash; done`,
+	]) {
+		const paths = shipPaths([...announce, bash("lead", detail)]);
+		expect(paths[92]?.stage).toBe("merged");
+		expect(paths[94]?.stage).toBe("merged");
+	}
+	const view = shipPaths([
+		...announce,
+		bash("lead", "gh pr view 101 && gh pr merge 103"),
+	]);
+	expect(view[92]?.stage).toBe("pr-open");
+	expect(view[94]?.stage).toBe("merged");
+});
+
+test("a long digit run in a for loop does not backtrack", () => {
+	const start = Date.now();
+	expect(
+		shipPaths([
+			bash("lead", `for p in ${"1".repeat(60)}x; do gh pr merge $p; done`),
+		]),
+	).toEqual({});
+	expect(Date.now() - start).toBeLessThan(500);
+});

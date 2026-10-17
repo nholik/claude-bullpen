@@ -5,6 +5,7 @@
 // firing; an event that cannot be tied to an issue moves nothing.
 
 import type { BullpenEvent } from "../../types";
+import { mergedPrs } from "../command";
 
 export type ShipStage =
 	| "working"
@@ -59,7 +60,7 @@ const GH_PR = /\bgh\s+pr\s+(create|review|merge|comment)\b/;
 
 /** Numbers in `gh pr <verb> 61` or a `for p in 61 62; do gh pr ...` loop. */
 function prNumbers(command: string): number[] {
-	const loop = /\bfor\s+\w+\s+in\s+((?:\d+\s*)+);/.exec(command);
+	const loop = /\bfor\s+\w+\s+in\s+([\d\s]+);/.exec(command);
 	if (loop?.[1]) return loop[1].trim().split(/\s+/).map(Number);
 	const direct = /\bgh\s+pr\s+\w+\s+#?(\d{1,7})\b/.exec(command);
 	return direct?.[1] ? [Number(direct[1])] : [];
@@ -155,7 +156,10 @@ export function applyShip(state: ShipState, e: BullpenEvent): ShipState {
 				});
 			else if (/@codex\s+review/i.test(e.detail))
 				next = move(next, issue, e.at, { codex: true, stage: "in-review" });
-			else if (/\bgh\s+pr\s+merge\b/.test(e.detail))
+		}
+		for (const pr of mergedPrs(e.detail)) {
+			const issue = next.prIssue[pr];
+			if (issue !== undefined)
 				next = move(next, issue, e.at, { stage: "merged" });
 		}
 	}
