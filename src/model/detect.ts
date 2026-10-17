@@ -72,6 +72,17 @@ const CLOSED = new RegExp(
 // A negation earlier in the same clause: "not closed #12", "isn't ✓ #12".
 const NEGATED = /\b(not|never|no|yet to)\b|n't\b/i;
 
+// "Can confirm #12 is closed", "Have closed #12": a leading auxiliary that
+// goes straight to a confirming verb has dropped its subject; it is no question.
+const ELIDED_CONFIRM =
+	/^\s*(?:can|could|have|has)\s+(?:now\s+|also\s+|just\s+)?(?:confirm\w*|closed|shipped)\b/i;
+const QUESTION_WORD =
+	/^\s*(?:who|what|when|where|why|how|is|are|was|were|did|has|have|can|could|should|would)\b/i;
+
+function isInterrogative(clause: string): boolean {
+	return QUESTION_WORD.test(clause) && !ELIDED_CONFIRM.test(clause);
+}
+
 export function closedIssues(text: string): number[] {
 	const found: number[] = [];
 	// Questions and quoted commands are not confirmations.
@@ -80,9 +91,7 @@ export function closedIssues(text: string): number[] {
 		.filter(
 			(clause) =>
 				!clause.includes("?") &&
-				!/^\s*(?:who|what|when|where|why|how|is|are|was|were|did|has|have|can|could|should|would)\b/i.test(
-					clause,
-				) &&
+				!isInterrogative(clause) &&
 				!/\bgh\s+issue\s+close\b/.test(clause),
 		)
 		.join("; ");
