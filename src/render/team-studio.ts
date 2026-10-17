@@ -2,6 +2,7 @@ import type { GithubSource, Profile } from "../../types";
 import type { BullpenModel, Teammate } from "../model";
 import { colorFor, colorIndex, roleFor } from "../profile";
 import { fit, glyphLines, type Line, textLine, width, wrapText } from "./lines";
+import { moraleHint } from "./morale";
 import { age, align, clock, edge, inside, section, text } from "./operations";
 import { STUDIO } from "./studio";
 
@@ -112,17 +113,23 @@ export function teamStudioView(
 				(a.issue ?? Infinity) - (b.issue ?? Infinity) ||
 				a.name.localeCompare(b.name),
 		);
+	const hint = moraleHint(model, now);
 	const header = [
 		align(
 			text(" BULLPEN / TEAM STUDIO", STUDIO.lavender),
-			text(`● LIVE  ${clock(now).slice(0, 5)} `, STUDIO.mint),
+			[
+				{ text: `${model.morale.glyph} `, fg: STUDIO.amber },
+				...text(`● LIVE  ${clock(now).slice(0, 5)} `, STUDIO.mint),
+			],
 			columns,
 		),
 		align(
-			text(
-				` ${github.repo ?? "workspace"} · ${team.length} teammates · ${model.huddles.length} huddles`,
-				STUDIO.muted,
-			),
+			hint
+				? text(` ${hint}`, STUDIO.amber)
+				: text(
+						` ${github.repo ?? "workspace"} · ${team.length} teammates · ${model.huddles.length} huddles`,
+						STUDIO.muted,
+					),
 			text(`${model.closed.length} shipped this session `, STUDIO.muted),
 			columns,
 		),

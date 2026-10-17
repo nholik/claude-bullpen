@@ -219,3 +219,36 @@ test("studio workstation names keep real transcript links and suppress demo agen
 		demo.regions.flat().some((seg) => seg.agentId?.startsWith("demo-")),
 	).toBe(false);
 });
+
+test("Studio header carries the morale glyph and the stalled-issue hint at low morale", () => {
+	const replay = demoAt(26000);
+	const now = demoClock(26000);
+	const members = Object.values(replay.members);
+	const model = buildModel(replay.events, now);
+	expect(model.morale.score).toBeLessThan(0.5);
+	const flat = (lines: { text: string }[][]) =>
+		lines.map((l) => l.map((s) => s.text).join("")).join("\n");
+	for (const columns of [60, 72, 80, 110, 160])
+		for (const glyphs of ["unicode", "ascii"] as const) {
+			const view = paneView(model, members, columns, 30, now, {
+				profile: { ...DEFAULT_PROFILE, glyphs },
+				github: demoGithubAt(26000),
+			});
+			const header = flat(view.header);
+			expect(header).toContain("stalled");
+			expect(header).toContain("check in?");
+			if (glyphs === "unicode") expect(header).toContain(model.morale.glyph);
+			for (const line of view.header) expect(width(line) <= columns).toBe(true);
+		}
+	const calm = demoAt(16000);
+	const calmClock = demoClock(16000);
+	const view = paneView(
+		buildModel(calm.events, calmClock),
+		Object.values(calm.members),
+		110,
+		30,
+		calmClock,
+		{ github: demoGithubAt(16000) },
+	);
+	expect(flat(view.header)).not.toContain("check in?");
+});
