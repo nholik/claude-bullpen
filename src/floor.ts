@@ -7,6 +7,8 @@ import { type GlyphMode, glyphText } from "./glyphs";
 import type { Member } from "../types";
 import { mix, moraleLight } from "./color";
 import { oneLine } from "./events";
+import type { BullpenModel } from "./model";
+import { issueStatus, STUDIO } from "./render/studio";
 import stringWidth from "./vendor/string-width.js";
 
 export { PALETTE } from "./palette";
@@ -15,10 +17,10 @@ import type { Profile } from "../types";
 import { colorFor, DEFAULT_PROFILE } from "./profile";
 
 const UPPER_HALF = 0x2580;
-const FLOOR = 0x2b2620;
-const TABLE = 0x8d6e4f;
-const TABLE_EDGE = 0x6d543c;
-const LOBBY = 0x3a4048;
+const FLOOR = STUDIO.background;
+const TABLE = 0x263b49;
+const TABLE_EDGE = STUDIO.edge;
+const LOBBY = STUDIO.panel;
 
 type Pixels = { width: number; height: number; px: Uint32Array };
 
@@ -56,12 +58,32 @@ function rect(
 const WHITE = 0xffffff;
 
 /** Halfway toward the floor color: how an idle member is drawn. */
-const dim = (color: number) => mix(color, FLOOR, 0.5);
+const dim = (color: number) => mix(color, FLOOR, 0.3);
 
 /** A 2x3 pixel person: light head over a body in the member's color. */
-function person(p: Pixels, x: number, y: number, color: number) {
-	rect(p, x, y, 2, 1, mix(color, WHITE, 0.55));
-	rect(p, x, y + 1, 2, 2, color);
+function person(
+	p: Pixels,
+	x: number,
+	y: number,
+	color: number,
+	detailed = false,
+	phase = 0,
+) {
+	if (!detailed) {
+		rect(p, x, y, 2, 1, mix(color, WHITE, 0.55));
+		rect(p, x, y + 1, 2, 2, color);
+		return;
+	}
+	// Chair, hair, face, shirt, hands and feet: five cells by seven half-cells.
+	rect(p, x, y + 3, 5, 3, TABLE_EDGE);
+	rect(p, x + 1, y, 3, 1, 0x28313f);
+	rect(p, x + 1, y + 1, 3, 2, 0xd7ae91);
+	rect(p, x + 3, y + 1, 1, 1, 0x192330);
+	rect(p, x + 1, y + 3, 3, 3, color);
+	rect(p, x, y + 4 + phase, 1, 1, 0xd7ae91);
+	rect(p, x + 4, y + 4, 1, 1, 0xd7ae91);
+	rect(p, x + 1, y + 6, 1, 1, 0x8296a8);
+	rect(p, x + 3, y + 6, 1, 1, 0x8296a8);
 }
 
 export type TextCell = {
@@ -94,19 +116,22 @@ export function layout(
 	const tables: FloorLayout["tables"] = new Map();
 	const lobbyCol = Math.max(0, columns - 17);
 	const across =
-		columns < 48 ? 0 : Math.max(0, Math.floor((lobbyCol - 3) / 18));
-	const down = Math.max(0, Math.floor((rows * 2 - 2) / 12));
+		columns < 48
+			? 0
+			: Math.max(0, Math.floor((lobbyCol - 3) / (rows >= 18 ? 26 : 18)));
+	const down = Math.max(0, Math.floor((rows * 2 - 2) / (rows >= 18 ? 28 : 12)));
 	const visible = unique.slice(0, across * down);
 	const cols = Math.min(across, Math.ceil(visible.length / Math.max(1, down)));
 	const bands = cols > 0 ? Math.ceil(visible.length / cols) : 0;
 	visible.forEach((issue, i) => {
 		const span = (lobbyCol - 3) / cols;
 		const bandHeight = (rows * 2 - 2) / bands;
-		const width = Math.min(26, Math.floor(span) - 6);
+		const width = Math.min(rows >= 18 ? 32 : 26, Math.floor(span) - 6);
 		tables.set(issue, {
 			col: 2 + Math.floor((i % cols) * span + (span - width) / 2),
 			row: Math.floor(
-				(1 + Math.floor(i / cols) * bandHeight + (bandHeight - 2) / 2) / 2,
+				(1 + Math.floor(i / cols) * bandHeight + (bandHeight - 2) / 2) / 2 -
+					(rows >= 18 ? 1 : 0),
 			),
 			width,
 		});
@@ -232,13 +257,15 @@ export function drawFloor(
 	profile: Profile = DEFAULT_PROFILE,
 	effects: FloorEffects = { closed: [], walkers: [], dots: [], tables: [] },
 	morale = 0.7,
+	context?: { model: BullpenModel; now: number },
 ): FloorFrame {
 	const active = members
 		.filter((m) => m.status !== "gone")
 		.map((m) =>
 			effects.closed.includes(m.issue ?? -1) ? { ...m, issue: undefined } : m,
 		);
-	if (columns < 48 || rows < 6) return strip(active, columns, rows, profile);
+	if (columns < 48 || rows < 6 || profile.glyphs === "ascii")
+		return strip(active, columns, rows, profile);
 	const p = canvas(columns, rows * 2, morale);
 	const plan = layout(columns, rows, [
 		...active.flatMap((m) => (m.issue === undefined ? [] : [m.issue])),
@@ -246,6 +273,8 @@ export function drawFloor(
 	]);
 	const labels: TextCell[] = [];
 	const seats = new Map<string, Seat>();
+	const detailed = rows >= 18;
+	const operations = profile.style === "operations";
 	const overflowMembers: string[] = [];
 	const label = (
 		col: number,
@@ -254,20 +283,64 @@ export function drawFloor(
 		fg = 0xfff3e0,
 		bg = FLOOR,
 	) => labels.push({ col, row, text, fg, bg });
+	// A quiet studio: dotted circulation lane, lobby bench, and plant.
+	for (let x = 3; x < plan.lobbyCol - 1; x += 4)
+		rect(p, x, rows * 2 - 3, 1, 1, TABLE_EDGE);
+	label(2, 0, operations ? " TOPOLOGY" : " FLOOR", STUDIO.muted);
 	// Quiet lobby with a bottom door gap.
 	rect(p, plan.lobbyCol, 1, columns - plan.lobbyCol - 1, rows * 2 - 2, LOBBY);
 	rect(p, plan.lobbyCol + 5, rows * 2 - 1, 6, 1, LOBBY);
-	label(plan.lobbyCol + 5, 0, "lobby", 0x9aa4ae, LOBBY);
+	label(
+		plan.lobbyCol + 2,
+		0,
+		operations ? "UNASSIGNED" : "LOUNGE",
+		STUDIO.muted,
+		LOBBY,
+	);
+	if (rows >= 10 && !operations) {
+		rect(p, plan.lobbyCol + 2, rows * 2 - 8, 11, 1, TABLE_EDGE);
+		rect(p, plan.lobbyCol + 2, rows * 2 - 7, 11, 3, 0x29404e);
+		rect(p, plan.lobbyCol + 3, rows * 2 - 4, 1, 1, TABLE_EDGE);
+		rect(p, plan.lobbyCol + 11, rows * 2 - 4, 1, 1, TABLE_EDGE);
+		label(plan.lobbyCol + 3, rows - 3, "take five", STUDIO.muted, 0x29404e);
+	}
 	for (const [issue, at] of plan.tables) {
 		if (effects.closed.includes(issue)) continue;
-		rect(p, at.col, at.row * 2, at.width, 2, TABLE);
-		rect(p, at.col, at.row * 2 + 2, at.width, 1, TABLE_EDGE);
+		const state = context
+			? issueStatus(context.model, issue, profile, context.now)
+			: undefined;
+		rect(
+			p,
+			at.col - 1,
+			at.row * 2 - 1,
+			at.width + 2,
+			detailed ? 7 : 5,
+			0x0c131c,
+		);
+		rect(p, at.col, at.row * 2, at.width, detailed ? 4 : 2, TABLE);
+		rect(
+			p,
+			at.col,
+			at.row * 2 + (detailed ? 4 : 2),
+			at.width,
+			1,
+			state?.color ?? TABLE_EDGE,
+		);
+		if (detailed && !operations) {
+			rect(p, at.col + 1, at.row * 2 + 5, 1, 2, TABLE_EDGE);
+			rect(p, at.col + at.width - 2, at.row * 2 + 5, 1, 2, TABLE_EDGE);
+		}
+		if (detailed && !operations) {
+			rect(p, at.col + at.width + 1, at.row * 2 + 1, 2, 1, 0x73a78a);
+			rect(p, at.col + at.width + 2, at.row * 2, 1, 3, 0x73a78a);
+			rect(p, at.col + at.width + 1, at.row * 2 + 3, 2, 1, TABLE_EDGE);
+		}
 		const title = titles[issue];
 		label(
 			at.col + 1,
 			at.row,
 			cellText(`#${issue}${title ? ` ${title}` : ""}`, at.width - 2),
-			0xfff3e0,
+			STUDIO.text,
 			TABLE,
 		);
 		const group = active.filter((m) => m.issue === issue);
@@ -276,10 +349,57 @@ export function drawFloor(
 				overflowMembers.push(m.id);
 				return;
 			}
-			const col = at.col + Math.floor((((i % 3) + 1) * at.width) / 4) - 1;
-			const pixel = at.row * 2 + (i < 3 ? -3 : 4);
+			const slot = detailed ? Math.floor(i / 2) : i % 3;
+			const col =
+				at.col +
+				Math.floor(
+					((slot + 1) * at.width) /
+						(detailed ? Math.ceil(Math.min(6, group.length) / 2) + 1 : 4),
+				) -
+				(detailed ? 2 : 1);
+			const upper = detailed ? i % 2 === 0 : i < 3;
+			const pixel = at.row * 2 + (detailed ? (upper ? -7 : 7) : upper ? -3 : 4);
 			seats.set(m.id, { col, pixel });
+			if (detailed) {
+				label(
+					col,
+					at.row + (upper ? -5 : 7),
+					cellText(
+						m.name,
+						Math.max(
+							1,
+							Math.floor(
+								at.width / (Math.ceil(Math.min(6, group.length) / 2) + 1),
+							) - 1,
+						),
+					),
+					memberColor(m, profile),
+				);
+				// Each place has a small laptop on the desk.
+				if (!operations)
+					rect(p, col + 1, at.row * 2 + (upper ? -1 : 4), 3, 1, STUDIO.muted);
+			}
 		});
+		if (detailed) {
+			const message = context?.model.hallway.findLast(
+				(m) =>
+					group.some((member) => member.name === m.from) &&
+					context.now - m.at >= 0 &&
+					context.now - m.at < 12_000,
+			);
+			label(
+				at.col + 1,
+				at.row + 1,
+				cellText(
+					message
+						? `> ${message.text}`
+						: `${state?.label ?? "HUDDLE"} · ${group.length} teammate${group.length === 1 ? "" : "s"}`,
+					at.width - 2,
+				),
+				message ? STUDIO.text : (state?.color ?? STUDIO.muted),
+				TABLE,
+			);
+		}
 		if (group.length > 6)
 			label(
 				at.col + at.width - 6,
@@ -289,7 +409,12 @@ export function drawFloor(
 			);
 	}
 	let lobbyIndex = 0;
-	const lobbyCapacity = 4 * Math.max(0, Math.floor((rows * 2 - 4) / 4));
+	const lobbyCapacity =
+		(detailed ? 2 : 4) *
+		Math.max(
+			0,
+			Math.floor((rows * 2 - (detailed ? 12 : 4)) / (detailed ? 9 : 4)),
+		);
 	for (const m of active) {
 		if (m.issue !== undefined) {
 			if (!plan.tables.has(m.issue)) overflowMembers.push(m.id);
@@ -300,22 +425,69 @@ export function drawFloor(
 			continue;
 		}
 		seats.set(m.id, {
-			col: plan.lobbyCol + 2 + (lobbyIndex % 4) * 3,
-			pixel: 3 + Math.floor(lobbyIndex / 4) * 4,
+			col:
+				plan.lobbyCol +
+				2 +
+				(lobbyIndex % (detailed ? 2 : 4)) * (detailed ? 6 : 3),
+			pixel:
+				(detailed ? 5 : 3) +
+				Math.floor(lobbyIndex / (detailed ? 2 : 4)) * (detailed ? 9 : 4),
 		});
 		lobbyIndex++;
 	}
 	for (const m of active) {
 		const seat = seats.get(m.id);
 		if (!seat) continue;
+		if (detailed && m.issue === undefined)
+			label(
+				seat.col,
+				Math.floor(seat.pixel / 2) - 1,
+				cellText(m.name, 5),
+				memberColor(m, profile),
+				LOBBY,
+			);
 		const bob = m.status === "running" && (frame + m.color) % 4 < 2 ? 1 : 0;
 		const moving = effects.walkers.find((w) => w.id === m.id);
-		person(
-			p,
-			Math.round(moving?.x ?? seat.col),
-			Math.round(moving?.y ?? seat.pixel) - bob,
-			memberColor(m, profile),
-		);
+		if (operations) {
+			const x = Math.round(moving?.x ?? seat.col);
+			const y = Math.round(moving?.y ?? seat.pixel);
+			const size = detailed ? 5 : 2;
+			if (detailed && !moving && m.issue !== undefined) {
+				const hub = plan.tables.get(m.issue);
+				if (hub)
+					for (
+						let y0 = Math.min(y + 2, hub.row * 2);
+						y0 < Math.max(y + 2, hub.row * 2);
+						y0 += 2
+					)
+						rect(p, x + 2, y0, 1, 1, TABLE_EDGE);
+			}
+			rect(p, x, y, size, detailed ? 5 : 3, TABLE_EDGE);
+			rect(
+				p,
+				x + (detailed ? 1 : 0),
+				y + 1,
+				detailed ? 3 : 2,
+				1,
+				memberColor(m, profile),
+			);
+			if (detailed)
+				label(
+					x,
+					Math.floor(y / 2) + 1,
+					m.status === "running" ? " RUN " : " IDLE",
+					memberColor(m, profile),
+					STUDIO.panel,
+				);
+		} else
+			person(
+				p,
+				Math.round(moving?.x ?? seat.col),
+				Math.round(moving?.y ?? seat.pixel) - (detailed ? 0 : bob),
+				memberColor(m, profile),
+				detailed,
+				bob,
+			);
 	}
 	const overflow = plan.overflow.filter(
 		(issue) => !effects.closed.includes(issue),
@@ -343,18 +515,21 @@ export function drawFloor(
 			p,
 			Math.round(dot.x),
 			Math.round(dot.y),
-			dot.spark ? 3 : 1,
+			dot.spark && !operations ? 3 : 1,
 			1,
 			dot.color,
 		);
-		if (dot.spark)
+		if (dot.spark && !operations)
 			rect(p, Math.round(dot.x) + 1, Math.round(dot.y) - 1, 1, 3, dot.color);
 	}
 	if (effects.closed.length)
 		label(
 			plan.lobbyCol + 1,
 			rows - 1,
-			cellText(`DONE ${effects.closed.length}`, 14),
+			cellText(
+				`${operations ? "CLOSED" : "DONE"} ${effects.closed.length}`,
+				14,
+			),
 			0x81c784,
 			LOBBY,
 		);
@@ -378,7 +553,7 @@ function pack(
 	for (let row = 0; row < rows; row++) {
 		for (let col = 0; col < columns; col++) {
 			const i = (row * columns + col) * 3;
-			words[i] = mode === "ascii" ? 35 : UPPER_HALF;
+			words[i] = mode === "ascii" ? 32 : UPPER_HALF;
 			words[i + 1] = p.px[row * 2 * columns + col] ?? 0;
 			words[i + 2] = p.px[(row * 2 + 1) * columns + col] ?? 0;
 		}
