@@ -81,6 +81,10 @@ export function parseColor(
 	return undefined;
 }
 
+/** A JSON object: not null, not an array. */
+const isPlain = (v: unknown): v is Record<string, unknown> =>
+	typeof v === "object" && v !== null && !Array.isArray(v);
+
 function message(result: { issues?: readonly { message: string }[] }) {
 	return result.issues?.[0]?.message ?? "invalid value";
 }
@@ -98,7 +102,7 @@ export function parsePartial(text: string | undefined): {
 	} catch (error) {
 		return { set, warnings: [`bullpen.json is not valid JSON (${error})`] };
 	}
-	if (typeof json !== "object" || json === null || Array.isArray(json))
+	if (!isPlain(json))
 		return { set, warnings: ["bullpen.json must be a JSON object"] };
 
 	const fields = ProfileSchema.entries;
@@ -107,7 +111,7 @@ export function parsePartial(text: string | undefined): {
 
 	if (obj.issues !== undefined) {
 		const raw = obj.issues;
-		if (typeof raw !== "object" || raw === null || Array.isArray(raw))
+		if (!isPlain(raw))
 			warnings.push("issues: must be an object; using the defaults");
 		else {
 			const issues: Partial<Profile["issues"]> = {};
@@ -153,12 +157,16 @@ export function parsePartial(text: string | undefined): {
 	}
 	if (obj.roles !== undefined) {
 		const raw = obj.roles;
-		if (typeof raw !== "object" || raw === null || Array.isArray(raw))
-			warnings.push("roles: must be an object; ignoring it");
+		if (!isPlain(raw)) warnings.push("roles: must be an object; ignoring it");
 		else {
 			const roles: Record<string, Role> = {};
 			for (const [name, entry] of Object.entries(raw)) {
-				const r = safeParse(RoleSchema, entry);
+				const r = isPlain(entry)
+					? safeParse(RoleSchema, entry)
+					: {
+							success: false as const,
+							issues: [{ message: "must be an object" }],
+						};
 				if (!r.success) {
 					warnings.push(`roles.${name}: ${message(r)}; ignoring it`);
 					continue;

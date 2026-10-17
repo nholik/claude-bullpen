@@ -108,3 +108,15 @@ test("palette: bad entries dropped, empty falls back, colorFor uses it", async (
 	expect(colorFor("y", c, 3)).toBe(0x020202);
 	expect(colorFor("x", c, 0)).toBe(0x020202);
 });
+
+test("arrays and scalars are rejected where objects belong", async () => {
+	const roles = parseProfile(
+		JSON.stringify({ roles: { gate: [], b: null, c: 1, d: { role: "ok" } } }),
+	);
+	expect(roles.profile.roles).toEqual({ d: { role: "ok" } });
+	expect(roles.warnings.length).toBe(3);
+	expect(parseProfile(JSON.stringify({ roles: [] })).warnings.length).toBe(1);
+	const issues = parseProfile(JSON.stringify({ issues: [] }));
+	expect(issues.profile.issues).toEqual(DEFAULT_PROFILE.issues);
+	expect(issues.warnings.length).toBe(1);
+});
