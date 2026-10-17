@@ -225,26 +225,37 @@ test("demo: the hallway is live for three minutes after the last message", async
 	expect(isHallwayLive([], last)).toBe(false);
 });
 
-test("demo: quiet huddles stall, then silent teammates are gone", async () => {
+test("demo: quiet huddles stall and stay stalled; silence never removes anyone", async () => {
 	const state = reduceEvents(demo);
-	// 20+ min after each huddle's last activity, under 30 since anyone spoke.
+	// 20+ min after each huddle's last activity.
 	const stalled = modelOf(state, T + 35 * MINUTE);
 	expect(stalled.morale.factors.stalled).toEqual([204, 208, 199]);
 	expect(stalled.morale.factors.idle).toEqual(["iris", "scout"]);
-	// An hour on, the kickback has aged out and everyone but the lead has
-	// been silent over 30 min: gone, so no huddles stall and no one idles.
+	// An hour on, the kickback has aged out, but a stuck team still looks
+	// stuck: the same huddles, all stalled, and no one has left.
 	const later = modelOf(state, T + 70 * MINUTE);
 	expect(later.morale.factors.kickbacks).toBe(0);
-	expect(later.huddles).toEqual([]);
-	expect(later.morale.factors.stalled).toEqual([]);
-	expect(later.morale.factors.idle).toEqual([]);
-	expect(later.teammates.smith?.status).toBe("gone");
-	expect(later.teammates.lead?.status).toBe("running");
-	// Live presence beats the silence fallback.
+	expect(later.huddles.map((h) => [h.issue, h.members])).toEqual([
+		[204, ["smith", "gate"]],
+		[208, ["ada"]],
+		[199, ["iris"]],
+	]);
+	expect(later.morale.factors.stalled).toEqual([204, 208, 199]);
+	expect(later.morale.factors.idle).toEqual(["iris", "scout"]);
+	// 0.7 - 3 stalled x 0.1 - 2 idle x 0.05
+	expect(later.morale.score).toBe(0.3);
+	expect(later.morale.glyph).toBe("☂");
+	// Idle teammates silent 30+ min are drawn away; busy ones never are.
+	expect(later.teammates.iris?.away).toBe(true);
+	expect(later.teammates.smith?.status).toBe("running");
+	expect(later.teammates.smith?.away).toBeUndefined();
+	expect(stalled.teammates.iris?.away).toBeUndefined();
+	// Only live presence (or a leave event) takes someone off the floor.
 	const present = modelOf(state, T + 70 * MINUTE, {
-		present: { smith: "running" },
+		present: { gate: "gone", ada: "gone", iris: "gone", scout: "gone" },
 	});
 	expect(present.huddles.map((h) => h.members)).toEqual([["smith"]]);
+	expect(present.teammates.iris?.away).toBeUndefined();
 });
 
 // --- the rough-day fixture -------------------------------------------------

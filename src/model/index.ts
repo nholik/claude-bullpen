@@ -8,22 +8,22 @@ import {
 	type ModelOptions,
 	reduceEvents,
 	type TeamState,
+	withAway,
 	withPresence,
-	withSilence,
 } from "./team";
 import type { BullpenModel, HallwayMessage } from "./types";
 
 export { moraleGlyph } from "./morale";
 export {
+	AWAY_MS,
 	applyEvent,
 	EMPTY_TEAM,
 	huddlesOf,
 	type ModelOptions,
 	reduceEvents,
-	SILENT_MS,
 	type TeamState,
+	withAway,
 	withPresence,
-	withSilence,
 } from "./team";
 export type * from "./types";
 
@@ -44,8 +44,7 @@ export function modelOf(
 	now: number,
 	options: ModelOptions = {},
 ): BullpenModel {
-	// Live presence, when given, beats the silence fallback.
-	const live = withPresence(withSilence(state, now, options), options.present);
+	const live = withAway(withPresence(state, options.present), now);
 	const huddles = huddlesOf(live);
 	return {
 		teammates: live.teammates,

@@ -17,6 +17,8 @@ export type Teammate = {
 	/** Index into the palette, in order of first appearance. */
 	color: number;
 	status: MemberStatus;
+	/** Idle and silent a while: draw dimmed. Never takes anyone off a huddle. */
+	away?: boolean;
 	/** The issue this teammate is on, as `nextIssue` attributes it. */
 	issue?: number;
 	lastActiveAt: number;

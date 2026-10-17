@@ -24,8 +24,12 @@ export const DEFAULT_LEADS: readonly string[] = ["lead", "team-lead", "main"];
 
 /** How many steps a teammate's trail keeps. */
 export const TRAIL_LENGTH = 3;
-/** A teammate silent this long is taken as gone, when nothing says otherwise. */
-export const SILENT_MS = 30 * 60_000;
+/**
+ * An idle teammate silent this long is drawn as away. Cosmetic only: silence
+ * never takes anyone off a huddle (a stuck huddle should show as stalled);
+ * only a `leave` event or live presence does.
+ */
+export const AWAY_MS = 30 * 60_000;
 /** How many hallway messages, asks and kickbacks the state keeps. */
 export const KEEP = 50;
 
@@ -130,8 +134,8 @@ export function applyEvent(
 	else if (known) issue = nextIssue(e.kind, actor?.issue, refs);
 	let status = actor?.status ?? "running";
 	if (known) status = e.kind === "turn-end" ? "idle" : "running";
-	// `leave` (a member gone from the roster) isn't a journal kind yet; read it
-	// by name so the model is ready when it lands.
+	// `leave`: `who` dropped off the roster (#13 adds the kind; until this
+	// branch is rebased on it, it's read by name).
 	const kind: string = e.kind;
 	if (kind === "leave") status = "gone";
 	teammates[e.who] = step(teammates, e.who, e, {
@@ -204,23 +208,13 @@ export function reduceEvents(
 	return state;
 }
 
-/**
- * The state at `now` with teammates (not leads) silent past `SILENT_MS` taken
- * as gone: a fallback for departures the journal never recorded.
- */
-export function withSilence(
-	state: TeamState,
-	now: number,
-	options: ModelOptions = {},
-): TeamState {
+/** The state at `now` with idle teammates silent past `AWAY_MS` marked away. */
+export function withAway(state: TeamState, now: number): TeamState {
 	const teammates = { ...state.teammates };
-	for (const t of Object.values(teammates))
-		if (
-			t.status !== "gone" &&
-			!isLead(t.name, options) &&
-			now - t.lastActiveAt > SILENT_MS
-		)
-			teammates[t.name] = { ...t, status: "gone" };
+	for (const t of Object.values(teammates)) {
+		const away = t.status === "idle" && now - t.lastActiveAt > AWAY_MS;
+		if (away || t.away) teammates[t.name] = { ...t, away };
+	}
 	return { ...state, teammates };
 }
 
