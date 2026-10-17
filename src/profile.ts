@@ -241,6 +241,32 @@ export function roleFor(name: string, profile: Profile): Role | undefined {
 	return undefined;
 }
 
+const TYPE_ROLES: Record<string, string> = {
+	builder: "engineer",
+	gate: "reviewer",
+	"ux-judge": "designer",
+	explore: "researcher",
+	plan: "researcher",
+};
+
+/**
+ * What a card calls a teammate: the profile's role for its name or agent type,
+ * else a default from the agent type, else `lead` or `teammate`.
+ */
+export function roleLabel(
+	name: string,
+	agentType: string | undefined,
+	profile: Profile,
+): string {
+	const chosen =
+		roleFor(name, profile)?.role ??
+		(agentType ? roleFor(agentType, profile)?.role : undefined);
+	if (chosen) return chosen;
+	if (name === "lead") return "lead";
+	if (!agentType) return "teammate";
+	return TYPE_ROLES[agentType.toLowerCase()] ?? agentType;
+}
+
 /** 0xRRGGBB for `name`: its profile color, else the palette at `fallbackIndex`. */
 export function colorFor(
 	name: string,

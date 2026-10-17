@@ -7,11 +7,15 @@ export type TrailStep = {
 	at: number;
 	kind: BullpenEventKind;
 	detail: string;
+	/** Tool name for `tool` steps. */
+	target?: string;
 };
 
 export type Teammate = {
 	/** Team name; the key teammates are known by in messages too. */
 	name: string;
+	/** The agent type it was spawned as, when a spawn event said. */
+	agentType?: string;
 	/** Loop id, when an event carried one. */
 	agentId?: string;
 	/** Index into the palette, in order of first appearance. */
