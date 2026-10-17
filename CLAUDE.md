@@ -63,6 +63,8 @@ Look at the real UI whenever drawing code changes: run `scripts/snap.sh` (or
   in a git worktree under `.worktrees/` (gitignored), and open a PR that says `Closes #<issue>`.
 - On each PR the lead comments `@codex review` to get a Codex review, plus our own gate
   review; merge when both are satisfied and `npm run check` is green.
+- Review triage: fix P0/P1 findings before merging. P2+ findings become follow-up issues (link
+  the PR); nits can be left alone. MVP progress beats polishing a PR.
 - Commit messages: imperative subject, short body. **No attribution lines** (no
   Co-Authored-By, no "Generated with").
 - The repo is **public**: no secrets, no employer names, internal URLs or work content.
