@@ -39,13 +39,25 @@ def xterm256(n):
     return (v, v, v)
 
 
-def load_font():
-    for path in FONTS:
+FALLBACKS = [
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    "C:/Windows/Fonts/seguisym.ttf",
+]
+
+
+def load_font(paths=FONTS):
+    for path in paths:
         try:
             return ImageFont.truetype(path, 15)
         except OSError:
             continue
     return ImageFont.load_default()
+
+
+def needs_fallback(ch):
+    """Symbols monospace fonts usually lack (misc symbols, dingbats, arrows+)."""
+    cp = ord(ch)
+    return 0x2190 <= cp <= 0x21FF or 0x2600 <= cp <= 0x27BF or 0x2B00 <= cp <= 0x2BFF
 
 
 SGR = re.compile(r"\x1b\[([0-9;:]*)m")
@@ -118,6 +130,7 @@ def render(rows, out):
     img = Image.new("RGB", (width * CELL_W, max(1, len(rows)) * CELL_H), DEFAULT_BG)
     draw = ImageDraw.Draw(img)
     font = load_font()
+    fallback = load_font(FALLBACKS)
     for y, row in enumerate(rows):
         for x, (ch, fg, bg, bold, dim, reverse) in enumerate(row):
             f = fg or DEFAULT_FG
@@ -136,9 +149,10 @@ def render(rows, out):
             elif ch == "\u2588":
                 draw.rectangle([x0, y0, x0 + CELL_W - 1, y0 + CELL_H - 1], fill=f)
             elif ch != " ":
-                draw.text((x0, y0 + 1), ch, font=font, fill=f)
+                face = fallback if needs_fallback(ch) else font
+                draw.text((x0, y0 + 1), ch, font=face, fill=f)
                 if bold:
-                    draw.text((x0 + 1, y0 + 1), ch, font=font, fill=f)
+                    draw.text((x0 + 1, y0 + 1), ch, font=face, fill=f)
     img.save(out)
 
 
