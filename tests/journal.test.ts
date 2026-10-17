@@ -2,10 +2,12 @@ import { expect, test } from "claude-code/testing";
 
 import { applyBatch, Batcher, type CollectOp } from "../src/collect";
 import {
-	appendCapped,
 	type BullpenEvent,
+	chunkLines,
+	chunkNames,
 	JOURNAL_VERSION,
-	journalPath,
+	journalDir,
+	planAppend,
 	readJournal,
 	teamOf,
 	toLine,
@@ -59,25 +61,58 @@ test("readJournal skips bad lines and keeps the rest", async () => {
 	expect(skipped).toBe(7);
 });
 
-test("appendCapped appends lines and trims whole lines from the front", async () => {
-	expect(appendCapped("", ["a", "b"])).toBe("a\nb\n");
-	expect(appendCapped("a\n", ["b"])).toBe("a\nb\n");
-	// A torn last line gets its own newline before new lines go on.
-	expect(appendCapped("a", ["b"])).toBe("a\nb\n");
-	expect(appendCapped("a\n", [])).toBe("a\n");
-	const lines = Array.from({ length: 20 }, (_, i) => `line-${i}`);
-	const capped = appendCapped("", lines, 100);
-	expect(capped.length).toBeLessThan(76);
-	expect(capped.endsWith("line-19\n")).toBe(true);
-	expect(capped.split("\n")[0]?.startsWith("line-")).toBe(true);
+test("planAppend rewrites only the current chunk until it rolls", async () => {
+	const lines = (from: number, n: number) =>
+		Array.from({ length: n }, (_, i) => `l${from + i}`);
+	// Fits: one write, the whole current chunk.
+	const first = planAppend({ index: 1, lines: lines(0, 2) }, lines(2, 1), 4, 3);
+	expect(first.writes).toEqual([
+		{ name: "events-0001.jsonl", text: "l0\nl1\nl2\n" },
+	]);
+	expect(first.current).toEqual({ index: 1, lines: lines(0, 3) });
+	// Rolls: finishes chunk 1, starts chunk 2, and nothing touched twice.
+	const rolled = planAppend(first.current, lines(3, 3), 4, 3);
+	expect(rolled.writes.map((w) => w.name)).toEqual([
+		"events-0001.jsonl",
+		"events-0002.jsonl",
+	]);
+	expect(rolled.current).toEqual({ index: 2, lines: ["l4", "l5"] });
+	// A full chunk with nothing new isn't rewritten before rolling.
+	const fresh = planAppend({ index: 2, lines: lines(0, 4) }, ["x"], 4, 3);
+	expect(fresh.writes).toEqual([{ name: "events-0003.jsonl", text: "x\n" }]);
+	expect(planAppend(first.current, [], 4, 3).writes).toEqual([]);
 });
 
-test("journalPath and teamOf", async () => {
-	expect(journalPath("/home/me", "bullpen")).toBe(
-		"/home/me/.claude/bullpen/bullpen/events.jsonl",
+test("planAppend empties chunks past the cap", async () => {
+	const full = { index: 3, lines: ["a", "b"] };
+	const out = planAppend(full, ["c", "d", "e"], 2, 3);
+	expect(out.writes).toEqual([
+		{ name: "events-0001.jsonl", text: "" },
+		{ name: "events-0004.jsonl", text: "c\nd\n" },
+		{ name: "events-0002.jsonl", text: "" },
+		{ name: "events-0005.jsonl", text: "e\n" },
+	]);
+});
+
+test("chunk files list in order and read back their lines", async () => {
+	expect(
+		chunkNames([
+			"events-0010.jsonl",
+			"notes.txt",
+			"events-0002.jsonl",
+			"events-x.jsonl",
+		]),
+	).toEqual(["events-0002.jsonl", "events-0010.jsonl"]);
+	expect(chunkLines("a\n\nb\n")).toEqual(["a", "b"]);
+	expect(chunkLines("")).toEqual([]);
+});
+
+test("journalDir and teamOf", async () => {
+	expect(journalDir("/home/me", "bullpen")).toBe(
+		"/home/me/.claude/bullpen/bullpen",
 	);
-	expect(journalPath("C:\\Users\\me\\", "../a b")).toBe(
-		"C:\\Users\\me/.claude/bullpen/a-b/events.jsonl",
+	expect(journalDir("C:\\Users\\me\\", "../a b")).toBe(
+		"C:\\Users\\me/.claude/bullpen/a-b",
 	);
 	expect(teamOf("smith@bullpen")).toBe("bullpen");
 	expect(teamOf("smith")).toBeUndefined();

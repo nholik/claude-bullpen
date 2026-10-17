@@ -13,9 +13,13 @@ import { DEMO_PREFIX, DEMO_SCRIPT, type DemoStep } from "../src/demo";
 import { argText, describeTool, issueRefs, oneLine } from "../src/events";
 import { drawFloor, PALETTE } from "../src/floor";
 import {
-	appendCapped,
 	type BullpenEvent,
-	journalPath,
+	type Chunk,
+	chunkIndex,
+	chunkLines,
+	chunkName,
+	journalDir,
+	planAppend,
 	STATE_EVENTS,
 	teamOf,
 	toLine,
@@ -39,8 +43,8 @@ let frame = 0;
 
 /** The team name once a teammate's address shows it; until then the session id. */
 let team: string | undefined;
-/** The journal file's text as last written, so appends needn't re-read it. */
-let journal: { path: string; text: string } | undefined;
+/** The journal's current chunk as last written, so appends needn't re-read it. */
+let journal: { dir: string; current: Chunk } | undefined;
 
 let collector: Batcher<CollectOp> | undefined;
 let journalWriter: Batcher<BullpenEvent> | undefined;
@@ -66,15 +70,23 @@ async function flushState($: $, ops: CollectOp[]) {
 		if (!ev.agentId?.startsWith(DEMO_PREFIX)) writerOf($).push(ev);
 }
 
+/** The newest chunk in `dir`, or an empty chunk 1 for a new journal. */
+async function loadChunk($: $, dir: string): Promise<Chunk> {
+	const entries = await $.fs.list(dir).catch(() => []);
+	const index = Math.max(1, ...entries.map((f) => chunkIndex(f.name) ?? 0));
+	const text = await $.fs.read(`${dir}/${chunkName(index)}`).catch(() => "");
+	return { index, lines: chunkLines(text) };
+}
+
 async function writeJournal($: $, added: BullpenEvent[]) {
 	const home = (await $.env.get("HOME")) ?? (await $.env.get("USERPROFILE"));
 	if (!home) return;
-	const path = journalPath(home, team ?? (await $.session.id()));
-	if (journal?.path !== path)
-		journal = { path, text: await $.fs.read(path).catch(() => "") };
-	const text = appendCapped(journal.text, added.map(toLine));
-	await $.fs.write(path, text);
-	journal = { path, text };
+	const dir = journalDir(home, team ?? (await $.session.id()));
+	if (journal?.dir !== dir) journal = { dir, current: await loadChunk($, dir) };
+	const plan = planAppend(journal.current, added.map(toLine));
+	for (const { name, text } of plan.writes)
+		await $.fs.write(`${dir}/${name}`, text);
+	journal = { dir, current: plan.current };
 }
 
 function collectorOf($: $) {
@@ -222,24 +234,24 @@ export function register(on: On) {
 	on("agent.spawn", async ($, e, next) => {
 		const spawned = await next(e);
 		team ??= teamOf(spawned.teammateId);
-		if (spawned.agentId) {
+		const { agentId } = spawned;
+		if (agentId) {
 			const brief = `${e.description} ${e.prompt}`;
-			await touch($, spawned.agentId, {
+			void touch($, agentId, {
 				name: e.name ?? e.description,
 				status: "running",
 				issue: issueRefs(brief)[0],
-			});
-			await record(
-				$,
-				"spawn",
-				e.parentAgentId,
-				`${e.isTeammate ? "teammate" : "subagent"} ${e.name ?? e.description} joined`,
-				{
-					target: e.name,
-					text: brief,
-					attribute: false,
-				},
-			);
+			})
+				.then(() =>
+					record(
+						$,
+						"spawn",
+						e.parentAgentId,
+						`${e.isTeammate ? "teammate" : "subagent"} ${e.name ?? e.description} joined`,
+						{ target: e.name, text: brief, attribute: false },
+					),
+				)
+				.catch(() => {});
 		}
 		return spawned;
 	});
@@ -255,13 +267,16 @@ export function register(on: On) {
 
 	on("turn.complete", async ($, e, next) => {
 		const done = await next(e);
-		await touch($, e.agentId ?? LEAD, { status: "idle" });
-		await record(
-			$,
-			"turn-end",
-			e.agentId,
-			`finished a turn (${Math.round(e.durationMs / 1000)}s)`,
-		);
+		void touch($, e.agentId ?? LEAD, { status: "idle" })
+			.then(() =>
+				record(
+					$,
+					"turn-end",
+					e.agentId,
+					`finished a turn (${Math.round(e.durationMs / 1000)}s)`,
+				),
+			)
+			.catch(() => {});
 		return done;
 	});
 

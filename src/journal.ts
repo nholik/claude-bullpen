@@ -1,6 +1,6 @@
 // The journal: what the team did, as validated `BullpenEvent`s. Kept as a ring
-// buffer in `$.state` and appended to `~/.claude/bullpen/<team>/events.jsonl`
-// for replay, fixtures and tests.
+// buffer in `$.state` and appended to numbered JSONL chunks under
+// `~/.claude/bullpen/<team>/` for replay, fixtures and tests.
 
 import type { BullpenEvent as DeclaredEvent } from "../types";
 import {
@@ -25,11 +25,16 @@ export const JOURNAL_VERSION = 1;
 export const STATE_EVENTS = 300;
 
 /**
- * The most characters the journal file holds. Past it the oldest lines go, a
- * quarter at a time so a busy team doesn't trim on every write. Well under the
- * 4 MiB `$.fs.read` limit even when every character takes 3 bytes.
+ * Lines per journal chunk. `$.fs` can only write whole files, so appending
+ * rewrites the current chunk; small chunks keep that cheap.
  */
-export const JOURNAL_MAX_CHARS = 1_000_000;
+export const CHUNK_LINES = 500;
+
+/**
+ * Chunks kept with content. `$.fs` can't delete, so older ones are emptied
+ * rather than removed.
+ */
+export const MAX_CHUNKS = 20;
 
 export const BullpenEventSchema = object({
 	version: literal(JOURNAL_VERSION),
@@ -88,24 +93,67 @@ export function readJournal(text: string): {
 	return { events, skipped };
 }
 
+/** A journal chunk: its number and the lines it holds. */
+export type Chunk = { index: number; lines: string[] };
+
+/** `events-0001.jsonl` for chunk 1. */
+export function chunkName(index: number): string {
+	return `events-${String(index).padStart(4, "0")}.jsonl`;
+}
+
+/** The chunk number in a file name, or undefined for other files. */
+export function chunkIndex(name: string): number | undefined {
+	const match = /^events-(\d+)\.jsonl$/.exec(name);
+	return match ? Number(match[1]) : undefined;
+}
+
+/** The journal chunk file names among `names`, oldest first. */
+export function chunkNames(names: readonly string[]): string[] {
+	return names
+		.flatMap((name) => {
+			const index = chunkIndex(name);
+			return index === undefined ? [] : [{ name, index }];
+		})
+		.sort((a, b) => a.index - b.index)
+		.map((c) => c.name);
+}
+
 /**
- * `existing` journal text with `lines` appended. When it would pass `max`
- * characters, drops whole lines from the front until it is at most three
- * quarters of `max`.
+ * Appends `lines` to the `current` chunk, starting a new one every `rollAt`
+ * lines. Returns the files to write, whole, in order (each touched chunk, and
+ * an empty text for any chunk now more than `keep` behind) and the new current
+ * chunk.
  */
-export function appendCapped(
-	existing: string,
-	lines: string[],
-	max = JOURNAL_MAX_CHARS,
-): string {
-	if (lines.length === 0) return existing;
-	const head =
-		existing === "" || existing.endsWith("\n") ? existing : `${existing}\n`;
-	const text = `${head}${lines.join("\n")}\n`;
-	if (text.length <= max) return text;
-	const keep = Math.floor((max * 3) / 4);
-	const cut = text.indexOf("\n", text.length - keep - 1);
-	return cut < 0 ? "" : text.slice(cut + 1);
+export function planAppend(
+	current: Chunk,
+	lines: readonly string[],
+	rollAt = CHUNK_LINES,
+	keep = MAX_CHUNKS,
+): { writes: { name: string; text: string }[]; current: Chunk } {
+	const writes: { name: string; text: string }[] = [];
+	let chunk: Chunk = { index: current.index, lines: [...current.lines] };
+	let isDirty = false;
+	for (const line of lines) {
+		if (chunk.lines.length >= rollAt) {
+			if (isDirty) writes.push(chunkFile(chunk));
+			chunk = { index: chunk.index + 1, lines: [] };
+			if (chunk.index > keep)
+				writes.push({ name: chunkName(chunk.index - keep), text: "" });
+		}
+		chunk.lines.push(line);
+		isDirty = true;
+	}
+	if (isDirty) writes.push(chunkFile(chunk));
+	return { writes, current: chunk };
+}
+
+function chunkFile(chunk: Chunk): { name: string; text: string } {
+	return { name: chunkName(chunk.index), text: `${chunk.lines.join("\n")}\n` };
+}
+
+/** The non-blank lines of a chunk file's text. */
+export function chunkLines(text: string): string[] {
+	return text.split("\n").filter((line) => line.trim() !== "");
 }
 
 /** A team or session name made safe as one path segment. */
@@ -121,9 +169,9 @@ export function teamOf(teammateId: string | undefined): string | undefined {
 }
 
 /**
- * Where a team's journal goes. Joins with `/`, which Windows accepts too, and
- * drops a trailing separator from `home`.
+ * The folder a team's journal chunks go in. Joins with `/`, which Windows
+ * accepts too, and drops a trailing separator from `home`.
  */
-export function journalPath(home: string, team: string): string {
-	return `${home.replace(/[\\/]+$/, "")}/.claude/bullpen/${safeSegment(team)}/events.jsonl`;
+export function journalDir(home: string, team: string): string {
+	return `${home.replace(/[\\/]+$/, "")}/.claude/bullpen/${safeSegment(team)}`;
 }
