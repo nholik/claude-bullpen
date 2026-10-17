@@ -1,6 +1,7 @@
 import { oneLine } from "../events";
 import { type GlyphMode, glyphText } from "../glyphs";
 import stringWidth from "../vendor/string-width.js";
+import { wrapAnsi } from "../vendor/wrap-ansi.js";
 
 export type Seg = {
 	text: string;
@@ -52,4 +53,18 @@ export function glyphLines(lines: Line[], mode: GlyphMode = "unicode"): Line[] {
 	return lines.map((line) =>
 		line.map((seg) => ({ ...seg, text: glyphText(seg.text, mode) })),
 	);
+}
+
+/** Wrap long words as well as prose; each returned line stays within its cells. */
+export function wrapText(text: string, columns: number): Line[] {
+	if (columns < 1) return [];
+	const safe = text
+		.replace(/\r\n?/g, "\n")
+		.replace(/\t/g, " ")
+		.split("\n")
+		.map((line) => glyphText(line))
+		.join("\n");
+	return wrapAnsi(safe, Math.floor(columns), { hard: true })
+		.split("\n")
+		.map((line) => textLine(line, columns));
 }

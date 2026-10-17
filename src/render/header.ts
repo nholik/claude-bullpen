@@ -2,7 +2,7 @@ import type { BurndownPoint, GithubSource, Profile } from "../../types";
 import { exactCounts, headerText } from "../github";
 import type { BullpenModel } from "../model";
 import { colorFor, colorIndex } from "../profile";
-import { fit, glyphLines, type Line, textLine, width } from "./lines";
+import { fit, glyphLines, type Line, textLine, width, wrapText } from "./lines";
 import { moraleHint } from "./morale";
 
 /** Time-bucketed samples preserve the time axis even when snapshots compress. */
@@ -80,7 +80,7 @@ export function header(
 		),
 	];
 	const ask = model.asks.find((a) => a.open);
-	if (ask) lines.push(textLine(`⚑ ${ask.from}: "${ask.text}"`, columns));
+	if (ask) lines.push(...wrapText(`⚑ ${ask.from}: "${ask.text}"`, columns));
 	const hint = moraleHint(model, now);
 	if (hint && !hint.includes(ask?.text ?? "\0"))
 		lines.push(textLine(hint, columns));
