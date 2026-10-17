@@ -40,6 +40,9 @@ pins in `CLAUDE_CODE_VERSION`; bump it when you move to a newer build.
   rewrite: record with `void ... .catch(() => {})` and `return next(e)` immediately.
 - Performance: batch state writes, throttle redraws (≤10 Hz), animate only while something
   moves (blit, not re-render), cap buffers. No minification.
+- Render and model code runs on the host's thread: a hang there freezes Claude Code. Every
+  `while`/`for (;;)` loop must provably shrink its input each pass, and real journals are
+  rendered under `timeout 10` before a PR is opened.
 - Terminals: GNOME Terminal (VTE) and Windows Terminal. Only width-1 glyphs (no emoji in UI),
   24-bit color, half-blocks `▀▄█▌▐`, box drawing. Measure text with `oneLine`/`string-width`.
 - Formatting: Biome defaults (tabs, double quotes). TypeScript strict with
