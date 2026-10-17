@@ -135,8 +135,8 @@ under the bundled plugin-authoring skill; API types laid into `.claude-plugin/ty
   hand-write; vendor only the exports we use. Current: culori, string-width, valibot.
 - Performance habits: batch state writes (~100 ms), throttle redraws (≤10 Hz), animate only
   while something moves, cap buffers; no minification (readable stack traces).
-- CI (GitHub Actions): Biome, tsc, vendor freshness check; `claude plugin validate/test` in CI
-  once confirmed to run without sign-in.
+- CI (GitHub Actions): Biome, vendor freshness, tsc, `claude plugin validate/test`. All run
+  signed out; `scripts/ci-types.sh` gets the mod API types from a signed-out session.
 
 ## Status
 - P0 spike in progress: scaffold, event recorder (`hooks/register.tsx`, `src/events.ts`),
