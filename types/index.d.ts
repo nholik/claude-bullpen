@@ -4,6 +4,7 @@ export type BullpenEventKind =
 	| "turn-end"
 	| "tool"
 	| "message"
+	| "answer"
 	/** A member left: gone from `$.agent.list()`, or a demo `leave` step. */
 	| "leave";
 
@@ -32,6 +33,10 @@ export type BullpenEvent = {
 	agentType?: string;
 	/** Verified successful foreground gh issue close results. */
 	confirmedCloses?: number[];
+	/** A completed tool result, never inferred from its command text. */
+	outcome?: "ok" | "error";
+	/** Original ask timestamp, for an explicitly submitted human answer. */
+	replyTo?: number;
 };
 
 export type MemberStatus = "running" | "idle" | "gone";
@@ -48,6 +53,7 @@ export type Member = {
 	/** The agent type it was spawned as (`builder`, `Explore`, ...). */
 	agentType?: string;
 	lastActiveAt: number;
+	goneAt?: number;
 };
 
 /** A teammate's role entry in `.claude/bullpen.json`. */
@@ -119,21 +125,119 @@ export type GithubSource = {
 	filter: string;
 	burndown: BurndownPoint[];
 	checkedAt: number;
+	/** Authoritative states of PRs referenced by the observed team. */
+	prs?: {
+		number: number;
+		state: "OPEN" | "CLOSED" | "MERGED";
+		checkedAt: number;
+		mergedAt?: number;
+	}[];
+};
+
+export type Decision = {
+	from: string;
+	at: number;
+	text: string;
+	agentId?: string;
+	issues: number[];
+};
+
+export type Replay = {
+	events: BullpenEvent[];
+	startedAt: number;
+	path: string;
+};
+
+/** The retained model, independent of the short display journal. Kept in sync by src/model/team.ts. */
+export type TeamSnapshot = {
+	teammates: Record<
+		string,
+		{
+			name: string;
+			agentType?: string;
+			agentId?: string;
+			color: number;
+			status: MemberStatus;
+			away?: boolean;
+			issue?: number;
+			lastActiveAt: number;
+			goneAt?: number;
+			turns?: number;
+			activeMs?: number;
+			turnStartedAt?: number;
+			lastProgressAt?: number;
+			failedCommand?: string;
+			failureCount?: number;
+			trail: {
+				at: number;
+				kind: BullpenEventKind;
+				detail: string;
+				target?: string;
+			}[];
+		}
+	>;
+	issueStarted: Record<number, number>;
+	issueActive: Record<number, number>;
+	hallway: RecordedMessage[];
+	asks: (RecordedMessage & { open: boolean; agentId?: string })[];
+	kickbacks: {
+		from: string;
+		to?: string;
+		issue?: number;
+		at: number;
+		text: string;
+	}[];
+	closes: { issue: number; at: number }[];
+	ship: {
+		paths: Record<
+			number,
+			{
+				issue: number;
+				stage:
+					| "working"
+					| "pr-open"
+					| "in-review"
+					| "changes"
+					| "approved"
+					| "merged"
+					| "shipped";
+				pr?: number;
+				verdict?: "pass" | "changes";
+				bounced: boolean;
+				codex: boolean;
+				at: number;
+			}
+		>;
+		prIssue: Record<number, number>;
+	};
+};
+
+export type RecordedMessage = {
+	from: string;
+	to: string;
+	text: string;
+	at: number;
+	issues: number[];
 };
 
 declare module "claude-code" {
 	interface PluginState {
 		bullpen: {
 			events: BullpenEvent[];
+			teamModel: TeamSnapshot | null;
 			members: Record<string, Member>;
 			/** `.claude/bullpen.json` merged over the defaults. */
 			profile: Profile;
 			github: GithubSource;
 			hallwaySeenAt: number;
-			focus: "" | "floor" | "huddles" | "talk";
+			focus: "" | "floor" | "huddles" | "shipping" | "talk";
 			viewTime: number;
 			storyIssue: number;
 			demoStart: number;
+			replay: Replay | null;
+			decision: Decision | null;
+			decisionDraft: string;
+			decisionStatus: string;
 		};
 	}
 }

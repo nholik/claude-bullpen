@@ -27,6 +27,14 @@ export type Teammate = {
 	/** The issue this teammate is on, as `nextIssue` attributes it. */
 	issue?: number;
 	lastActiveAt: number;
+	goneAt?: number;
+	/** Counters cover the retained observation window. */
+	turns?: number;
+	activeMs?: number;
+	turnStartedAt?: number;
+	lastProgressAt?: number;
+	failedCommand?: string;
+	failureCount?: number;
 	/** The last few steps, oldest first. */
 	trail: TrailStep[];
 };
@@ -56,6 +64,7 @@ export type HallwayMessage = {
 export type Ask = HallwayMessage & {
 	/** False once the lead has messaged the asker since. */
 	open: boolean;
+	agentId?: string;
 };
 
 /** Work sent back: by a gate failing it, or someone saying so. */
@@ -103,4 +112,6 @@ export type BullpenModel = {
 	/** Issues merged or closed, counted once. */
 	shipped: number;
 	morale: Morale;
+	/** Observable congestion; reasons are shared by the cards and overview. */
+	stuck?: Record<string, string>;
 };

@@ -57,7 +57,9 @@ test("every region and focus mode stays inside pane dimensions", () => {
 	const view = paneView(model, [], 72, 48, 2000);
 	expect(view.floorRows).toBe(0);
 	expect(
-		view.regions.some((line) => line.some((seg) => seg.text.includes("│"))),
+		view.regions.some((line) =>
+			line.some((seg) => seg.text.includes("WORKSTATIONS")),
+		),
 	).toBe(true);
 });
 

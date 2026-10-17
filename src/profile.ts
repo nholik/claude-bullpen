@@ -263,7 +263,7 @@ export function roleLabel(
 		(agentType ? roleFor(agentType, profile)?.role : undefined);
 	if (chosen) return chosen;
 	if (name === "lead") return "lead";
-	if (!agentType) return "teammate";
+	if (!agentType) return "";
 	return TYPE_ROLES[agentType.toLowerCase()] ?? agentType;
 }
 

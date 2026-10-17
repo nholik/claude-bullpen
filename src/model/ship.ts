@@ -5,7 +5,7 @@
 // firing; an event that cannot be tied to an issue moves nothing.
 
 import type { BullpenEvent } from "../../types";
-import { mergedPrs } from "../command";
+import { mergedPrs, shellSegments } from "../command";
 
 export type ShipStage =
 	| "working"
@@ -56,7 +56,6 @@ const MERGED_AT =
 	/(?:\bPR\s+)?#(\d{1,7})\s+(?:is\s+|was\s+|now\s+|also\s+|just\s+)?merged\b|\bmerged\s+(?:PR\s+)?#(\d{1,7})\b/gi;
 const NOT_MERGED =
 	/\?|\b(?:not|never|no|yet|until|once|when|after|before|if|whether|will|should|to be|can)\b|n't\b/i;
-const GH_PR = /\bgh\s+pr\s+(create|review|merge|comment)\b/;
 
 /** Numbers in `gh pr <verb> 61` or a `for p in 61 62; do gh pr ...` loop. */
 function prNumbers(command: string): number[] {
@@ -68,7 +67,8 @@ function prNumbers(command: string): number[] {
 
 /** A review verdict a `gh pr review` command carries, if it says. */
 export function commandVerdict(command: string): ShipVerdict | undefined {
-	if (!/\bgh\s+pr\s+review\b/.test(command)) return undefined;
+	if (!shellSegments(command).some((part) => /^gh\s+pr\s+review\b/.test(part)))
+		return undefined;
 	if (/--request-changes\b/.test(command)) return "changes";
 	if (/--approve\b/.test(command)) return "pass";
 	const body =
@@ -140,7 +140,14 @@ export function applyShip(state: ShipState, e: BullpenEvent): ShipState {
 			}
 		}
 	}
-	if (e.kind === "tool" && e.target === "Bash" && GH_PR.test(e.detail)) {
+	if (
+		e.kind === "tool" &&
+		e.target === "Bash" &&
+		e.outcome === "ok" &&
+		shellSegments(e.detail).some((part) =>
+			/^gh\s+pr\s+(create|review|merge|comment)\b/.test(part),
+		)
+	) {
 		const create = /\bgh\s+pr\s+create\b/.test(e.detail);
 		const closes = /Closes\s+#(\d{1,7})/i.exec(e.detail);
 		if (create && closes?.[1])
@@ -157,7 +164,7 @@ export function applyShip(state: ShipState, e: BullpenEvent): ShipState {
 			else if (/@codex\s+review/i.test(e.detail))
 				next = move(next, issue, e.at, { codex: true, stage: "in-review" });
 		}
-		for (const pr of mergedPrs(e.detail)) {
+		for (const pr of e.outcome === "ok" ? mergedPrs(e.detail) : []) {
 			const issue = next.prIssue[pr];
 			if (issue !== undefined)
 				next = move(next, issue, e.at, { stage: "merged" });

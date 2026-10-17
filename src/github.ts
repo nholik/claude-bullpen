@@ -2,7 +2,7 @@
 // prints, naming its failures, and keeping a burndown series. The hook layer
 // runs the commands and stores the results.
 
-import type { BurndownPoint, GhIssue, GhResult } from "../types";
+import type { BurndownPoint, GhIssue, GhResult, GithubSource } from "../types";
 import {
 	array,
 	integer,
@@ -44,6 +44,41 @@ export function issueListArgv(filter: string, limit = ISSUE_LIMIT): string[] {
 }
 
 export const REPO_ARGV = ["gh", "repo", "view", "--json", "nameWithOwner,url"];
+
+export function prArgv(repo: string, host: string, pr: number): string[] {
+	return ["gh", "api", `repos/${repo}/pulls/${pr}`, "--hostname", host];
+}
+
+export function readPr(
+	run: RunOutput,
+	checkedAt: number,
+): NonNullable<GithubSource["prs"]>[number] | undefined {
+	if (run.exitCode !== 0) return undefined;
+	try {
+		const raw = JSON.parse(run.stdout);
+		if (
+			!Number.isSafeInteger(raw.number) ||
+			raw.number < 1 ||
+			!["open", "closed"].includes(raw.state)
+		)
+			return undefined;
+		const mergedAt =
+			typeof raw.merged_at === "string" ? time(raw.merged_at) : undefined;
+		return {
+			number: raw.number,
+			state:
+				mergedAt === undefined
+					? raw.state === "open"
+						? "OPEN"
+						: "CLOSED"
+					: "MERGED",
+			checkedAt,
+			mergedAt,
+		};
+	} catch {
+		return undefined;
+	}
+}
 
 /** What `$.process.run` resolves with, as far as this module reads it. */
 export type RunOutput = { exitCode: number; stdout: string; stderr: string };

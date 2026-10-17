@@ -189,7 +189,7 @@ test("demo: huddles group by issue, biggest then liveliest first", async () => {
 	expect(huddles[1]?.kickbacks).toBe(0);
 });
 
-test("demo: hallway, kickbacks, no asks, cloudy morale", async () => {
+test("demo: hallway and a normal review correction leave the office calm", async () => {
 	const model = buildModel(demo, demoEnd);
 	expect(model.hallway.map((m) => `${m.from}>${m.to}`)).toEqual([
 		"smith>ada",
@@ -210,7 +210,7 @@ test("demo: hallway, kickbacks, no asks, cloudy morale", async () => {
 	]);
 	expect(model.asks).toEqual([]);
 	expect(model.closed).toEqual([]);
-	// 0.7 base, -0.12 for the kickback, -0.05 for scout idling 7 min.
+	// Useful review feedback and an unassigned idle teammate are not congestion.
 	expect(model.morale.factors).toEqual({
 		closes: 0,
 		kickbacks: 1,
@@ -218,8 +218,8 @@ test("demo: hallway, kickbacks, no asks, cloudy morale", async () => {
 		stalled: [],
 		idle: ["scout"],
 	});
-	expect(model.morale.score).toBe(0.53);
-	expect(model.morale.glyph).toBe("☁");
+	expect(model.morale.score).toBe(0.7);
+	expect(model.morale.glyph).toBe("☀");
 });
 
 test("demo: the hallway is live for three minutes after the last message", async () => {
@@ -248,8 +248,8 @@ test("demo: quiet huddles stall and stay stalled; silence never removes anyone",
 	]);
 	expect(later.morale.factors.stalled).toEqual([204, 208, 199]);
 	expect(later.morale.factors.idle).toEqual(["iris", "scout"]);
-	// 0.7 - 3 stalled x 0.1 - 2 idle x 0.05
-	expect(later.morale.score).toBe(0.3);
+	// Each stalled issue counts once; idle teammates aren't charged again.
+	expect(later.morale.score).toBe(0.4);
 	expect(later.morale.glyph).toBe("☂");
 	// Idle teammates silent 30+ min are drawn away; busy ones never are.
 	expect(later.teammates.iris?.away).toBe(true);
@@ -304,7 +304,7 @@ test("rough day: kickbacks from a failing gate and a ↺", async () => {
 	expect(model.huddles[0]?.kickbacks).toBe(1);
 });
 
-test("rough day: stalled, asking, kicked back and idle make a storm", async () => {
+test("rough day: aged blockers and stalls darken the office without charging normal reviews", async () => {
 	const model = buildModel(rough, T + 55 * MINUTE);
 	expect(model.morale.factors).toEqual({
 		closes: 1,
@@ -313,9 +313,9 @@ test("rough day: stalled, asking, kicked back and idle make a storm", async () =
 		stalled: [14],
 		idle: ["smith"],
 	});
-	// 0.7 + 0.1 - 0.24 - 0.12 - 0.1 - 0.05
-	expect(model.morale.score).toBe(0.29);
-	expect(model.morale.glyph).toBe("☇");
+	// 0.7 + one close - one aged ask - one stalled issue.
+	expect(model.morale.score).toBe(0.58);
+	expect(model.morale.glyph).toBe("☁");
 });
 
 // --- reducer edges ---------------------------------------------------------
@@ -505,7 +505,7 @@ test("morale is clamped and closes cap their lift", async () => {
 	const asks = Array.from({ length: 10 }, (_, i) =>
 		ev(i, `t${i}`, "message", "blocked", { target: "lead" }),
 	);
-	expect(buildModel(asks, T + 10 * MINUTE).morale.score).toBe(0);
+	expect(buildModel(asks, T + 20 * MINUTE).morale.score).toBe(0);
 });
 
 test("member agent types survive events falling out of the window and color cards", async () => {

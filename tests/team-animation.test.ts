@@ -136,7 +136,7 @@ test("Studio pulses only card frames when teammate colors match the default edge
 					scout: { color: "#3a5263" },
 				},
 			},
-			80,
+			160,
 			37,
 			now,
 		);
@@ -148,7 +148,7 @@ test("Studio pulses only card frames when teammate colors match the default edge
 		const frames = segments.filter((s) => s.text.startsWith("╭"));
 		expect(frames.map((s) => s.fg)).toEqual(
 			now === 10000
-				? [STUDIO.lavender, STUDIO.mint, STUDIO.lavender]
+				? [STUDIO.lavender, STUDIO.lavender, STUDIO.mint]
 				: [STUDIO.edge, STUDIO.edge, STUDIO.edge],
 		);
 	}

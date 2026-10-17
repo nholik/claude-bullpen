@@ -165,18 +165,17 @@ for (const style of ["studio", "operations"] as const)
 				view: {},
 			},
 		});
-		if (style === "studio")
-			expect(
-				await ui.find({ type: "Text", text: /WORKSTATIONS \/ teammates/ }),
-			).toBeDefined();
-		else
-			expect(
-				await ui.find({ type: "Text", text: /WORKSTREAMS \/ live assignment/ }),
-			).toBeDefined();
-		expect((await ui.find({ key: "floor-focus" }))?.text).toContain(
-			style === "operations" ? "topology" : "team",
+		expect(
+			await ui.find({ type: "Text", text: /WORKSTATIONS \/ teammates/ }),
+		).toBeDefined();
+		expect((await ui.find({ key: "shipping-focus" }))?.text).toContain(
+			"shipping",
 		);
-		await ui.press({ key: style === "operations" ? "story-2-1" : "story-3-1" });
+		const story = (await ui.findAll({ type: "Button" })).find((b) =>
+			b.key?.startsWith("story-"),
+		);
+		expect(story).toBeDefined();
+		await ui.press({ key: story?.key ?? "missing" });
 		expect(opened).toBe("bullpen-story");
 		await ui.unmount();
 	});
@@ -220,7 +219,7 @@ test("studio workstation names keep real transcript links and suppress demo agen
 	).toBe(false);
 });
 
-test("Studio header carries the morale glyph and the stalled-issue hint at low morale", () => {
+test("Studio header carries the morale glyph and observable stall pressure", () => {
 	const replay = demoAt(26000);
 	const now = demoClock(26000);
 	const members = Object.values(replay.members);
@@ -235,8 +234,7 @@ test("Studio header carries the morale glyph and the stalled-issue hint at low m
 				github: demoGithubAt(26000),
 			});
 			const header = flat(view.header);
-			expect(header).toContain("stalled");
-			expect(header).toContain("check in?");
+			expect(header).toContain("possible stalls");
 			if (glyphs === "unicode") expect(header).toContain(model.morale.glyph);
 			for (const line of view.header) expect(width(line) <= columns).toBe(true);
 		}

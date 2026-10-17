@@ -22,6 +22,7 @@ export type MoodInput = {
 	waitingOnReview?: boolean;
 	/** Minutes their issue has been stalled, when it is. */
 	stalledMin?: number;
+	stuckReason?: string;
 	/** Consecutive failing checks. */
 	failingChecks?: number;
 	/** Their issue closed a moment ago. */
@@ -130,7 +131,7 @@ const LABELS: Record<MoodKind, string> = {
 export function moodKind(input: MoodInput): MoodKind {
 	if (input.status === "gone") return "gone";
 	if (input.needsYou) return "needs-you";
-	if (input.stalledMin !== undefined) return "stuck";
+	if (input.stuckReason || input.stalledMin !== undefined) return "stuck";
 	if ((input.failingChecks ?? 0) > 0) return "failing";
 	if (input.justMerged) return "merged";
 	if (input.waitingOnReview) return "review";
@@ -142,7 +143,7 @@ export function moodFor(input: MoodInput): Mood {
 	const kind = moodKind(input);
 	const label =
 		kind === "stuck"
-			? `stuck · ${input.stalledMin ?? 0}m`
+			? `stuck · ${input.stuckReason ?? `${input.stalledMin ?? 0}m`}`
 			: kind === "failing" && (input.failingChecks ?? 0) > 1
 				? `checks red x${input.failingChecks}`
 				: LABELS[kind];

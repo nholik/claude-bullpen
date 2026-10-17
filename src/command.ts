@@ -14,12 +14,41 @@ export function withoutCd(command: string): string {
 }
 
 /** The chain's segments, minus env assignments and output plumbing. */
-function segments(command: string): string[] {
-	return withoutCd(command)
-		.replace(/…$/, "")
-		.split(/\s*(?:&&|;)\s*/)
+export function shellSegments(command: string): string[] {
+	const parts: string[] = [];
+	let part = "",
+		quote = "",
+		escaped = false;
+	for (const ch of withoutCd(command).replace(/…$/, "")) {
+		if (escaped) {
+			part += ch;
+			escaped = false;
+			continue;
+		}
+		if (ch === "\\" && quote !== "'") {
+			part += ch;
+			escaped = true;
+			continue;
+		}
+		if (quote) {
+			part += ch;
+			if (ch === quote) quote = "";
+			continue;
+		}
+		if (ch === '"' || ch === "'") {
+			quote = ch;
+			part += ch;
+			continue;
+		}
+		if (ch === ";" || ch === "&" || ch === "|" || ch === "\n") {
+			if (part.trim()) parts.push(part);
+			part = "";
+		} else part += ch;
+	}
+	if (part.trim()) parts.push(part);
+	return parts
 		.map((part) => {
-			let s = part.split(/\s*\|\s*/)[0] ?? "";
+			let s = part;
 			s = s.replace(/\s*\d?>+\s*(?:&\d|\S+)/g, "").trim();
 			// Loop and subshell scaffolding: `do cmd`, `(cmd`, `x=$(cmd`.
 			s = s.replace(/^(?:[\\({]\s*|(?:do|then|else)\s+|\w+=\$\(\s*)+/, "");
@@ -37,7 +66,7 @@ function segments(command: string): string[] {
 export function mergedPrs(command: string): number[] {
 	const loops = new Map<string, number[]>();
 	const merged: number[] = [];
-	for (const part of segments(command)) {
+	for (const part of shellSegments(command)) {
 		const loop = /^for\s+(\w+)\s+in\s+([#\d\s]+)$/.exec(part);
 		if (loop?.[1] && loop[2]) {
 			loops.set(loop[1], loop[2].match(/\d+/g)?.map(Number) ?? []);
@@ -92,7 +121,7 @@ const PHRASES: [RegExp, (m: RegExpExecArray) => string][] = [
  * when nothing recognizes it: raw shell text never reaches a card.
  */
 export function commandPhrase(command: string): string | undefined {
-	const parts = segments(command);
+	const parts = shellSegments(command);
 	for (const [pattern, phrase] of PHRASES)
 		for (const part of parts) {
 			const m = pattern.exec(part);

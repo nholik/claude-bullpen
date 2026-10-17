@@ -25,7 +25,7 @@ import {
 export const JOURNAL_VERSION = 1;
 
 /** How many events `$.state` keeps; older ones live only in the file. */
-export const STATE_EVENTS = 300;
+export const STATE_EVENTS = 2000;
 
 /**
  * Characters per journal chunk before the next one starts. `$.fs` can only
@@ -50,6 +50,7 @@ export const BullpenEventSchema = object({
 		"turn-end",
 		"tool",
 		"message",
+		"answer",
 		"leave",
 	]),
 	/** The loop it happened in; absent for the lead (main loop). */
@@ -65,6 +66,8 @@ export const BullpenEventSchema = object({
 	/** On `spawn`: the agent type the target was spawned as. */
 	agentType: optional(string()),
 	confirmedCloses: optional(array(pipe(number(), integer(), minValue(1)))),
+	outcome: optional(picklist(["ok", "error"])),
+	replyTo: optional(number()),
 });
 
 export type BullpenEvent = InferOutput<typeof BullpenEventSchema>;

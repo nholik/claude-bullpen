@@ -2,7 +2,13 @@
 // need. Pure and incremental: `applyEvent` per new event, `huddlesOf` and
 // `moraleOf` when drawing.
 
-import type { BullpenEvent, BullpenEventKind, MemberStatus } from "../../types";
+import type {
+	BullpenEvent,
+	BullpenEventKind,
+	GithubSource,
+	MemberStatus,
+	TeamSnapshot,
+} from "../../types";
 import { nextIssue } from "../events";
 import { closedIssues, isAsk, isKickback, isReviewer } from "./detect";
 import { applyShip, EMPTY_SHIP, type ShipState } from "./ship";
@@ -21,6 +27,7 @@ export type ModelOptions = {
 	present?: Readonly<Record<string, MemberStatus>>;
 	/** Agent type by team name, from the members atom; outlives the event window. */
 	agentTypes?: Readonly<Record<string, string>>;
+	github?: GithubSource;
 };
 
 export const DEFAULT_LEADS: readonly string[] = ["lead", "team-lead", "main"];
@@ -61,6 +68,14 @@ export const EMPTY_TEAM: TeamState = {
 	closes: [],
 	ship: EMPTY_SHIP,
 };
+
+// The plugin contract cannot import code. Fail compilation if its mirrored shape drifts.
+const snapshotInSync: [TeamSnapshot] extends [TeamState]
+	? [TeamState] extends [TeamSnapshot]
+		? true
+		: false
+	: false = true;
+void snapshotInSync;
 
 function keepLast<T>(list: T[], item: T, max: number): T[] {
 	return [...list, item].slice(-max);
@@ -109,6 +124,13 @@ function step(
 		issue: prev?.issue,
 		lastActiveAt: Math.max(prev?.lastActiveAt ?? e.at, e.at),
 		trail: prev?.trail ?? [],
+		goneAt: prev?.goneAt,
+		turns: prev?.turns ?? 0,
+		activeMs: prev?.activeMs ?? 0,
+		turnStartedAt: prev?.turnStartedAt,
+		lastProgressAt: prev?.lastProgressAt,
+		failedCommand: prev?.failedCommand,
+		failureCount: prev?.failureCount ?? 0,
 		...patch,
 	};
 }
@@ -154,17 +176,53 @@ export function applyEvent(
 	const known = isKnown(e.kind);
 	let issue = actor?.issue;
 	if (spawned === e.who) issue = actor?.issue ?? refs[0];
-	else if (known && e.kind !== "leave")
+	else if (known && e.kind !== "leave" && e.kind !== "answer")
 		issue = nextIssue(e.kind, actor?.issue, refs);
 	let status = actor?.status ?? "running";
 	if (known) status = e.kind === "turn-end" ? "idle" : "running";
 	// A typed leave event is the journal evidence that a member departed.
 	if (e.kind === "leave") status = "gone";
+	const ended =
+		(e.kind === "turn-end" || e.kind === "leave") &&
+		actor?.turnStartedAt !== undefined;
+	const command =
+		e.kind === "tool" && e.target === "Bash" && e.outcome
+			? e.detail
+			: undefined;
 	teammates[e.who] = step(teammates, e.who, e, {
 		agentId: e.agentId ?? actor?.agentId,
 		status,
 		issue,
 		trail: keepLast(actor?.trail ?? [], trailStep, TRAIL_LENGTH),
+		goneAt: status === "gone" ? (actor?.goneAt ?? e.at) : undefined,
+		turns: (actor?.turns ?? 0) + (e.kind === "turn-start" ? 1 : 0),
+		activeMs:
+			(actor?.activeMs ?? 0) +
+			(ended ? Math.max(0, e.at - (actor?.turnStartedAt ?? e.at)) : 0),
+		turnStartedAt:
+			e.kind === "turn-start"
+				? (actor?.turnStartedAt ?? e.at)
+				: ended
+					? undefined
+					: actor?.turnStartedAt,
+		lastProgressAt:
+			e.kind === "tool" ||
+			(e.kind === "turn-start" && actor?.status !== "running")
+				? e.at
+				: (actor?.lastProgressAt ?? e.at),
+		failedCommand:
+			command && e.outcome === "error"
+				? command
+				: command
+					? undefined
+					: actor?.failedCommand,
+		failureCount: command
+			? e.outcome === "error"
+				? actor?.failedCommand === command
+					? (actor.failureCount ?? 0) + 1
+					: 1
+				: 0
+			: actor?.failureCount,
 	});
 	take(issue);
 
@@ -180,7 +238,11 @@ export function applyEvent(
 				closes = [...closes, { issue: closed, at: e.at }];
 	}
 
-	if (e.kind === "message" && e.target !== undefined && e.target !== e.who) {
+	if (
+		(e.kind === "message" || e.kind === "answer") &&
+		e.target !== undefined &&
+		e.target !== e.who
+	) {
 		const message: HallwayMessage = {
 			from: e.who,
 			to: e.target,
@@ -203,12 +265,28 @@ export function applyEvent(
 		}
 
 		const fromLead = isLead(e.who, options);
-		if (fromLead)
+		if (e.kind === "answer")
 			asks = asks.map((ask) =>
-				ask.open && ask.from === e.target ? { ...ask, open: false } : ask,
+				ask.open && ask.from === e.target && ask.at === e.replyTo
+					? { ...ask, open: false }
+					: ask,
+			);
+		else if (fromLead)
+			asks = asks.map((ask) =>
+				ask.open &&
+				ask.from === e.target &&
+				(!refs.length ||
+					!ask.issues.length ||
+					refs.some((ref) => ask.issues.includes(ref)))
+					? { ...ask, open: false }
+					: ask,
 			);
 		else if (isLead(e.target, options) && isAsk(e.detail))
-			asks = keepLast(asks, { ...message, open: true }, KEEP);
+			asks = keepLast(
+				asks,
+				{ ...message, agentId: e.agentId, open: true },
+				KEEP,
+			);
 	}
 
 	return {
@@ -247,12 +325,19 @@ export function withAway(state: TeamState, now: number): TeamState {
 export function withPresence(
 	state: TeamState,
 	present: ModelOptions["present"],
+	now?: number,
 ): TeamState {
 	if (!present) return state;
 	const teammates = { ...state.teammates };
 	for (const [name, status] of Object.entries(present)) {
 		const t = teammates[name];
-		if (t && t.status !== status) teammates[name] = { ...t, status };
+		if (t && t.status !== status)
+			teammates[name] = {
+				...t,
+				status,
+				goneAt:
+					status === "gone" ? (t.goneAt ?? now ?? t.lastActiveAt) : undefined,
+			};
 	}
 	return { ...state, teammates };
 }

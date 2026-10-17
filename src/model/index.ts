@@ -3,6 +3,7 @@
 import type { BullpenEvent } from "../../types";
 import { moraleOf } from "./morale";
 import { shippedIssues } from "./ship";
+import { stuckReasons } from "./signals";
 import {
 	DEFAULT_LEADS,
 	huddlesOf,
@@ -47,12 +48,72 @@ export function modelOf(
 	now: number,
 	options: ModelOptions = {},
 ): BullpenModel {
+	if (options.github) {
+		const paths = { ...state.ship.paths };
+		for (const pr of options.github.prs ?? []) {
+			for (const [issue, path] of Object.entries(paths)) {
+				if (path.pr !== pr.number || pr.checkedAt < path.at) continue;
+				paths[Number(issue)] =
+					pr.state === "MERGED"
+						? { ...path, stage: "merged", at: pr.mergedAt ?? pr.checkedAt }
+						: {
+								...path,
+								stage:
+									pr.state === "CLOSED"
+										? "working"
+										: path.stage === "merged"
+											? "pr-open"
+											: path.stage,
+								pr: pr.state === "CLOSED" ? undefined : path.pr,
+							};
+			}
+		}
+		const source = options.github;
+		const closes = [...state.closes];
+		if (source.result?.status === "ok") {
+			for (const issue of source.result.issues) {
+				if (
+					issue.state === "closed" &&
+					(state.issueStarted[issue.number] !== undefined ||
+						paths[issue.number]) &&
+					!closes.some((c) => c.issue === issue.number)
+				)
+					closes.push({
+						issue: issue.number,
+						at: issue.closedAt ?? source.checkedAt,
+					});
+			}
+		}
+		state = { ...state, closes, ship: { ...state.ship, paths } };
+	}
+	if (state.closes.length) {
+		const paths = { ...state.ship.paths };
+		for (const closed of state.closes) {
+			const previous = paths[closed.issue];
+			paths[closed.issue] = {
+				issue: closed.issue,
+				bounced: false,
+				codex: false,
+				...previous,
+				stage: "shipped",
+				at: closed.at,
+			};
+		}
+		state = { ...state, ship: { ...state.ship, paths } };
+	}
 	const live = withAway(
-		withTypes(withPresence(state, options.present), options.agentTypes),
+		withTypes(withPresence(state, options.present, now), options.agentTypes),
 		now,
 	);
-	const huddles = huddlesOf(live);
-	return {
+	const huddles = huddlesOf(live).filter(
+		(h) =>
+			!Object.values(state.ship.paths).some(
+				(p) =>
+					p.issue === h.issue &&
+					(p.stage === "merged" || p.stage === "shipped"),
+			),
+	);
+	const model: BullpenModel = {
 		teammates: live.teammates,
 		huddles,
 		hallway: state.hallway,
@@ -66,6 +127,15 @@ export function modelOf(
 		).length,
 		morale: moraleOf(live, huddles, now, options.leads ?? DEFAULT_LEADS),
 	};
+	model.stuck = stuckReasons(model, now);
+	model.morale = moraleOf(
+		live,
+		huddles,
+		now,
+		options.leads ?? DEFAULT_LEADS,
+		model.stuck,
+	);
+	return model;
 }
 
 /** The model at `now` from a journal, oldest event first. */

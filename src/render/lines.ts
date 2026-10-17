@@ -7,6 +7,8 @@ export type Seg = {
 	text: string;
 	story?: number;
 	agentId?: string;
+	/** Opens the human reply form for this ask. */
+	ask?: { from: string; at: number };
 	fg?: number;
 	bg?: number;
 	bold?: boolean;

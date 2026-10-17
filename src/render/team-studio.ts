@@ -1,10 +1,10 @@
 import type { GithubSource, Profile } from "../../types";
 import type { BullpenModel, Teammate } from "../model";
+import { activeTime, flowSummary } from "../model/signals";
 import { colorFor, colorIndex, roleLabel } from "../profile";
 import { activityPhrase } from "./activity";
 import { fit, glyphLines, type Line, textLine, width, wrapText } from "./lines";
 import { moodFor, snoozeFrame } from "./mood";
-import { moraleHint } from "./morale";
 import { age, align, clock, edge, inside, section, text } from "./operations";
 import { needsYou, shippingRows, shippingSection } from "./shipping";
 import { STUDIO } from "./studio";
@@ -37,18 +37,6 @@ function activity(member: Teammate, model: BullpenModel, now: number) {
 /** Top edge, four rows, bottom edge. */
 const CARD_ROWS = 6;
 
-/** Minutes the member's issue has been stalled, when the morale model says so. */
-function stalledMin(member: Teammate, model: BullpenModel, now: number) {
-	const huddle = model.huddles.find(
-		(h) =>
-			h.issue === member.issue &&
-			model.morale.factors.stalled.includes(h.issue),
-	);
-	return huddle
-		? Math.max(0, Math.floor((now - huddle.lastActiveAt) / 60000))
-		: undefined;
-}
-
 function workstation(
 	member: Teammate,
 	model: BullpenModel,
@@ -56,6 +44,7 @@ function workstation(
 	profile: Profile,
 	columns: number,
 	now: number,
+	compact = false,
 ): Line[] {
 	const color = colorFor(
 		member.name,
@@ -67,7 +56,17 @@ function workstation(
 	const feel = moodFor({
 		status: member.status,
 		away: member.away,
-		stalledMin: stalledMin(member, model, now),
+		stuckReason: model.stuck?.[member.name],
+		waitingOnReview: model.ship.some(
+			(p) => p.issue === member.issue && p.stage === "in-review",
+		),
+		failingChecks: member.failureCount,
+		justMerged: model.ship.some(
+			(p) =>
+				p.issue === member.issue &&
+				(p.stage === "merged" || p.stage === "shipped") &&
+				now - p.at < 120_000,
+		),
 		needsYou: model.asks.some((a) => a.open && a.from === member.name),
 	});
 	// The z's drift once per redraw (1 s while a highlight fades, else 15 s).
@@ -91,10 +90,13 @@ function workstation(
 		: undefined;
 	// What it is doing, else the latest message (shown once), else nothing yet.
 	const doing: Line = text(
-		phrase ?? spoken ?? "Waiting for activity",
+		model.stuck?.[member.name] ?? phrase ?? spoken ?? "Waiting for activity",
 		STUDIO.text,
 	);
-	const earlier: Line = spoken && phrase ? text(spoken, STUDIO.muted) : [];
+	const earlier: Line = text(
+		`${member.turns ?? 0} turns · ${Math.floor(activeTime(member, now) / 60000)}m active${spoken && phrase ? ` · ${spoken}` : ""}`,
+		STUDIO.muted,
+	);
 	// Messages and finished turns recolor the face and frame; they take no row.
 	const mood: Line = [
 		{
@@ -111,7 +113,7 @@ function workstation(
 	// The state word outranks the age: drop the age when the line is tight,
 	// keeping a gap before the right edge text. The role has its own row.
 	const stamp = age(now, member.lastActiveAt);
-	const word = text(feel.label, feel.color);
+	const word = text(feel.kind === "stuck" ? "stuck" : feel.label, feel.color);
 	const dot = " · ";
 	const tails: Line[] = [
 		[...word, ...text(`${dot}${stamp}`, STUDIO.muted)],
@@ -124,6 +126,37 @@ function workstation(
 	// Idle, away and gone cards sit back so working cards stand out.
 	const soften = (line: Line): Line =>
 		feel.dim ? line.map((seg) => ({ ...seg, dim: true })) : line;
+	if (compact)
+		return [
+			align(
+				soften([
+					...name,
+					...text(role ? ` · ${role}` : "", STUDIO.muted),
+					...(member.issue === undefined
+						? []
+						: [
+								{
+									text: ` #${member.issue}`,
+									story: member.issue,
+									fg: STUDIO.text,
+								},
+							]),
+				]),
+				text(feel.kind === "stuck" ? "stuck" : feel.label, feel.color),
+				columns,
+			),
+			fit(
+				soften([
+					...text("    ", STUDIO.muted),
+					...doing,
+					...text(
+						` · ${member.turns ?? 0}t/${Math.floor(activeTime(member, now) / 60000)}m`,
+						STUDIO.muted,
+					),
+				]),
+				columns,
+			),
+		];
 	return [
 		edge(columns, false, border),
 		inside(align(soften(name), soften(tail), columns - 4), columns, border),
@@ -160,15 +193,38 @@ export function teamStudioView(
 	columns: number,
 	rows: number,
 	now: number,
+	mode: "live" | "demo" | "replay" = "live",
 ): { header: Line[]; regions: Line[] } {
-	const team = Object.values(model.teammates)
-		.filter((m) => m.status !== "gone")
+	const urgency = (m: Teammate) =>
+		model.asks.some((a) => a.open && a.from === m.name)
+			? 0
+			: model.stuck?.[m.name]
+				? 1
+				: m.status === "running"
+					? 2
+					: m.status === "gone"
+						? 4
+						: 3;
+	const all = Object.values(model.teammates);
+	const away = all.filter(
+		(m) =>
+			m.away &&
+			!model.stuck?.[m.name] &&
+			!model.asks.some((a) => a.open && a.from === m.name),
+	);
+	const team = all
+		.filter(
+			(m) =>
+				!away.includes(m) &&
+				(m.status !== "gone" || now - (m.goneAt ?? m.lastActiveAt) < 120_000),
+		)
 		.sort(
 			(a, b) =>
-				(a.issue ?? Infinity) - (b.issue ?? Infinity) ||
+				urgency(a) - urgency(b) ||
+				a.color - b.color ||
 				a.name.localeCompare(b.name),
 		);
-	const hint = moraleHint(model, now);
+	const flow = flowSummary(model, github.burndown, now);
 	const working = team.filter((m) => m.status === "running").length;
 	const shipping = shippingRows(model, now);
 	const inFlight = shipping.filter(
@@ -179,43 +235,58 @@ export function teamStudioView(
 			text(" BULLPEN / TEAM STUDIO", STUDIO.lavender),
 			[
 				{ text: `${model.morale.glyph} `, fg: STUDIO.amber },
-				...text(`● LIVE  ${clock(now).slice(0, 5)} `, STUDIO.mint),
+				...text(
+					`● ${mode.toUpperCase()}  ${clock(now).slice(0, 5)} `,
+					STUDIO.mint,
+				),
 			],
 			columns,
 		),
 		align(
-			hint
-				? text(` ${hint}`, STUDIO.amber)
-				: text(
-						` ${github.repo ?? github.workspace ?? "workspace"} · ${team.length} teammates · ${inFlight} in flight`,
-						STUDIO.muted,
-					),
+			text(
+				` ${github.repo || github.workspace || "workspace"} · ${team.filter((t) => t.status !== "gone").length + away.length} teammates · ${inFlight} in flight`,
+				STUDIO.muted,
+			),
 			text(`${model.shipped} shipped this session `, STUDIO.muted),
 			columns,
 		),
-		...needsYou(model, columns),
+		...needsYou(model, columns, now),
+		fit(
+			text(` FLOW · ${flow.text}`, flow.pressure ? STUDIO.amber : STUDIO.mint),
+			columns,
+		),
 	];
 	const room = Math.max(0, rows - header.length);
-	const leftWidth = columns >= 120 ? Math.floor((columns - 3) * 0.68) : columns;
+	const leftWidth = columns >= 110 ? Math.floor((columns - 3) * 0.68) : columns;
 	const rightWidth = columns - leftWidth - 3;
-	const across = leftWidth >= 105 ? 3 : leftWidth >= 64 ? 2 : 1;
+	const compact = columns < 110;
+	const across = compact ? 1 : leftWidth >= 105 ? 3 : leftWidth >= 64 ? 2 : 1;
 	const cardWidth = Math.max(
 		12,
 		Math.floor((leftWidth - (across - 1) * 2) / across),
 	);
 	// SHIPPING keeps its rows: cards give way before the path to merge does.
-	const reserve = Math.min(shipping.length + 1, 6) + 1;
+	const reserve = Math.min(shipping.length + 1, 6) + 1 + (away.length ? 1 : 0);
+	const slot = compact ? 2 : CARD_ROWS + 1;
 	const capacity =
-		across * Math.max(0, Math.floor((room - 3 - reserve) / (CARD_ROWS + 1)));
+		across * Math.max(0, Math.floor((room - 3 - reserve) / slot));
 	const shown = team.slice(0, capacity);
-	const left: Line[] = [section("WORKSTATIONS / teammates", leftWidth)];
+	const left: Line[] = shippingSection(
+		model,
+		github,
+		profile,
+		leftWidth,
+		Math.min(Math.max(0, room - 3), Math.min(shipping.length + 1, 6)),
+		now,
+	);
+	left.push(section("WORKSTATIONS / teammates", leftWidth));
 	for (let index = 0; index < shown.length; index += across) {
 		const cards = shown
 			.slice(index, index + across)
 			.map((member) =>
-				workstation(member, model, github, profile, cardWidth, now),
+				workstation(member, model, github, profile, cardWidth, now, compact),
 			);
-		for (let row = 0; row < CARD_ROWS; row++) {
+		for (let row = 0; row < (compact ? 2 : CARD_ROWS); row++) {
 			const line: Line = [];
 			for (const [i, card] of cards.entries()) {
 				if (i) line.push({ text: "  " });
@@ -223,7 +294,7 @@ export function teamStudioView(
 			}
 			left.push(line);
 		}
-		left.push([]);
+		if (!compact) left.push([]);
 	}
 	if (shown.length < team.length)
 		left.push(
@@ -231,21 +302,35 @@ export function teamStudioView(
 		);
 	if (!team.length)
 		left.push(textLine("Waiting for teammates to join.", leftWidth));
+	if (away.length) {
+		const out: Line = text("out: ", STUDIO.muted);
+		for (const [i, m] of away.entries()) {
+			const item: Line = [
+				...text(i ? " · " : "", STUDIO.muted),
+				{
+					text: m.name,
+					fg: colorFor(m.name, profile, m.color, m.agentType),
+					agentId: m.agentId,
+				},
+				...text(` ${age(now, m.lastActiveAt)}`, STUDIO.muted),
+			];
+			const more = away.length - i - 1;
+			if (
+				width(out) + width(item) + (more ? ` · +${more}`.length : 0) >
+				leftWidth
+			) {
+				out.push(...text(`${i ? " · " : ""}+${away.length - i}`, STUDIO.muted));
+				break;
+			}
+			out.push(...item);
+		}
+		left.push(fit(out, leftWidth));
+	}
 	if (left.length + 4 < room) {
-		left.push(
-			...shippingSection(
-				model,
-				github,
-				profile,
-				leftWidth,
-				Math.min(room - left.length - 1, columns >= 120 ? 12 : 8),
-				now,
-			),
-		);
-		if (columns >= 120) left.push([]);
+		if (columns >= 110) left.push([]);
 		// Narrow panes have no hallway column: use the rows left over for it.
 		const spare = room - left.length;
-		if (columns < 120 && spare >= 2) {
+		if (columns < 110 && spare >= 2) {
 			left.push(section("HALLWAY / conversation", leftWidth));
 			for (const message of model.hallway.slice(-(spare - 1)))
 				left.push(
@@ -263,8 +348,8 @@ export function teamStudioView(
 		}
 	}
 	const right: Line[] =
-		columns >= 120 ? [section("HALLWAY / conversation", rightWidth)] : [];
-	if (columns >= 120) {
+		columns >= 110 ? [section("HALLWAY / conversation", rightWidth)] : [];
+	if (columns >= 110) {
 		const history = model.hallway.slice(
 			-Math.max(1, Math.floor((room - 10) / 4)),
 		);
@@ -294,7 +379,7 @@ export function teamStudioView(
 	for (let row = 0; row < room; row++) {
 		const line = fit(left[row] ?? [], leftWidth);
 		regions.push(
-			columns >= 120
+			columns >= 110
 				? [
 						...line,
 						{

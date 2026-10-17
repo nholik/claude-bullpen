@@ -2,12 +2,12 @@
 
 **Bullpen** is a [Claude Code](https://claude.com/claude-code) mod that gives you a live, at-a-glance view of your agent team in the terminal. It's like walking into an organized office: you see who is huddled on which issue, what got sent back, what teammates are saying to each other, and how the burndown is going.
 
-> Status: functional prototype. Studio and Operations screenshots show terminal-rendered views; native Windows Terminal verification remains ongoing.
+> Personal-use build. Studio and the blocker reply form run inside Claude Code. Native Windows Terminal verification remains ongoing.
 
 The overview surfaces teammates, active issues, and open decisions. Studio puts
 people and conversation first; Operations groups activity by workstream. Press an
 issue for its cross-agent story, or a teammate name for Claude's transcript.
-Morale and burndown provide a quick view of team progress.
+A flow row shows possible stalls, review pressure, spare capacity, and backlog growth. Brief message and completion highlights give the team a visual pulse.
 
 ![Studio rendered in the actual terminal](docs/img/studio-glyphs-terminal.png)
 
@@ -103,38 +103,63 @@ Troubleshooting:
 Windows path handling has automated drive/UNC tests. Real Windows Terminal fonts,
 Windows filesystem access and a SAML-protected Enterprise deployment still need
 target-machine verification. Known follow-ups are tracked in [#44](https://github.com/nholik/claude-bullpen/issues/44)
-through [#47](https://github.com/nholik/claude-bullpen/issues/47), plus
-[#52](https://github.com/nholik/claude-bullpen/issues/52) for Unicode teammate names in ASCII story links
-and [#53](https://github.com/nholik/claude-bullpen/issues/53) for an unnecessary overflow row in exact-fit stories.
+through [#47](https://github.com/nholik/claude-bullpen/issues/47), plus a public real-session recording and release tag. ASCII story links and exact-fit story wrapping have automated coverage.
 
-## Appearance and terminal setup
+## Your daily view
 
-The default `"style":"studio"` shows teammate workstation cards with roles,
-activity, issue links, and recent work, alongside huddles and hallway conversation.
-For an abstract work console, use `"style":"operations"`: text workstreams, agent
-nodes, a live agent register, a decision queue, and a timestamped event trace.
-Both views use terminal glyphs with an ASCII fallback and require no image support.
-Set either in project
-`.claude/bullpen.json` or the user profile, then `/bullpen reload`:
+Run `/bullpen` to open Studio. It puts pending decisions and flow pressure above
+shipping and the team. At 72 columns, teammates use compact two-line rows; at
+110 and above, cards sit beside the conversation. Click an issue for its story or
+a teammate for its transcript.
 
-```json
-{ "style": "operations", "glyphs": "unicode", "animations": true }
-```
+- **Answer a blocker:** click its amber decision row, press `a` while the pane is
+  focused, or run `/bullpen answer`. The reply pane shows the original question
+  and a multiline answer field. Enter or **Send answer** delivers your direction
+  to the original agent. Failed delivery keeps your draft available for retry.
+  “Sent” means queued in the agent's inbox, not confirmed read. Each submitted
+  answer resolves that specific request, preserving other pending questions.
+- **Notice stalls:** cards explain possible stalls: no tool progress for ten
+  minutes, the same command failing three times, repeated review kickbacks,
+  idle with open work for five minutes, or review waiting fifteen minutes.
+  These are observations, not proof that the agent is stuck. Open the transcript
+  before deciding how to intervene.
+- **Feel the flow:** message participants briefly light up together; completed
+  turns get a short highlight. The flow row shows review queues and idle capacity.
+  The footer turns amber when the observed open backlog grows. Counts are net
+  changes in your configured issue scope, not estimates of newly created issues.
+- **See the team shape:** urgent teammates come first. Long-idle teammates without
+  an unresolved ask or stalled assignment fold into an `out:` line after thirty
+  minutes. Departed teammates say “clocked out” for two minutes, then disappear.
+  Cards show observed turns and active wall time; no token or dollar estimates.
+- **Focus:** `s` toggles shipping and `t` toggles conversation. These keys work
+  while the pane has keyboard focus. Escape returns to Claude's prompt.
+  `/bullpen focus shipping|talk|all` works from the prompt. Old `floor` and
+  `huddles` arguments remain aliases for overview and shipping.
+- **Replay:** `/bullpen replay PATH` plays a journal directory from its first
+  event and holds the last scene. `/bullpen live` returns to your current team.
+  Demo and replay never send answers or expose recorded agent IDs as live links;
+  the real observers keep recording while you watch.
 
-![Operations console in the actual terminal](docs/img/operations-glyphs-terminal.png)
+![Blocker reply form in the terminal](docs/img/blocker-form-terminal.png)
 
-[80-column layout](docs/img/operations-glyphs-80.png) · [ASCII fallback](docs/img/operations-glyphs-ascii.png)
+Journals now stay under `~/.claude/bullpen/<session-id>/` throughout the session,
+including before a team forms. Earlier builds may have split a session into two
+directories. Replay one directory at a time; it does not silently join old logs.
+The in-pane story keeps recent events; live decisions, shipping state and turn
+counters survive that display history rolling over.
 
-The glyph consoles start at **60 pane-body columns and 16 rows**. At **120
-columns**, Studio adds a conversation sidebar and Operations adds its agent
-register and decision queue. Aim for **160 columns and 40 rows in the pane**;
-Claude's conversation and chrome also need room in the terminal window. Smaller
-consoles show fewer cards with explicit overflow counts. Below the console minimum,
-the existing compact floor and text regions remain available. `f`, `h`, and `t`
-focus a region; `r` restores the overview. No Nerd Font, emoji, graphics protocol,
-or font installation is required.
+GitHub polls check up to four referenced PRs per poll, rotating through the team's
+tracked PRs. This includes merges made in a
+browser or another session. Failed polls retain the last known state. Without
+GitHub, the pane continues with locally observed events. A successful compound
+shell command is weaker evidence than a GitHub confirmation; remote state wins
+when it is newer.
 
-[Studio at 80 columns](docs/img/studio-glyphs-80.png) · [Studio ASCII fallback](docs/img/studio-glyphs-ascii.png) · [Interaction animation](docs/img/studio-interactions.gif)
+Studio is the supported view. Existing `"style":"operations"` profiles open
+Studio as a compatibility alias. No font or terminal graphics support is needed.
+Use `"glyphs":"ascii"` if your font shows missing symbols, and
+`"animations":false` to disable transient highlights. Small panes retain the
+compact fallback; aim for 110–160 pane columns and 32–40 rows when possible.
 
 Recommended GNOME Terminal profile (personal preference; nothing is changed automatically):
 
@@ -204,18 +229,11 @@ Optional. Put a `bullpen.json` in your project's `.claude/` folder (`/bullpen re
 - `issues.pollSeconds`: how often GitHub is polled (default 60, minimum 15).
 - `roles`: a teammate name or agent type to `{ role, color }`. `color` is `#rrggbb` or an index into the palette.
 - `animations`: set `false` to stop the floor animating (default `true`).
-- `style`: `"studio"` (default) shows teammate workstation cards and conversation; `"operations"` groups work by issue with a register, decisions, and event trace.
+- `style`: `"studio"` (default). The old `"operations"` value is accepted as an alias for Studio.
 - `glyphs`: `"unicode"` (default) uses portable single-cell symbols; `"ascii"` uses plain ASCII for fonts that show boxes.
 - `palette`: member colors selected by stable teammate name, as `#rrggbb` (default: the built-in palette). Bad entries are dropped with a warning; an empty list keeps the default.
 
 Role colors are shared by the floor, band, huddles and issue stories.
-
-Pane controls: `f` team, `h` huddles, `t` talk; press again or `r` to restore.
-Operations labels these topology, workstreams, and events.
-These keys work while the pane has keyboard focus. Escape returns keyboard focus
-to Claude (the mod API does not deliver it). `/bullpen focus floor|huddles|talk|all`
-also works from the prompt; `floor` selects the team/topology overview. In panes
-below the console minimum, the legacy pixel floor fits from 48 columns.
 
 `/bullpen story #208` opens a second pane with the issue’s cross-agent journal
 and GitHub state. Press a huddle heading to open its story, or a teammate name
