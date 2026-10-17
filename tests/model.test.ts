@@ -211,12 +211,26 @@ test("demo: the hallway is live for three minutes after the last message", async
 	expect(isHallwayLive([], last)).toBe(false);
 });
 
-test("demo: morale recovers as the kickback ages out", async () => {
+test("demo: quiet huddles stall, then silent teammates are gone", async () => {
 	const state = reduceEvents(demo);
+	// 20+ min after each huddle's last activity, under 30 since anyone spoke.
+	const stalled = modelOf(state, T + 35 * MINUTE);
+	expect(stalled.morale.factors.stalled).toEqual([204, 208, 199]);
+	expect(stalled.morale.factors.idle).toEqual(["iris", "scout"]);
+	// An hour on, the kickback has aged out and everyone but the lead has
+	// been silent over 30 min: gone, so no huddles stall and no one idles.
 	const later = modelOf(state, T + 70 * MINUTE);
 	expect(later.morale.factors.kickbacks).toBe(0);
-	// Everything has been quiet for an hour: all three huddles stall.
-	expect(later.morale.factors.stalled).toEqual([204, 208, 199]);
+	expect(later.huddles).toEqual([]);
+	expect(later.morale.factors.stalled).toEqual([]);
+	expect(later.morale.factors.idle).toEqual([]);
+	expect(later.teammates.smith?.status).toBe("gone");
+	expect(later.teammates.lead?.status).toBe("running");
+	// Live presence beats the silence fallback.
+	const present = modelOf(state, T + 70 * MINUTE, {
+		present: { smith: "running" },
+	});
+	expect(present.huddles.map((h) => h.members)).toEqual([["smith"]]);
 });
 
 // --- the rough-day fixture -------------------------------------------------
@@ -387,6 +401,26 @@ test("live presence: gone teammates leave huddles and stop idling", async () => 
 		present: { ada: "running" },
 	});
 	expect(awake.morale.factors.idle).toEqual([]);
+});
+
+test("a leave event takes a teammate off the floor until it's heard from", async () => {
+	const left = parseJournal(
+		'{"version":1,"at":0,"kind":"leave","who":"ada","detail":"ada left","issues":[]}',
+	).map((e) => ({ ...e, at: T + 2 * MINUTE }));
+	const before = [
+		ev(0, "ada", "tool", "edit", { issues: [4] }),
+		ev(1, "smith", "tool", "edit", { issues: [4] }),
+	];
+	const gone = buildModel([...before, ...left], T + 3 * MINUTE);
+	expect(gone.teammates.ada?.status).toBe("gone");
+	expect(gone.teammates.ada?.issue).toBe(4);
+	expect(gone.huddles.map((h) => h.members)).toEqual([["smith"]]);
+	const back = buildModel(
+		[...before, ...left, ev(4, "ada", "turn-start", "started a turn")],
+		T + 5 * MINUTE,
+	);
+	expect(back.teammates.ada?.status).toBe("running");
+	expect(back.huddles.map((h) => h.members)).toEqual([["ada", "smith"]]);
 });
 
 test("the hallway keeps only the last 50 messages", async () => {

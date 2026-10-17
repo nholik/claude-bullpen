@@ -24,6 +24,8 @@ export const DEFAULT_LEADS: readonly string[] = ["lead", "team-lead", "main"];
 
 /** How many steps a teammate's trail keeps. */
 export const TRAIL_LENGTH = 3;
+/** A teammate silent this long is taken as gone, when nothing says otherwise. */
+export const SILENT_MS = 30 * 60_000;
 /** How many hallway messages, asks and kickbacks the state keeps. */
 export const KEEP = 50;
 
@@ -128,6 +130,10 @@ export function applyEvent(
 	else if (known) issue = nextIssue(e.kind, actor?.issue, refs);
 	let status = actor?.status ?? "running";
 	if (known) status = e.kind === "turn-end" ? "idle" : "running";
+	// `leave` (a member gone from the roster) isn't a journal kind yet; read it
+	// by name so the model is ready when it lands.
+	const kind: string = e.kind;
+	if (kind === "leave") status = "gone";
 	teammates[e.who] = step(teammates, e.who, e, {
 		agentId: e.agentId ?? actor?.agentId,
 		status,
@@ -196,6 +202,26 @@ export function reduceEvents(
 	let state = EMPTY_TEAM;
 	for (const e of events) state = applyEvent(state, e, options);
 	return state;
+}
+
+/**
+ * The state at `now` with teammates (not leads) silent past `SILENT_MS` taken
+ * as gone: a fallback for departures the journal never recorded.
+ */
+export function withSilence(
+	state: TeamState,
+	now: number,
+	options: ModelOptions = {},
+): TeamState {
+	const teammates = { ...state.teammates };
+	for (const t of Object.values(teammates))
+		if (
+			t.status !== "gone" &&
+			!isLead(t.name, options) &&
+			now - t.lastActiveAt > SILENT_MS
+		)
+			teammates[t.name] = { ...t, status: "gone" };
+	return { ...state, teammates };
 }
 
 /** The state with live presence laid over what the events implied. */
