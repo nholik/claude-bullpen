@@ -30,8 +30,8 @@ export function activityPhrase(step: TrailStep): string {
 	return step.detail;
 }
 
-/** Coarse age that only changes at the existing view refresh: `12s`, `3m`. */
+/** Minute-step age, like `age()`: a seconds counter would redraw every second. */
 export function shortAge(now: number, at: number): string {
 	const seconds = Math.max(0, Math.floor((now - at) / 1000));
-	return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m`;
+	return seconds < 60 ? "<1m" : `${Math.floor(seconds / 60)}m`;
 }
