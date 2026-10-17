@@ -128,13 +128,24 @@ export const GH_MISSING: GhResult = {
 export function runFailure(error: unknown): GhResult {
 	const text = error instanceof Error ? error.message : String(error);
 	if (/time[sd]? ?out/i.test(text))
-		return { status: "error", message: "gh timed out" };
-	return GH_MISSING;
+		return { status: "network", message: "gh timed out" };
+	return classifyFailure(text);
 }
 
 /** Names a failed `gh` run from its standard error. */
 export function classifyFailure(stderr: string): GhResult {
 	const text = stderr.toLowerCase();
+	if (/saml|sso|single.sign.on/.test(text))
+		return {
+			status: "sso-required",
+			message: "GitHub SSO authorization required",
+		};
+	if (
+		/network|could not resolve|no such host|connect(?:ion|ing)|dial tcp|tls handshake|certificate|timed? ?out|econn|enotfound/.test(
+			text,
+		)
+	)
+		return { status: "network", message: "GitHub network unavailable" };
 	if (/rate limit|abuse detection/.test(text))
 		return { status: "rate-limited", message: "GitHub rate limited" };
 	if (/gh auth login|bad credentials|not logged in|authentication/.test(text))
@@ -153,6 +164,12 @@ export function classifyFailure(stderr: string): GhResult {
 
 /** Reads one `gh issue list` run into issues or a named failure. */
 export function readIssueList(run: RunOutput): GhResult {
+	// SSO can require organization authorization even for a signed-in account.
+	if (
+		run.exitCode !== 0 &&
+		/saml|sso|single.sign.on/i.test(run.stderr || run.stdout)
+	)
+		return classifyFailure(run.stderr || run.stdout);
 	// gh exits 4 when it needs a sign-in, and may say so on either stream.
 	if (run.exitCode === 4)
 		return { status: "signed-out", message: "gh not signed in" };
@@ -284,4 +301,12 @@ export async function fetchCounts(
 	return open === undefined || closed === undefined
 		? undefined
 		: { open, closed };
+}
+
+/** Repeated failures slow polling; one success restores the configured cadence. */
+export function pollDelay(baseMs: number, failures: number): number {
+	return Math.max(
+		baseMs,
+		Math.min(600_000, baseMs * 2 ** Math.min(10, Math.max(0, failures))),
+	);
 }

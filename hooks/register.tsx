@@ -34,6 +34,7 @@ import {
 	parseBurndown,
 	parseRepo,
 	parseRepoHost,
+	pollDelay,
 	REPO_ARGV,
 	readIssueList,
 	runFailure,
@@ -412,6 +413,7 @@ async function pollGithub($: $, generation = pollGeneration) {
 		burndown,
 		checkedAt: at,
 	}));
+	return result.status === "ok";
 }
 
 /** Demo is a read-only projection; live observers keep recording normally. */
@@ -452,11 +454,13 @@ async function loadProfile($: $) {
 	);
 	pollTimer?.cancel();
 	const generation = ++pollGeneration;
+	let failures = 0;
 	const poll = async () => {
-		await pollGithub($, generation).catch(() => {});
+		const success = await pollGithub($, generation).catch(() => false);
+		if ((await read($, demoStart)) < 0) failures = success ? 0 : failures + 1;
 		if (generation === pollGeneration)
 			pollTimer = $.clock.after(
-				parsed.profile.issues.pollSeconds * 1000,
+				pollDelay(parsed.profile.issues.pollSeconds * 1000, failures),
 				() => void poll(),
 			);
 	};

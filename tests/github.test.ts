@@ -14,6 +14,7 @@ import {
 	parseIssueList,
 	parseRepo,
 	parseRepoHost,
+	pollDelay,
 	readCount,
 	readIssueList,
 	runFailure,
@@ -188,7 +189,10 @@ test("headerText says when gh is missing, and nothing before a poll", async () =
 
 test("runFailure tells a missing gh from a slow one", async () => {
 	expect(runFailure(new Error("spawn gh ENOENT"))).toEqual(GH_MISSING);
-	expect(runFailure("cannot start")).toEqual(GH_MISSING);
+	expect(runFailure("cannot start")).toEqual({
+		status: "error",
+		message: "gh: cannot start",
+	});
 	expect(
 		headerText(runFailure(new Error("process timed out after 30000 ms"))),
 	).toBe("gh timed out");
@@ -333,4 +337,49 @@ test("Enterprise counts carry the resolved host and isolate stored history", asy
 	expect(burndownKey("owner/repo", "", host)).not.toBe(
 		burndownKey("owner/repo", ""),
 	);
+});
+
+test("SSO and network failures have actionable distinct header states", () => {
+	for (const error of [
+		"SAML enforcement: authentication failed",
+		"Resource protected by organization SAML",
+		"SSO authorization required",
+	])
+		expect(classifyFailure(error).status).toBe("sso-required");
+	for (const error of [
+		"error connecting to api.github.com",
+		"dial tcp: no such host",
+		"TLS handshake timeout",
+	])
+		expect(classifyFailure(error).status).toBe("network");
+	expect(runFailure(new Error("permission denied")).status).toBe("error");
+});
+
+test("poll backoff is bounded and a success restores the base interval", () => {
+	expect([0, 1, 2, 3, 4, 1000].map((n) => pollDelay(60000, n))).toEqual([
+		60000, 120000, 240000, 480000, 600000, 600000,
+	]);
+	expect(pollDelay(60000, 0)).toBe(60000);
+	expect(pollDelay(900000, 4)).toBe(900000);
+});
+
+test("a repository with 1205 open issues uses search totals and a bounded list", async () => {
+	const fixture = Array.from({ length: 1205 }, (_, i) => ({
+		number: i + 1,
+		title: `Issue ${i + 1}`,
+		state: "OPEN",
+		labels: [],
+		assignees: [],
+	}));
+	const list = readIssueList(ok(JSON.stringify(fixture.slice(0, 200))));
+	expect(headerText(list)).toBe("200+ issues (counts unavailable)");
+	if (list.status !== "ok") throw new Error("fixture did not parse");
+	const counts = await fetchCounts(
+		async (argv) =>
+			ok(argv.some((s) => s.endsWith("state:open")) ? "1205" : "95"),
+		"o/r",
+		"",
+	);
+	expect(list.issues.length).toBe(200);
+	expect(headerText({ ...list, counts })).toBe("95/1300 closed");
 });
