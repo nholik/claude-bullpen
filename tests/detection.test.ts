@@ -74,3 +74,18 @@ test("unverified tools never close huddles and confirmed closes survive journals
 		12,
 	]);
 });
+
+test("send-back negation covers only the phrase it modifies", () => {
+	for (const [text, expected] of [
+		["This is not ready, sending it back", true],
+		["No fix here, kick it back", true],
+		["Not green yet - kicking this back", true],
+		["Nothing works; sent it back", true],
+		["not sending it back", false],
+		["I'm not going to send it back", false],
+		["won't kick it back", false],
+		["never kicked this back", false],
+		["not ready, but not sending it back", false],
+	] as const)
+		expect(isKickback(text, false)).toBe(expected);
+});

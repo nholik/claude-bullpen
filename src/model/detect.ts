@@ -35,13 +35,23 @@ function unnegatedFailure(text: string): boolean {
 }
 
 /**
+ * Whether `before`, the text ahead of a send-back phrase, negates it: a
+ * negation within three words, in the same comma-delimited phrase. An earlier
+ * "not ready," or "no fix here," leaves the send-back standing.
+ */
+function negatesSendBack(before: string): boolean {
+	const phrase = before.split(/[.,;:!?\n]/).pop() ?? "";
+	return NEGATED.test(phrase.trim().split(/\s+/).slice(-3).join(" "));
+}
+
+/**
  * Whether a message sends work back: it says so, or a reviewing role (gate,
  * ux) reports a failure and no pass.
  */
 export function isKickback(text: string, reviewer: boolean): boolean {
 	return text.split(/[;\n]|\bbut\b/i).some((clause) => {
 		const sent = SENT_BACK.exec(clause);
-		if (sent && !NEGATED.test(clause.slice(0, sent.index))) return true;
+		if (sent && !negatesSendBack(clause.slice(0, sent.index))) return true;
 		return reviewer && !PASSED.test(clause) && unnegatedFailure(clause);
 	});
 }
