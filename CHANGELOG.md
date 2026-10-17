@@ -17,5 +17,5 @@
 - Correct marketplace installation instructions and document workplace setup and troubleshooting.
 
 Known P2 follow-ups: SSO hostname matching (#44), manual-live backoff reset (#45),
-auxiliary-verb close confirmations (#46), and send-back negation scope (#47).
+auxiliary-verb close confirmations (#46), send-back negation scope (#47), and ASCII story teammate links (#52).
 Windows Terminal and real Enterprise verification remain outstanding.
