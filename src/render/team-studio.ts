@@ -108,13 +108,12 @@ function workstation(
 		{ text: member.name, fg: color, agentId: member.agentId, bold: true },
 		{ text: zs ? ` ${zs.trim()}` : "", fg: STUDIO.muted },
 	];
-	// The state word outranks the role, and the role the age: drop in that order
-	// when the line is tight, keeping a gap before the right edge text.
+	// The state word outranks the age: drop the age when the line is tight,
+	// keeping a gap before the right edge text. The role has its own row.
 	const stamp = age(now, member.lastActiveAt);
 	const word = text(feel.label, feel.color);
 	const dot = " · ";
 	const tails: Line[] = [
-		[...word, ...text(`${dot}${role}${dot}${stamp}`, STUDIO.muted)],
 		[...word, ...text(`${dot}${stamp}`, STUDIO.muted)],
 		word,
 	];
@@ -130,15 +129,19 @@ function workstation(
 		inside(align(soften(name), soften(tail), columns - 4), columns, border),
 		inside(
 			soften(
-				member.issue === undefined
-					? text("Unassigned", STUDIO.muted)
-					: [
-							{
-								text: `#${member.issue} ${title ?? ""}`,
-								fg: STUDIO.text,
-								story: member.issue,
-							},
-						],
+				align(
+					member.issue === undefined
+						? text("Unassigned", STUDIO.muted)
+						: [
+								{
+									text: `#${member.issue} ${title ?? ""}`,
+									fg: STUDIO.text,
+									story: member.issue,
+								},
+							],
+					text(role, STUDIO.muted),
+					columns - 4,
+				),
 			),
 			columns,
 			border,

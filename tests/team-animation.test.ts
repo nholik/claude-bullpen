@@ -193,3 +193,24 @@ test("idle cards dim and working cards do not", () => {
 	expect(dimmed("scout")).toBe(true);
 	expect(dimmed("ada")).toBe(false);
 });
+
+test("every card shows its role, even two across", () => {
+	const typed = buildModel(events, 10000, {
+		agentTypes: { ada: "builder", smith: "gate", scout: "gate" },
+	});
+	for (const columns of [72, 110]) {
+		const text = teamStudioView(
+			typed,
+			github,
+			DEFAULT_PROFILE,
+			columns,
+			37,
+			10000,
+		)
+			.regions.flat()
+			.map((s) => s.text)
+			.join("");
+		expect(text).toContain("engineer");
+		expect(text).toContain("reviewer");
+	}
+});
