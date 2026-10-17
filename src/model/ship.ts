@@ -24,6 +24,8 @@ export type ShipPath = {
 	pr?: number;
 	/** The latest review verdict; kept after a resubmission for context. */
 	verdict?: ShipVerdict;
+	/** A review has ever asked for changes, even if a later one passed. */
+	bounced: boolean;
 	/** An @codex review was requested on the PR. */
 	codex: boolean;
 	/** When the stage last changed. */
@@ -46,6 +48,13 @@ const REVIEW_ASK =
 // "PR #61 (#44) CHANGES", "PR #62 (#46): PASS", "#61 (#44) PASS now"
 const VERDICT =
 	/(?:\bPR\s+)?#(\d{1,7})\s+\(#(\d{1,7})\)\s*:?\s*(PASS|CHANGES)\b/g;
+// "#91 merged", "PR #91 merged", "merged PR #91": tied to an issue only when
+// the number is a PR an earlier event announced, since "#87 merged" is rarely
+// about an issue number. Clauses that ask, negate or only promise are skipped.
+const MERGED_AT =
+	/(?:\bPR\s+)?#(\d{1,7})\s+(?:is\s+|was\s+|now\s+|also\s+|just\s+)?merged\b|\bmerged\s+(?:PR\s+)?#(\d{1,7})\b/gi;
+const NOT_MERGED =
+	/\?|\b(?:not|never|no|yet|until|once|when|after|before|if|whether|will|should|to be|can)\b|n't\b/i;
 const GH_PR = /\bgh\s+pr\s+(create|review|merge|comment)\b/;
 
 /** Numbers in `gh pr <verb> 61` or a `for p in 61 62; do gh pr ...` loop. */
@@ -77,6 +86,7 @@ function move(
 		issue,
 		stage: "working" as const,
 		codex: false,
+		bounced: false,
 		at,
 	};
 	// Merged and shipped are terminal: a recap or stale ask must not undo them.
@@ -87,6 +97,7 @@ function move(
 			patch.stage !== undefined &&
 			patch.stage !== "shipped");
 	const next = { ...prev, ...patch };
+	if (patch.verdict === "changes") next.bounced = true;
 	if (locked) next.stage = prev.stage;
 	if (next.stage !== prev.stage) next.at = at;
 	const prIssue =
@@ -117,6 +128,15 @@ export function applyShip(state: ShipState, e: BullpenEvent): ShipState {
 				stage: pass ? "approved" : "changes",
 				verdict: pass ? "pass" : "changes",
 			});
+		}
+		for (const clause of e.detail.split(/(?<=[.!?])\s+|[;\n]/)) {
+			if (NOT_MERGED.test(clause)) continue;
+			for (const m of clause.matchAll(MERGED_AT)) {
+				const pr = Number(m[1] ?? m[2]);
+				const issue = next.prIssue[pr];
+				if (issue !== undefined)
+					next = move(next, issue, e.at, { stage: "merged" });
+			}
 		}
 	}
 	if (e.kind === "tool" && e.target === "Bash" && GH_PR.test(e.detail)) {
@@ -155,4 +175,16 @@ export function shipPaths(
 			stage: "shipped",
 		});
 	return state.paths;
+}
+
+/** Issues that count as shipped: merged or closed, from the ship paths and the close log. */
+export function shippedIssues(
+	paths: Readonly<Record<number, ShipPath>>,
+	closed: readonly number[],
+): number[] {
+	const out = new Set(closed);
+	for (const path of Object.values(paths))
+		if (path.stage === "merged" || path.stage === "shipped")
+			out.add(path.issue);
+	return [...out];
 }

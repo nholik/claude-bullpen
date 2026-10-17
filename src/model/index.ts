@@ -2,6 +2,7 @@
 
 import type { BullpenEvent } from "../../types";
 import { moraleOf } from "./morale";
+import { shippedIssues } from "./ship";
 import {
 	DEFAULT_LEADS,
 	huddlesOf,
@@ -15,6 +16,7 @@ import {
 import type { BullpenModel, HallwayMessage } from "./types";
 
 export { moraleGlyph } from "./morale";
+export type { ShipPath, ShipStage, ShipVerdict } from "./ship";
 export {
 	AWAY_MS,
 	applyEvent,
@@ -57,6 +59,11 @@ export function modelOf(
 		asks: state.asks,
 		kickbacks: state.kickbacks,
 		closed: state.closes.map((c) => c.issue),
+		ship: Object.values(state.ship.paths),
+		shipped: shippedIssues(
+			state.ship.paths,
+			state.closes.map((c) => c.issue),
+		).length,
 		morale: moraleOf(live, huddles, now, options.leads ?? DEFAULT_LEADS),
 	};
 }

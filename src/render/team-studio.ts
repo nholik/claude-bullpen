@@ -6,6 +6,7 @@ import { fit, glyphLines, type Line, textLine, width, wrapText } from "./lines";
 import { moodFor, snoozeFrame } from "./mood";
 import { moraleHint } from "./morale";
 import { age, align, clock, edge, inside, section, text } from "./operations";
+import { needsYou, shippingRows, shippingSection } from "./shipping";
 import { STUDIO } from "./studio";
 
 /** Short-lived signals use the existing one-second view refresh; no extra timer. */
@@ -166,6 +167,10 @@ export function teamStudioView(
 		);
 	const hint = moraleHint(model, now);
 	const working = team.filter((m) => m.status === "running").length;
+	const shipping = shippingRows(model, now);
+	const inFlight = shipping.filter(
+		(r) => r.stage !== "merged" && r.stage !== "shipped",
+	).length;
 	const header = [
 		align(
 			text(" BULLPEN / TEAM STUDIO", STUDIO.lavender),
@@ -179,12 +184,13 @@ export function teamStudioView(
 			hint
 				? text(` ${hint}`, STUDIO.amber)
 				: text(
-						` ${github.repo ?? "workspace"} · ${team.length} teammates · ${model.huddles.length} huddles`,
+						` ${github.repo ?? "workspace"} · ${team.length} teammates · ${inFlight} in flight`,
 						STUDIO.muted,
 					),
-			text(`${model.closed.length} shipped this session `, STUDIO.muted),
+			text(`${model.shipped} shipped this session `, STUDIO.muted),
 			columns,
 		),
+		...needsYou(model, columns),
 	];
 	const room = Math.max(0, rows - header.length);
 	const leftWidth = columns >= 120 ? Math.floor((columns - 3) * 0.68) : columns;
@@ -194,8 +200,10 @@ export function teamStudioView(
 		12,
 		Math.floor((leftWidth - (across - 1) * 2) / across),
 	);
+	// SHIPPING keeps its rows: cards give way before the path to merge does.
+	const reserve = Math.min(shipping.length + 1, 6) + 1;
 	const capacity =
-		across * Math.max(0, Math.floor((room - 3) / (CARD_ROWS + 1)));
+		across * Math.max(0, Math.floor((room - 3 - reserve) / (CARD_ROWS + 1)));
 	const shown = team.slice(0, capacity);
 	const left: Line[] = [section("WORKSTATIONS / teammates", leftWidth)];
 	for (let index = 0; index < shown.length; index += across) {
@@ -220,45 +228,18 @@ export function teamStudioView(
 		);
 	if (!team.length)
 		left.push(textLine("Waiting for teammates to join.", leftWidth));
-	const asks = model.asks.filter((a) => a.open);
-	if (columns < 120 && asks[0])
+	if (left.length + 4 < room) {
 		left.push(
-			fit(
-				text(`! ${asks[0].from} needs you: ${asks[0].text}`, STUDIO.amber),
+			...shippingSection(
+				model,
+				github,
+				profile,
 				leftWidth,
+				Math.min(room - left.length - 1, columns >= 120 ? 12 : 8),
+				now,
 			),
 		);
-	if (left.length + 4 < room) {
-		left.push(section("HUDDLES / working together", leftWidth));
-		for (const huddle of model.huddles.slice(
-			0,
-			Math.floor((room - left.length - 1) / 2),
-		)) {
-			const title =
-				github.result?.status === "ok"
-					? github.result.issues.find((i) => i.number === huddle.issue)?.title
-					: undefined;
-			left.push(
-				fit(
-					[
-						{
-							text: `#${huddle.issue} ${title ?? ""}  `,
-							fg: STUDIO.text,
-							story: huddle.issue,
-						},
-						...huddle.members.flatMap((name) => [
-							{
-								text: `${name} `,
-								fg: colorFor(name, profile, colorIndex(name)),
-								agentId: model.teammates[name]?.agentId,
-							},
-						]),
-					],
-					leftWidth,
-				),
-			);
-			if (columns >= 120) left.push([]);
-		}
+		if (columns >= 120) left.push([]);
 		// Narrow panes have no hallway column: use the rows left over for it.
 		const spare = room - left.length;
 		if (columns < 120 && spare >= 2) {
@@ -305,17 +286,6 @@ export function teamStudioView(
 					rightWidth,
 				),
 			);
-		while (right.length < room - 7) right.push([]);
-		right.push(section("NEEDS YOU", rightWidth));
-		if (asks[0]) {
-			right.push(fit(text(`${asks[0].from} → lead`, STUDIO.amber), rightWidth));
-			right.push(
-				...wrapText(asks[0].text, rightWidth)
-					.slice(0, 3)
-					.map((line) => line.map((seg) => ({ ...seg, fg: STUDIO.amber }))),
-			);
-			right.push(textLine("t · open conversation", rightWidth));
-		} else right.push(textLine("✓ No open decisions", rightWidth));
 	}
 	const regions: Line[] = [];
 	for (let row = 0; row < room; row++) {
