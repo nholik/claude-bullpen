@@ -374,3 +374,23 @@ test("an emptied chunk of another session doesn't move lastChunk", async () => {
 	];
 	expect(lastChunk(entries, "me")).toBe(3);
 });
+
+test("planRetention ignores emptied sessions on a later pass", async () => {
+	const keep = 2;
+	const old = Array.from({ length: 5 }, (_, i) =>
+		file(`s${i}`, 1, (5 + i) * DAY),
+	);
+	const first = planRetention(old, NOW, "me", { keepSessions: keep });
+	expect(first.length).toBe(3);
+	// Pruning rewrote those files empty, with a fresh mtime.
+	const later = NOW + 2 * DAY;
+	const after = old.map((f) =>
+		first.includes(f.name) ? { ...f, size: 0, mtimeMs: NOW } : f,
+	);
+	// Nothing left to prune: the empties neither crowd out nor age the rest.
+	expect(planRetention(after, later, "me", { keepSessions: keep })).toEqual([]);
+	// With keep 1, only the older survivor goes.
+	expect(planRetention(after, later, "me", { keepSessions: 1 })).toEqual([
+		chunkName("s1", 1),
+	]);
+});

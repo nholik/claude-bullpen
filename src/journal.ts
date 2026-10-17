@@ -280,13 +280,13 @@ export function planRetention(
 	>();
 	for (const file of files) {
 		const chunk = parseChunkName(file.name);
-		if (!chunk || chunk.writer === own) continue;
+		// Emptied files carry a fresh mtime from the truncating write; they
+		// say nothing about when their session was active.
+		if (!chunk || chunk.writer === own || file.size <= 0) continue;
 		const s = sessions.get(chunk.writer) ?? { newest: 0, bytes: 0, names: [] };
 		s.newest = Math.max(s.newest, file.mtimeMs);
-		if (file.size > 0) {
-			s.bytes += file.size;
-			s.names.push(file.name);
-		}
+		s.bytes += file.size;
+		s.names.push(file.name);
 		sessions.set(chunk.writer, s);
 	}
 	const candidates = [...sessions.values()]
