@@ -20,21 +20,24 @@ test("activityPhrase reads like a verb and an object", () => {
 });
 
 const COMMANDS: [string, string][] = [
+	["S=/tmp/x", "working in the shell"],
+	["A=1 B=2", "working in the shell"],
+	["A=1 B=2 npm test", "running checks"],
 	[
-		"cd /home/max/source/github.com/nholik/claude-team-viz && gh…",
+		"cd /work/repo && gh…",
 		"working in the shell",
 	],
 	[
-		"cd /home/max/source/github.com/nholik/claude-team-viz && gi…",
+		"cd /work/repo && gi…",
 		"working in the shell",
 	],
 	[
-		"cd /home/max/x/.worktrees/72 && npm run check 2>&1 | tail -12",
+		"cd /work/x/.worktrees/72 && npm run check 2>&1 | tail -12",
 		"running checks",
 	],
 	["npm install 2>&1 | tail -2; npm run check", "installing deps"],
 	[
-		"cd /home/max/source/github.com/nholik/claude-team-viz/.work…",
+		"cd /work/repo/.work…",
 		"working in the shell",
 	],
 	["cd /w && npm run typecheck 2>&1 | tail -5", "typechecking"],

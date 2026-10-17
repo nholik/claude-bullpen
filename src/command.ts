@@ -21,8 +21,9 @@ function segments(command: string): string[] {
 		.map((part) => {
 			let s = part.split(/\s*\|\s*/)[0] ?? "";
 			s = s.replace(/\s*\d?>+\s*(?:&\d|\S+)/g, "").trim();
-			while (ENV_ASSIGNMENT.test(`${s} `)) s = s.replace(ENV_ASSIGNMENT, "");
-			return s.trim();
+			let rest = `${s} `;
+			while (ENV_ASSIGNMENT.test(rest)) rest = rest.replace(ENV_ASSIGNMENT, "");
+			return rest.trim();
 		})
 		.filter(Boolean);
 }
