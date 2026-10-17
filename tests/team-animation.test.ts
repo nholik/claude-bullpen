@@ -98,7 +98,7 @@ test("Studio animation fallback keeps status and activity without transient effe
 			.regions.flat()
 			.map((s) => s.text)
 			.join("");
-		expect(text).toContain("(o_o) heads-down");
+		expect(text).toContain("(o.o) heads-down");
 		expect(text).toContain("Please review #1");
 		expect(text.includes("TO smith")).toBe(false);
 		expect(text.includes("TURN DONE")).toBe(false);
@@ -158,4 +158,16 @@ test("Studio pulses only card frames when teammate colors match the default edge
 				: [STUDIO.edge, STUDIO.edge, STUDIO.edge],
 		);
 	}
+});
+
+test("every card draws its state word beside the face, at any width and glyph mode", () => {
+	for (const glyphs of ["unicode", "ascii"] as const)
+		for (const columns of [48, 60, 80, 120]) {
+			const text = render(10000, true, columns, glyphs)
+				.regions.flat()
+				.map((s) => s.text)
+				.join("");
+			expect(text).toContain("heads-down");
+			expect(text).toContain("snoozing");
+		}
 });

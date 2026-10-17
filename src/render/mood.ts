@@ -4,6 +4,7 @@ import { STUDIO } from "./studio";
 export type MoodKind =
 	| "gone"
 	| "needs-you"
+	| "stuck"
 	| "failing"
 	| "merged"
 	| "review"
@@ -19,6 +20,8 @@ export type MoodInput = {
 	needsYou?: boolean;
 	/** Waiting on a reviewer or gate. */
 	waitingOnReview?: boolean;
+	/** Minutes their issue has been stalled, when it is. */
+	stalledMin?: number;
 	/** Consecutive failing checks. */
 	failingChecks?: number;
 	/** Their issue closed a moment ago. */
@@ -58,6 +61,14 @@ const MOODS: Record<MoodKind, Omit<Mood, "kind" | "label">> = {
 		pulse: true,
 		snoozes: false,
 	},
+	stuck: {
+		face: "(._.)",
+		color: STUDIO.coral,
+		frame: STUDIO.coral,
+		dim: false,
+		pulse: false,
+		snoozes: false,
+	},
 	failing: {
 		face: "(>_<)",
 		color: STUDIO.coral,
@@ -81,7 +92,7 @@ const MOODS: Record<MoodKind, Omit<Mood, "kind" | "label">> = {
 		snoozes: false,
 	},
 	running: {
-		face: "(o_o)",
+		face: "(o.o)",
 		color: STUDIO.text,
 		dim: false,
 		pulse: false,
@@ -106,6 +117,7 @@ const MOODS: Record<MoodKind, Omit<Mood, "kind" | "label">> = {
 const LABELS: Record<MoodKind, string> = {
 	gone: "clocked out",
 	"needs-you": "needs you",
+	stuck: "stuck",
 	failing: "checks red",
 	merged: "merged",
 	review: "waiting on review",
@@ -118,6 +130,7 @@ const LABELS: Record<MoodKind, string> = {
 export function moodKind(input: MoodInput): MoodKind {
 	if (input.status === "gone") return "gone";
 	if (input.needsYou) return "needs-you";
+	if (input.stalledMin !== undefined) return "stuck";
 	if ((input.failingChecks ?? 0) > 0) return "failing";
 	if (input.justMerged) return "merged";
 	if (input.waitingOnReview) return "review";
@@ -128,9 +141,11 @@ export function moodKind(input: MoodInput): MoodKind {
 export function moodFor(input: MoodInput): Mood {
 	const kind = moodKind(input);
 	const label =
-		kind === "failing" && (input.failingChecks ?? 0) > 1
-			? `checks red x${input.failingChecks}`
-			: LABELS[kind];
+		kind === "stuck"
+			? `stuck · ${input.stalledMin ?? 0}m`
+			: kind === "failing" && (input.failingChecks ?? 0) > 1
+				? `checks red x${input.failingChecks}`
+				: LABELS[kind];
 	return { kind, label, ...MOODS[kind] };
 }
 

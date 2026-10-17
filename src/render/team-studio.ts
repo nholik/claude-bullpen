@@ -33,6 +33,18 @@ function activity(member: Teammate, model: BullpenModel, now: number) {
 	return undefined;
 }
 
+/** Minutes the member's issue has been stalled, when the morale model says so. */
+function stalledMin(member: Teammate, model: BullpenModel, now: number) {
+	const huddle = model.huddles.find(
+		(h) =>
+			h.issue === member.issue &&
+			model.morale.factors.stalled.includes(h.issue),
+	);
+	return huddle
+		? Math.max(0, Math.floor((now - huddle.lastActiveAt) / 60000))
+		: undefined;
+}
+
 function workstation(
 	member: Teammate,
 	model: BullpenModel,
@@ -46,6 +58,7 @@ function workstation(
 	const feel = moodFor({
 		status: member.status,
 		away: member.away,
+		stalledMin: stalledMin(member, model, now),
 		needsYou: model.asks.some((a) => a.open && a.from === member.name),
 	});
 	// The z's drift once per redraw (1 s while a highlight fades, else 15 s).
@@ -55,6 +68,9 @@ function workstation(
 		{ text: zs, fg: STUDIO.muted },
 		{ text: feel.label, fg: feel.color, bold: feel.pulse },
 	];
+	// The state word outranks the age: the age goes first when the line is tight.
+	const stamp = text(age(now, member.lastActiveAt), STUDIO.muted);
+	const ageFits = width(mood) + width(stamp) + 1 <= columns - 4;
 	const signal = profile.animations ? activity(member, model, now) : undefined;
 	const bright = signal && Math.floor((now - signal.at) / 1000) % 2 === 0;
 	const border = bright ? signal.color : (feel.frame ?? STUDIO.edge);
@@ -83,15 +99,7 @@ function workstation(
 	return [
 		edge(columns, false, border),
 		inside(align(name, text(role, STUDIO.muted), columns - 4), columns, border),
-		inside(
-			align(
-				mood,
-				text(age(now, member.lastActiveAt), STUDIO.muted),
-				columns - 4,
-			),
-			columns,
-			border,
-		),
+		inside(align(mood, ageFits ? stamp : [], columns - 4), columns, border),
 		inside(
 			member.issue === undefined
 				? text("Unassigned", STUDIO.muted)

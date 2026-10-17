@@ -60,3 +60,14 @@ test("snooze changes at most once per 2 s, keeps its width, and freezes when ani
 	expect(snoozeFrame(0, false)).toBe(snoozeFrame(60000, false));
 	expect(/^[ zZ]+$/.test(snoozeFrame(4000))).toBe(true);
 });
+
+test("a stalled issue makes its teammate stuck, with the minutes", () => {
+	const idle = moodFor({ status: "idle", stalledMin: 21 });
+	expect(idle.kind).toBe("stuck");
+	expect(idle.label).toBe("stuck · 21m");
+	expect(idle.face).toBe("(._.)");
+	expect(moodFor({ status: "running" }).face).toBe("(o.o)");
+	expect(moodFor({ status: "idle", stalledMin: 5, needsYou: true }).kind).toBe(
+		"needs-you",
+	);
+});
