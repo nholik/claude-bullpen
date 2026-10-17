@@ -1,0 +1,31 @@
+{
+	"name": "claude-bullpen",
+	"private": true,
+	"description": "Dev tooling for the bullpen Claude Code mod. Libraries under \"dependencies\" are compiled into src/vendor/ by `npm run vendor`; nothing is resolved at run time.",
+	"license": "MIT",
+	"type": "module",
+	"engines": {
+		"node": ">=24"
+	},
+	"scripts": {
+		"check": "biome check . && tsc -p . && npm run vendor:verify && claude plugin validate . && claude plugin test .",
+		"format": "biome check --write .",
+		"lint": "biome check .",
+		"typecheck": "tsc -p .",
+		"test": "claude plugin test .",
+		"validate": "claude plugin validate .",
+		"vendor": "node scripts/vendor.mjs",
+		"vendor:verify": "node scripts/vendor.mjs && git diff --exit-code -- src/vendor"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "2.5.15",
+		"@types/culori": "4.0.1",
+		"esbuild": "0.28.2",
+		"typescript": "7.0.2"
+	},
+	"dependencies": {
+		"culori": "4.0.2",
+		"string-width": "8.3.0",
+		"valibot": "1.5.0"
+	}
+}

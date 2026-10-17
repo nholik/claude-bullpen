@@ -1,0 +1,80 @@
+// Pure helpers that turn raw engine event fields into journal-friendly pieces.
+
+import stringWidth from "./vendor/string-width.js";
+
+const ISSUE_REF = /(?:^|[^\w&])#(\d{1,7})\b/g;
+
+/** Issue numbers referenced as `#123` in `text`, in order, without repeats. */
+export function issueRefs(text: string | undefined): number[] {
+	if (!text) return [];
+	const found: number[] = [];
+	for (const match of text.matchAll(ISSUE_REF)) {
+		const n = Number(match[1]);
+		if (!found.includes(n)) found.push(n);
+	}
+	return found;
+}
+
+const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+
+/**
+ * Flattens `text` to one line that fits `max` terminal columns, ending in `…`
+ * when cut. Measures display width, so CJK and emoji in issue titles and
+ * messages don't push a box's border out.
+ */
+export function oneLine(text: string, max: number): string {
+	const flat = text.replace(/\s+/g, " ").trim();
+	if (stringWidth(flat) <= max) return flat;
+	let out = "";
+	let width = 0;
+	for (const { segment } of graphemes.segment(flat)) {
+		const w = stringWidth(segment);
+		if (width + w > max - 1) break;
+		out += segment;
+		width += w;
+	}
+	return `${out}…`;
+}
+
+function basename(path: string): string {
+	const parts = path.split(/[\\/]/);
+	return parts[parts.length - 1] || path;
+}
+
+/**
+ * A short phrase for what a tool call is doing, from its flattened arguments
+ * (`e.command` for Bash, `e.file_path` for Edit, ...).
+ */
+export function describeTool(
+	tool: string,
+	args: Record<string, unknown>,
+): string {
+	const str = (key: string) =>
+		typeof args[key] === "string" ? (args[key] as string) : "";
+	switch (tool) {
+		case "Bash":
+			return oneLine(str("command"), 60);
+		case "Edit":
+		case "Write":
+		case "Read":
+		case "NotebookEdit":
+			return `${tool.toLowerCase()} ${basename(str("file_path") || str("notebook_path"))}`;
+		case "TaskCreate":
+			return `task: ${oneLine(str("subject"), 50)}`;
+		case "TaskUpdate":
+			return `task #${str("taskId")} ${str("status") || "updated"}`;
+		case "SendMessage":
+			return `message → ${str("to")}`;
+		case "Agent":
+			return `spawn ${str("name") || str("description")}`;
+		default:
+			return tool;
+	}
+}
+
+/** All string arguments joined, for issue-ref scanning. */
+export function argText(args: Record<string, unknown>): string {
+	return Object.values(args)
+		.filter((v): v is string => typeof v === "string")
+		.join(" ");
+}

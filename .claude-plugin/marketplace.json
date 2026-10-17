@@ -1,0 +1,13 @@
+{
+	"name": "claude-bullpen",
+	"owner": {
+		"name": "nholik"
+	},
+	"plugins": [
+		{
+			"name": "bullpen",
+			"source": "./"
+		}
+	],
+	"description": "Bullpen: a live TUI view of your Claude Code agent team."
+}
