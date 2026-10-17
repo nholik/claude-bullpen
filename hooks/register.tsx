@@ -624,6 +624,7 @@ export function register(on: On) {
 						name: e.name ?? e.description,
 						status: "running",
 						issue: assigned,
+						agentType: e.subagentType,
 					});
 					await record(
 						$,
@@ -732,6 +733,9 @@ export function register(on: On) {
 		const at = snapshot.now;
 		const model = buildModel(log, at, {
 			present: Object.fromEntries(list.map((m) => [m.name, m.status])),
+			agentTypes: Object.fromEntries(
+				list.flatMap((m) => (m.agentType ? [[m.name, m.agentType]] : [])),
+			),
 		});
 		const columns = Math.max(20, Math.min(512, e.props.bodyColumns ?? 60));
 

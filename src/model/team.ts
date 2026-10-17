@@ -18,6 +18,8 @@ export type ModelOptions = {
 	 * departed teammates (`gone`) leave their huddles and stop counting as idle.
 	 */
 	present?: Readonly<Record<string, MemberStatus>>;
+	/** Agent type by team name, from the members atom; outlives the event window. */
+	agentTypes?: Readonly<Record<string, string>>;
 };
 
 export const DEFAULT_LEADS: readonly string[] = ["lead", "team-lead", "main"];
@@ -264,4 +266,18 @@ export function huddlesOf(state: TeamState): Huddle[] {
 		(a, b) =>
 			b.members.length - a.members.length || b.lastActiveAt - a.lastActiveAt,
 	);
+}
+
+/** The state with agent types from the members atom, which the events may have lost. */
+export function withTypes(
+	state: TeamState,
+	types: ModelOptions["agentTypes"],
+): TeamState {
+	if (!types) return state;
+	const teammates = { ...state.teammates };
+	for (const [name, agentType] of Object.entries(types)) {
+		const t = teammates[name];
+		if (t && t.agentType !== agentType) teammates[name] = { ...t, agentType };
+	}
+	return { ...state, teammates };
 }

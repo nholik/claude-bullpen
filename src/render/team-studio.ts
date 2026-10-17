@@ -40,7 +40,12 @@ function workstation(
 	columns: number,
 	now: number,
 ): Line[] {
-	const color = colorFor(member.name, profile, colorIndex(member.name));
+	const color = colorFor(
+		member.name,
+		profile,
+		colorIndex(member.name),
+		member.agentType,
+	);
 	const role = roleLabel(member.name, member.agentType, profile);
 	const signal = profile.animations ? activity(member, model, now) : undefined;
 	const bright = signal && Math.floor((now - signal.at) / 1000) % 2 === 0;

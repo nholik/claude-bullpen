@@ -10,6 +10,7 @@ import {
 	type TeamState,
 	withAway,
 	withPresence,
+	withTypes,
 } from "./team";
 import type { BullpenModel, HallwayMessage } from "./types";
 
@@ -44,7 +45,10 @@ export function modelOf(
 	now: number,
 	options: ModelOptions = {},
 ): BullpenModel {
-	const live = withAway(withPresence(state, options.present), now);
+	const live = withAway(
+		withTypes(withPresence(state, options.present), options.agentTypes),
+		now,
+	);
 	const huddles = huddlesOf(live);
 	return {
 		teammates: live.teammates,

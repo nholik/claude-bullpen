@@ -506,3 +506,16 @@ test("morale is clamped and closes cap their lift", async () => {
 	);
 	expect(buildModel(asks, T + 10 * MINUTE).morale.score).toBe(0);
 });
+
+test("member agent types survive events falling out of the window and color cards", async () => {
+	// No spawn event in the window: the type comes from the members atom.
+	const model = buildModel(
+		readJournal(
+			'{"version":1,"at":1,"kind":"tool","who":"worker","detail":"x","issues":[]}',
+		).events,
+		2,
+		{ agentTypes: { worker: "builder", ghost: "gate" } },
+	);
+	expect(model.teammates.worker?.agentType).toBe("builder");
+	expect(model.teammates).not.toHaveProperty("ghost");
+});

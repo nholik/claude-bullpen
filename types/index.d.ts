@@ -45,6 +45,8 @@ export type Member = {
 	issue?: number;
 	/** Index into the palette; stable for the session. */
 	color: number;
+	/** The agent type it was spawned as (`builder`, `Explore`, ...). */
+	agentType?: string;
 	lastActiveAt: number;
 };
 
