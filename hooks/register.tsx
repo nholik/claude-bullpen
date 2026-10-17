@@ -58,7 +58,7 @@ import { confirmedToolCloses } from "../src/model/detect";
 import { createMotion, motionFor } from "../src/motion";
 import { DEFAULT_PROFILE, parseProfile } from "../src/profile";
 import { band } from "../src/render/header";
-import { fit, type Line } from "../src/render/lines";
+import { fit, glyphLines, type Line } from "../src/render/lines";
 import { type Focus, paneView } from "../src/render/pane";
 import { storyFor, storyLines } from "../src/render/story";
 import { join } from "../src/vendor/pathe.js";
@@ -839,7 +839,12 @@ export function register(on: On) {
 					{ Box, Button },
 					$,
 				)}
-				{renderLines(Text, [fit(links, columns)], { Box, Button }, $)}
+				{renderLines(
+					Text,
+					glyphLines([fit(links, columns)], config.glyphs),
+					{ Box, Button },
+					$,
+				)}
 				<Button
 					key="story-back"
 					hotkey="r"

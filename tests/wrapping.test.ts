@@ -60,3 +60,37 @@ test("long words hard-wrap and limited stories stay bounded with an overflow mar
 		if (rows >= 5) expect(text(lines)).toContain("more lines");
 	}
 });
+
+test("stories use every row when single-line or wrapped events exactly fit", () => {
+	for (const events of [
+		[{ ...event, kind: "tool" as const, detail: "done" }],
+		[event],
+		[event, { ...event, at: 1, detail: "Second event SENTINEL" }],
+	]) {
+		const story = { issue: 12, state: "open", events };
+		const full = storyLines(story, DEFAULT_PROFILE, 48, 100);
+		const exact = storyLines(story, DEFAULT_PROFILE, 48, full.length);
+		expect(exact).toEqual(full);
+		expect(text(exact).includes("earlier events")).toBe(false);
+		expect(text(exact).includes("more lines")).toBe(false);
+	}
+});
+
+test("overflow reserves a row for earlier events and retains the latest event", () => {
+	const events = Array.from({ length: 4 }, (_, at) => ({
+		...event,
+		at,
+		kind: "tool" as const,
+		detail: `event-${at}`,
+	}));
+	const lines = storyLines(
+		{ issue: 12, state: "open", events },
+		DEFAULT_PROFILE,
+		48,
+		5,
+	);
+	expect(lines.length).toBe(5);
+	expect(text(lines)).toContain("2 earlier events");
+	expect(text(lines)).toContain("event-2");
+	expect(text(lines)).toContain("event-3");
+});
