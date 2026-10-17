@@ -796,7 +796,7 @@ export function register(on: On) {
 						hotkey="f"
 						onPress={() => void focusRegion($, "floor")}
 					>
-						{config.style === "operations" ? "topology" : "floor"}{" "}
+						{config.style === "operations" ? "topology" : "team"}{" "}
 					</Button>
 					<Button
 						key="huddles-focus"

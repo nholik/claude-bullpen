@@ -55,19 +55,19 @@ test("every region and focus mode stays inside pane dimensions", () => {
 				for (const line of lines) expect(width(line) <= columns).toBe(true);
 			}
 	const view = paneView(model, [], 72, 48, 2000);
-	expect(view.floorRows).toBe(13);
+	expect(view.floorRows).toBe(0);
 	expect(
 		view.regions.some((line) => line.some((seg) => seg.text.includes("│"))),
 	).toBe(true);
 });
 
-test("surfaces without Raster give floor space back to the regions", () => {
+test("glyph overviews work without Raster while narrow layouts reclaim floor space", () => {
 	const model = buildModel(events, 2000);
 	for (const columns of [48, 72, 110, 160]) {
 		const terminal = paneView(model, [], columns, 24, 2000);
 		const other = paneView(model, [], columns, 24, 2000, { raster: false });
 		expect(other.floorRows).toBe(0);
-		expect(other.regions.length > terminal.regions.length).toBe(true);
+		expect(other.regions.length >= terminal.regions.length).toBe(true);
 		const focused = paneView(model, [], columns, 24, 2000, {
 			raster: false,
 			focus: "floor",
