@@ -1,21 +1,37 @@
-import type { EngineInterface, On, RenderChildren } from "claude-code";
+import type { EngineInterface, FsEntry, On, RenderChildren } from "claude-code";
 import { atom, read, update } from "claude-code";
+import {
+	applyBatch,
+	Batcher,
+	type CollectOp,
+	FLUSH_MS,
+	LEAD,
+	type MemberPatch,
+} from "../src/collect";
 import { hex } from "../src/color";
 import { DEMO_PREFIX, DEMO_SCRIPT, type DemoStep } from "../src/demo";
-import {
-	argText,
-	describeTool,
-	issueRefs,
-	nextIssue,
-	oneLine,
-} from "../src/events";
+import { argText, describeTool, issueRefs, oneLine } from "../src/events";
 import { drawFloor, PALETTE } from "../src/floor";
-import type { BullpenEvent, BullpenEventKind, Member } from "../types";
+import {
+	type BullpenEvent,
+	type Chunk,
+	chunkLines,
+	chunkName,
+	journalDir,
+	lastChunk,
+	MAX_CHUNKS,
+	planAppend,
+	STATE_EVENTS,
+	teamOf,
+	toLine,
+} from "../src/journal";
+import type { BullpenEventKind } from "../types";
 
 const PANE = "bullpen";
 const FLOOR_KEY = "floor";
 const FLOOR_ROWS = 6;
-const LEAD = "lead";
+/** How often flushed events are appended to the journal file. */
+const JOURNAL_FLUSH_MS = 1000;
 
 const events = atom({ plugin: "bullpen", key: "events" } as const, []);
 const members = atom({ plugin: "bullpen", key: "members" } as const, {});
@@ -26,35 +42,110 @@ type $ = EngineInterface;
 let floorSize: { columns: number; rows: number } | undefined;
 let frame = 0;
 
+/** The team name once a teammate's address shows it; until then the session id. */
+let team: string | undefined;
+/** The journal's current chunk as last written, so appends needn't re-read it. */
+let journal: { dir: string; current: Chunk } | undefined;
+
+let collector: Batcher<CollectOp> | undefined;
+let journalWriter: Batcher<BullpenEvent> | undefined;
+
 async function now($: $) {
 	return $.clock.now();
 }
 
-async function touch(
-	$: $,
-	id: string,
-	patch: Partial<Member> & { name?: string },
-) {
-	const at = await now($);
+/** Folds a batch into members and events: one write per atom. */
+async function flushState($: $, ops: CollectOp[]) {
+	let added: BullpenEvent[] = [];
 	await update($, members, (all) => {
-		const prev = all?.[id];
-		const color = prev?.color ?? Object.keys(all ?? {}).length;
-		const next: Member = {
-			id,
-			name: patch.name ?? prev?.name ?? (id === LEAD ? LEAD : id.slice(0, 8)),
-			status: patch.status ?? prev?.status ?? "running",
-			issue: patch.issue ?? prev?.issue,
-			color,
-			lastActiveAt: at,
-		};
-		return { ...all, [id]: next };
+		const out = applyBatch(all ?? {}, ops);
+		added = out.events;
+		return out.members;
 	});
+	if (added.length === 0) return;
+	await update($, events, (list) =>
+		[...(list ?? []), ...added].slice(-STATE_EVENTS),
+	);
+	// The demo is scripted; only real teams go in the journal file.
+	for (const ev of added)
+		if (!ev.agentId?.startsWith(DEMO_PREFIX)) writerOf($).push(ev);
 }
 
-async function nameOf($: $, agentId: string | undefined) {
-	if (!agentId) return LEAD;
-	const all = await read($, members);
-	return all[agentId]?.name ?? agentId.slice(0, 8);
+/** Whether a journal problem was logged yet; once per session is enough. */
+let journalWarned = false;
+
+function warnJournal($: $, text: string) {
+	if (journalWarned) return;
+	journalWarned = true;
+	$.ui.log(`bullpen: ${text}`, { to: "debug" });
+}
+
+/**
+ * This writer's newest chunk in `dir`, or an empty chunk 1 for a new journal.
+ * Never guesses: when the folder can't be listed it answers undefined and the
+ * batch isn't written, and a chunk that exists but can't be read is left
+ * alone while journaling moves on to the next one in the ring.
+ */
+async function loadChunk(
+	$: $,
+	dir: string,
+	writer: string,
+): Promise<Chunk | undefined> {
+	if (!(await $.fs.exists(dir))) return { writer, index: 1, lines: [] };
+	let entries: FsEntry[];
+	try {
+		entries = await $.fs.list(dir);
+	} catch (error) {
+		warnJournal($, `can't list ${dir} (${error}); not journaling`);
+		return undefined;
+	}
+	const index = Math.max(1, lastChunk(entries, writer));
+	const path = `${dir}/${chunkName(writer, index)}`;
+	if (!(await $.fs.exists(path))) return { writer, index, lines: [] };
+	try {
+		return { writer, index, lines: chunkLines(await $.fs.read(path)) };
+	} catch (error) {
+		warnJournal($, `can't read ${path} (${error}); starting the next chunk`);
+		return { writer, index: (index % MAX_CHUNKS) + 1, lines: [] };
+	}
+}
+
+async function writeJournal($: $, added: BullpenEvent[]) {
+	const home = (await $.env.get("HOME")) ?? (await $.env.get("USERPROFILE"));
+	if (!home) return;
+	const writer = await $.session.id();
+	const dir = journalDir(home, team ?? writer);
+	if (journal?.dir !== dir || journal.current.writer !== writer) {
+		const current = await loadChunk($, dir, writer);
+		if (!current) return;
+		journal = { dir, current };
+	}
+	const plan = planAppend(journal.current, added.map(toLine));
+	for (const { name, text } of plan.writes)
+		await $.fs.write(`${dir}/${name}`, text);
+	journal = { dir, current: plan.current };
+}
+
+function collectorOf($: $) {
+	collector ??= new Batcher(
+		FLUSH_MS,
+		(ms, fn) => void $.clock.after(ms, fn),
+		(ops) => flushState($, ops),
+	);
+	return collector;
+}
+
+function writerOf($: $) {
+	journalWriter ??= new Batcher(
+		JOURNAL_FLUSH_MS,
+		(ms, fn) => void $.clock.after(ms, fn),
+		(added) => writeJournal($, added),
+	);
+	return journalWriter;
+}
+
+async function touch($: $, id: string, patch: MemberPatch) {
+	collectorOf($).push({ op: "touch", at: await now($), id, patch });
 }
 
 async function record(
@@ -64,51 +155,22 @@ async function record(
 	detail: string,
 	extra: { target?: string; text?: string; attribute?: boolean } = {},
 ) {
-	const who = await nameOf($, agentId);
-	const issues = issueRefs(`${detail} ${extra.text ?? ""}`);
-	const event: BullpenEvent = {
+	collectorOf($).push({
+		op: "event",
 		at: await now($),
 		kind,
 		agentId,
-		who,
-		target: extra.target,
 		detail,
-		issues,
-	};
-	await update($, events, (list) => [...(list ?? []), event].slice(-300));
-	if (extra.attribute === false) {
-		await touch($, agentId ?? LEAD, {});
-		return;
-	}
-	const current = (await read($, members))[agentId ?? LEAD]?.issue;
-	const issue = nextIssue(kind, current, issues);
-	await touch($, agentId ?? LEAD, issue === undefined ? {} : { issue });
+		target: extra.target,
+		text: extra.text,
+		attribute: extra.attribute ?? true,
+	});
 }
 
 async function reconcile($: $) {
 	const listed = await $.agent.list();
-	const at = await now($);
-	await update($, members, (all) => {
-		const next = { ...all };
-		for (const agent of listed) {
-			const prev = next[agent.id];
-			if (!prev && !agent.teammateId) continue;
-			next[agent.id] = {
-				id: agent.id,
-				name: agent.name ?? prev?.name ?? agent.description,
-				status: agent.status === "running" ? "running" : "idle",
-				issue: prev?.issue,
-				color: prev?.color ?? Object.keys(next).length,
-				lastActiveAt: prev?.lastActiveAt ?? at,
-			};
-		}
-		for (const [id, member] of Object.entries(next)) {
-			const isDemo = id.startsWith(DEMO_PREFIX);
-			if (id !== LEAD && !isDemo && !listed.some((a) => a.id === id))
-				next[id] = { ...member, status: "gone" };
-		}
-		return next;
-	});
+	team ??= listed.map((a) => teamOf(a.teammateId)).find((t) => t);
+	collectorOf($).push({ op: "reconcile", at: await now($), listed });
 }
 
 /** Plays one step of the demo script through the same path real events take. */
@@ -140,17 +202,14 @@ async function playStep($: $, step: DemoStep) {
 			return;
 		case "leave":
 			await touch($, id, { status: "gone" });
+			await record($, "leave", id, `${step.who} left`, { attribute: false });
 			return;
 	}
 }
 
 /** Clears earlier demo members and plays the script on the session clock. */
 async function playDemo($: $) {
-	await update($, members, (all) =>
-		Object.fromEntries(
-			Object.entries(all ?? {}).filter(([id]) => !id.startsWith(DEMO_PREFIX)),
-		),
-	);
+	collectorOf($).push({ op: "clear-demo" });
 	let at = 0;
 	for (const step of DEMO_SCRIPT) {
 		at += step.wait;
@@ -164,6 +223,11 @@ async function openPane($: $) {
 
 export function register(on: On) {
 	on("session.start", async ($, e, next) => {
+		// A new session in the same process starts its own journal.
+		team = undefined;
+		journal = undefined;
+		journalWarned = false;
+
 		await $.command.register({
 			name: "bullpen",
 			description: "Open the Bullpen: a live view of your agent team",
@@ -190,6 +254,13 @@ export function register(on: On) {
 		return next(e);
 	});
 
+	// Write out what's still batched before the session goes.
+	on("session.end", async (_$, e, next) => {
+		await collector?.drain();
+		await journalWriter?.drain();
+		return next(e);
+	});
+
 	on("command.run", { command: "bullpen" }, async ($, e) => {
 		const opened = await openPane($);
 		if (e.args.trim() === "demo") {
@@ -205,24 +276,25 @@ export function register(on: On) {
 
 	on("agent.spawn", async ($, e, next) => {
 		const spawned = await next(e);
-		if (spawned.agentId) {
+		team ??= teamOf(spawned.teammateId);
+		const { agentId } = spawned;
+		if (agentId) {
 			const brief = `${e.description} ${e.prompt}`;
-			await touch($, spawned.agentId, {
+			void touch($, agentId, {
 				name: e.name ?? e.description,
 				status: "running",
 				issue: issueRefs(brief)[0],
-			});
-			await record(
-				$,
-				"spawn",
-				e.parentAgentId,
-				`${e.isTeammate ? "teammate" : "subagent"} ${e.name ?? e.description} joined`,
-				{
-					target: e.name,
-					text: brief,
-					attribute: false,
-				},
-			);
+			})
+				.then(() =>
+					record(
+						$,
+						"spawn",
+						e.parentAgentId,
+						`${e.isTeammate ? "teammate" : "subagent"} ${e.name ?? e.description} joined`,
+						{ target: e.name, text: brief, attribute: false },
+					),
+				)
+				.catch(() => {});
 		}
 		return spawned;
 	});
@@ -238,13 +310,16 @@ export function register(on: On) {
 
 	on("turn.complete", async ($, e, next) => {
 		const done = await next(e);
-		await touch($, e.agentId ?? LEAD, { status: "idle" });
-		await record(
-			$,
-			"turn-end",
-			e.agentId,
-			`finished a turn (${Math.round(e.durationMs / 1000)}s)`,
-		);
+		void touch($, e.agentId ?? LEAD, { status: "idle" })
+			.then(() =>
+				record(
+					$,
+					"turn-end",
+					e.agentId,
+					`finished a turn (${Math.round(e.durationMs / 1000)}s)`,
+				),
+			)
+			.catch(() => {});
 		return done;
 	});
 
