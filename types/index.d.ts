@@ -115,6 +115,8 @@ declare module "claude-code" {
 			profile: Profile;
 			github: GithubSource;
 			hallwaySeenAt: number;
+			focus: "" | "floor" | "huddles" | "talk";
+			viewTime: number;
 		};
 	}
 }

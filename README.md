@@ -58,6 +58,12 @@ Optional. Put a `bullpen.json` in your project's `.claude/` folder (`/bullpen re
 
 Colors by role are parsed and available as `colorFor` in `src/profile.ts`; the floor and band don't use them yet (#8).
 
+Pane controls: `f` floor, `h` huddles, `t` talk; press again or `r` to restore.
+These keys work while the pane has keyboard focus. Escape returns keyboard focus
+to Claude (the mod API does not deliver it). `/bullpen focus floor|huddles|talk|all`
+also works from the prompt. The full pixel floor fits pane bodies from 48 columns;
+huddles and hallway sit side by side from 60 columns.
+
 ## Develop
 
 Requires Node 24+ and Claude Code 2.1.287+.
