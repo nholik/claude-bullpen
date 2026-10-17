@@ -28,13 +28,14 @@ import {
 	addSnapshot,
 	allStatesFilter,
 	burndownKey,
+	createPollLoop,
 	exactCounts,
 	fetchCounts,
 	issueListArgv,
+	type PollLoop,
 	parseBurndown,
 	parseRepo,
 	parseRepoHost,
-	pollDelay,
 	REPO_ARGV,
 	readIssueList,
 	runFailure,
@@ -166,7 +167,7 @@ async function tickAnimation($: $) {
 		animationTimer = undefined;
 	}
 }
-let pollTimer: Timer | undefined;
+let pollLoop: PollLoop | undefined;
 let pollGeneration = 0;
 let viewTimer: Timer | undefined;
 const focus = atom({ plugin: "bullpen", key: "focus" } as const, "");
@@ -463,19 +464,19 @@ async function loadProfile($: $) {
 	await update($, github, (old) =>
 		old.filter === filter ? old : { filter, burndown: [], checkedAt: 0 },
 	);
-	pollTimer?.cancel();
+	pollLoop?.cancel();
 	const generation = ++pollGeneration;
-	let failures = 0;
-	const poll = async () => {
-		const success = await pollGithub($, generation).catch(() => false);
-		if ((await read($, demoStart)) < 0) failures = success ? 0 : failures + 1;
-		if (generation === pollGeneration)
-			pollTimer = $.clock.after(
-				pollDelay(parsed.profile.issues.pollSeconds * 1000, failures),
-				() => void poll(),
-			);
-	};
-	void poll();
+	const loop = createPollLoop({
+		baseMs: parsed.profile.issues.pollSeconds * 1000,
+		poll: async () => {
+			const success = await pollGithub($, generation).catch(() => false);
+			return (await read($, demoStart)) < 0 ? success : undefined;
+		},
+		current: () => generation === pollGeneration,
+		after: (ms, fn) => $.clock.after(ms, fn),
+	});
+	pollLoop = loop;
+	loop.start();
 	if (parsed.warnings.length > 0)
 		$.ui.toast(`bullpen.json: ${parsed.warnings.join("; ")}`, {
 			timeoutMs: 10000,
@@ -535,7 +536,7 @@ export function register(on: On) {
 		animationTimer = undefined;
 		scene = undefined;
 		viewTimer?.cancel();
-		pollTimer?.cancel();
+		pollLoop?.cancel();
 		pollGeneration++;
 		await producers.drain();
 		await collector?.drain();
@@ -548,7 +549,9 @@ export function register(on: On) {
 			for (const timer of demoTimers) timer.cancel();
 			demoTimers = [];
 			await update($, demoStart, () => -1);
-			void pollGithub($).catch(() => {});
+			void pollGithub($)
+				.then((ok) => ok && pollLoop?.recover())
+				.catch(() => {});
 			return { text: "Bullpen: showing the live team." };
 		}
 		if (e.args.trim().startsWith("story")) {
