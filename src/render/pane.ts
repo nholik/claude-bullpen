@@ -85,7 +85,7 @@ export function paneView(
 			band: band(model, github, profile, columns, options.seenAt ?? -1),
 		};
 	}
-	const heading = header(model, github, columns, now, profile).slice(
+	const heading = header(model, github, columns, now).slice(
 		0,
 		Math.max(0, rows - 3),
 	);

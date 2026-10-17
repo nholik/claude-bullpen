@@ -39,6 +39,34 @@ test("cards prioritize activity and account for overflow", () => {
 	expect(cards[1]?.[0]?.text).toContain("#1");
 	expect(cards[cards.length - 1]?.[0]?.text).toContain("+7 more");
 });
+
+test("long issue titles leave the huddle's status and right border inside the viewport", () => {
+	const model = buildModel(events, 2000);
+	const source = {
+		...github,
+		result: {
+			status: "ok" as const,
+			issues: [
+				{
+					number: 1,
+					title: "A very long issue heading ".repeat(20),
+					state: "open" as const,
+					labels: [],
+					assignees: [],
+				},
+			],
+		},
+	};
+	for (const columns of [34, 45, 60, 72]) {
+		const lines = huddles(model, source, DEFAULT_PROFILE, columns, 5, 2000);
+		const heading = lines[1] ?? [];
+		const label = heading.map((seg) => seg.text).join("");
+		expect(label).toContain("NEEDS YOU");
+		expect(label).toEndWith("╮");
+		expect(width(heading)).toBe(columns);
+		for (const line of lines) expect(width(line)).toBeLessThanOrEqual(columns);
+	}
+});
 test("every region and focus mode stays inside pane dimensions", () => {
 	const model = buildModel(events, 2000);
 	for (const columns of [20, 47, 48, 60, 72, 80, 100, 110, 160])

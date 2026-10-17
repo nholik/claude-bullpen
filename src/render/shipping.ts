@@ -4,8 +4,8 @@
 import type { GithubSource, Profile } from "../../types";
 import type { BullpenModel, ShipPath } from "../model";
 import { colorFor, colorIndex } from "../profile";
+import { age, section, text } from "./layout";
 import { fit, type Line, textLine, width } from "./lines";
-import { age, section, text } from "./operations";
 import { STUDIO } from "./studio";
 
 /** A merged issue stays in the list this long, then only the count keeps it. */

@@ -69,7 +69,6 @@ for (let i = 0; i < args.length; i += 2) {
 			"--frames",
 			"--out",
 			"--story",
-			"--style",
 			"--glyphs",
 			"--animations",
 			"--journal",
@@ -97,18 +96,14 @@ function number(
 		throw new Error(`Invalid ${key}: expected ${min}..${max}`);
 	return value;
 }
-const style = options.get("--style") ?? "studio";
 const glyphs = options.get("--glyphs") ?? "unicode";
 const animations = options.get("--animations") ?? "on";
-if (style !== "studio" && style !== "operations")
-	throw new Error("Invalid --style: studio or operations");
 if (glyphs !== "unicode" && glyphs !== "ascii")
 	throw new Error("Invalid --glyphs: unicode or ascii");
 if (animations !== "on" && animations !== "off")
 	throw new Error("Invalid --animations: on or off");
 const profile = demoProfile({
 	...DEFAULT_PROFILE,
-	style,
 	glyphs,
 	animations: animations === "on",
 });

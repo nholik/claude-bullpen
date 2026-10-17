@@ -155,11 +155,14 @@ GitHub, the pane continues with locally observed events. A successful compound
 shell command is weaker evidence than a GitHub confirmation; remote state wins
 when it is newer.
 
-Studio is the supported view. Existing `"style":"operations"` profiles open
-Studio as a compatibility alias. No font or terminal graphics support is needed.
+Studio is the single view. The old `style` setting is ignored, so existing
+profiles keep working without selecting another renderer. No font or terminal graphics support is needed.
 Use `"glyphs":"ascii"` if your font shows missing symbols, and
 `"animations":false` to disable transient highlights. Small panes retain the
 compact fallback; aim for 110–160 pane columns and 32–40 rows when possible.
+
+Studio previews: [72 columns](docs/img/studio-72.png) ·
+[110 columns](docs/img/studio-110.png) · [160 columns](docs/img/studio-160.png).
 
 Recommended GNOME Terminal profile (personal preference; nothing is changed automatically):
 
@@ -229,7 +232,6 @@ Optional. Put a `bullpen.json` in your project's `.claude/` folder (`/bullpen re
 - `issues.pollSeconds`: how often GitHub is polled (default 60, minimum 15).
 - `roles`: a teammate name or agent type to `{ role, color }`. `color` is `#rrggbb` or an index into the palette.
 - `animations`: set `false` to stop the floor animating (default `true`).
-- `style`: `"studio"` (default). The old `"operations"` value is accepted as an alias for Studio.
 - `glyphs`: `"unicode"` (default) uses portable single-cell symbols; `"ascii"` uses plain ASCII for fonts that show boxes.
 - `palette`: member colors selected by stable teammate name, as `#rrggbb` (default: the built-in palette). Bad entries are dropped with a warning; an empty list keeps the default.
 

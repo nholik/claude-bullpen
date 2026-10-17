@@ -271,8 +271,8 @@ elsewhere.
 - Emoji, braille, kitty images, or anything wider than one cell.
 - Sound, desktop notifications, a browser view. All possible later off the same journal,
   but none of them is the product now.
-- A second dashboard. Studio is the product. Operations gets no new features, and folds into
-  Studio or retires once Studio answers the three questions.
+- A second dashboard. Studio is the single view. Operations is retired; old
+  `style` settings are ignored.
 
 ## Roadmap (pillars)
 

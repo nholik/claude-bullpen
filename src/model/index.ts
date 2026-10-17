@@ -52,7 +52,13 @@ export function modelOf(
 		const paths = { ...state.ship.paths };
 		for (const pr of options.github.prs ?? []) {
 			for (const [issue, path] of Object.entries(paths)) {
-				if (path.pr !== pr.number || pr.checkedAt < path.at) continue;
+				// A merged PR cannot reopen. Later chat or review recaps for that
+				// same PR must not hide a merge confirmed by an earlier poll.
+				if (
+					path.pr !== pr.number ||
+					(pr.state !== "MERGED" && pr.checkedAt < path.at)
+				)
+					continue;
 				paths[Number(issue)] =
 					pr.state === "MERGED"
 						? { ...path, stage: "merged", at: pr.mergedAt ?? pr.checkedAt }
