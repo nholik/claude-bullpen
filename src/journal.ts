@@ -1,6 +1,8 @@
 // The journal: what the team did, as validated `BullpenEvent`s. Kept as a ring
 // buffer in `$.state` and appended to numbered JSONL chunks under
-// `~/.claude/bullpen/<team>/` for replay, fixtures and tests.
+// `~/.claude/bullpen/<team>/` for replay, fixtures and tests. Each writer (one
+// session, one process) has its own chunks, so teammates running the mod in
+// other terminals never overwrite each other; readers merge them by time.
 
 import type { BullpenEvent as DeclaredEvent } from "../types";
 import {
@@ -25,14 +27,15 @@ export const JOURNAL_VERSION = 1;
 export const STATE_EVENTS = 300;
 
 /**
- * Lines per journal chunk. `$.fs` can only write whole files, so appending
- * rewrites the current chunk; small chunks keep that cheap.
+ * Characters per journal chunk before the next one starts. `$.fs` can only
+ * write whole files, so appending rewrites the current chunk; small chunks
+ * keep that cheap.
  */
-export const CHUNK_LINES = 500;
+export const CHUNK_CHARS = 100_000;
 
 /**
- * Chunks kept with content. `$.fs` can't delete, so older ones are emptied
- * rather than removed.
+ * Chunks per writer kept with content, about 2 MB. `$.fs` can't delete, so
+ * older ones are emptied rather than removed.
  */
 export const MAX_CHUNKS = 20;
 
@@ -93,54 +96,100 @@ export function readJournal(text: string): {
 	return { events, skipped };
 }
 
-/** A journal chunk: its number and the lines it holds. */
-export type Chunk = { index: number; lines: string[] };
+/** A journal chunk: whose it is, its number and the lines it holds. */
+export type Chunk = { writer: string; index: number; lines: string[] };
 
-/** `events-0001.jsonl` for chunk 1. */
-export function chunkName(index: number): string {
-	return `events-${String(index).padStart(4, "0")}.jsonl`;
+/** `events-<writer>-0001.jsonl` for a writer's chunk 1. */
+export function chunkName(writer: string, index: number): string {
+	return `events-${safeSegment(writer)}-${String(index).padStart(4, "0")}.jsonl`;
 }
 
-/** The chunk number in a file name, or undefined for other files. */
-export function chunkIndex(name: string): number | undefined {
-	const match = /^events-(\d+)\.jsonl$/.exec(name);
-	return match ? Number(match[1]) : undefined;
+/** The writer and number in a chunk file name, or undefined for other files. */
+export function parseChunkName(
+	name: string,
+): { writer: string; index: number } | undefined {
+	const match = /^events-(.+)-(\d+)\.jsonl$/.exec(name);
+	return match?.[1] === undefined
+		? undefined
+		: { writer: match[1], index: Number(match[2]) };
 }
 
-/** The journal chunk file names among `names`, oldest first. */
+/** The highest chunk number `writer` has among `names`, or 0 for none. */
+export function lastChunk(names: readonly string[], writer: string): number {
+	const own = safeSegment(writer);
+	let last = 0;
+	for (const name of names) {
+		const chunk = parseChunkName(name);
+		if (chunk?.writer === own) last = Math.max(last, chunk.index);
+	}
+	return last;
+}
+
+/** The journal chunk file names among `names`, by writer, oldest first. */
 export function chunkNames(names: readonly string[]): string[] {
 	return names
 		.flatMap((name) => {
-			const index = chunkIndex(name);
-			return index === undefined ? [] : [{ name, index }];
+			const chunk = parseChunkName(name);
+			return chunk ? [{ name, ...chunk }] : [];
 		})
-		.sort((a, b) => a.index - b.index)
+		.sort((a, b) =>
+			a.writer === b.writer ? a.index - b.index : a.writer < b.writer ? -1 : 1,
+		)
 		.map((c) => c.name);
 }
 
 /**
- * Appends `lines` to the `current` chunk, starting a new one every `rollAt`
- * lines. Returns the files to write, whole, in order (each touched chunk, and
- * an empty text for any chunk now more than `keep` behind) and the new current
- * chunk.
+ * The valid events in several chunk texts, merged in time order (stable, so
+ * one writer's same-millisecond events keep their order). Skipped counts the
+ * bad lines across all of them.
+ */
+export function readChunks(texts: readonly string[]): {
+	events: BullpenEvent[];
+	skipped: number;
+} {
+	const events: BullpenEvent[] = [];
+	let skipped = 0;
+	for (const text of texts) {
+		const read = readJournal(text);
+		events.push(...read.events);
+		skipped += read.skipped;
+	}
+	events.sort((a, b) => a.at - b.at);
+	return { events, skipped };
+}
+
+/** The characters a chunk's file holds. */
+function chunkSize(lines: readonly string[]): number {
+	return lines.reduce((n, line) => n + line.length + 1, 0);
+}
+
+/**
+ * Appends `lines` to the `current` chunk, starting the next one once a chunk
+ * holds `rollAt` characters. Returns the files to write, whole, in order (each
+ * touched chunk, and an empty text for any chunk now more than `keep` behind)
+ * and the new current chunk.
  */
 export function planAppend(
 	current: Chunk,
 	lines: readonly string[],
-	rollAt = CHUNK_LINES,
+	rollAt = CHUNK_CHARS,
 	keep = MAX_CHUNKS,
 ): { writes: { name: string; text: string }[]; current: Chunk } {
 	const writes: { name: string; text: string }[] = [];
-	let chunk: Chunk = { index: current.index, lines: [...current.lines] };
+	const { writer } = current;
+	let chunk: Chunk = { ...current, lines: [...current.lines] };
+	let size = chunkSize(chunk.lines);
 	let isDirty = false;
 	for (const line of lines) {
-		if (chunk.lines.length >= rollAt) {
+		if (size > 0 && size + line.length + 1 > rollAt) {
 			if (isDirty) writes.push(chunkFile(chunk));
-			chunk = { index: chunk.index + 1, lines: [] };
+			chunk = { writer, index: chunk.index + 1, lines: [] };
+			size = 0;
 			if (chunk.index > keep)
-				writes.push({ name: chunkName(chunk.index - keep), text: "" });
+				writes.push({ name: chunkName(writer, chunk.index - keep), text: "" });
 		}
 		chunk.lines.push(line);
+		size += line.length + 1;
 		isDirty = true;
 	}
 	if (isDirty) writes.push(chunkFile(chunk));
@@ -148,7 +197,10 @@ export function planAppend(
 }
 
 function chunkFile(chunk: Chunk): { name: string; text: string } {
-	return { name: chunkName(chunk.index), text: `${chunk.lines.join("\n")}\n` };
+	return {
+		name: chunkName(chunk.writer, chunk.index),
+		text: `${chunk.lines.join("\n")}\n`,
+	};
 }
 
 /** The non-blank lines of a chunk file's text. */

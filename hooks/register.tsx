@@ -15,10 +15,10 @@ import { drawFloor, PALETTE } from "../src/floor";
 import {
 	type BullpenEvent,
 	type Chunk,
-	chunkIndex,
 	chunkLines,
 	chunkName,
 	journalDir,
+	lastChunk,
 	planAppend,
 	STATE_EVENTS,
 	teamOf,
@@ -70,19 +70,39 @@ async function flushState($: $, ops: CollectOp[]) {
 		if (!ev.agentId?.startsWith(DEMO_PREFIX)) writerOf($).push(ev);
 }
 
-/** The newest chunk in `dir`, or an empty chunk 1 for a new journal. */
-async function loadChunk($: $, dir: string): Promise<Chunk> {
+/**
+ * This writer's newest chunk in `dir`, or an empty chunk 1 for a new journal.
+ * A chunk that exists but can't be read is left alone: journaling moves on to
+ * a fresh chunk after it rather than overwrite what it couldn't read.
+ */
+async function loadChunk($: $, dir: string, writer: string): Promise<Chunk> {
 	const entries = await $.fs.list(dir).catch(() => []);
-	const index = Math.max(1, ...entries.map((f) => chunkIndex(f.name) ?? 0));
-	const text = await $.fs.read(`${dir}/${chunkName(index)}`).catch(() => "");
-	return { index, lines: chunkLines(text) };
+	const index = Math.max(
+		1,
+		lastChunk(
+			entries.map((f) => f.name),
+			writer,
+		),
+	);
+	const path = `${dir}/${chunkName(writer, index)}`;
+	if (!(await $.fs.exists(path))) return { writer, index, lines: [] };
+	try {
+		return { writer, index, lines: chunkLines(await $.fs.read(path)) };
+	} catch (error) {
+		$.ui.log(`bullpen: can't read ${path} (${error}); starting a new chunk`, {
+			to: "debug",
+		});
+		return { writer, index: index + 1, lines: [] };
+	}
 }
 
 async function writeJournal($: $, added: BullpenEvent[]) {
 	const home = (await $.env.get("HOME")) ?? (await $.env.get("USERPROFILE"));
 	if (!home) return;
-	const dir = journalDir(home, team ?? (await $.session.id()));
-	if (journal?.dir !== dir) journal = { dir, current: await loadChunk($, dir) };
+	const writer = await $.session.id();
+	const dir = journalDir(home, team ?? writer);
+	if (journal?.dir !== dir || journal.current.writer !== writer)
+		journal = { dir, current: await loadChunk($, dir, writer) };
 	const plan = planAppend(journal.current, added.map(toLine));
 	for (const { name, text } of plan.writes)
 		await $.fs.write(`${dir}/${name}`, text);
@@ -185,6 +205,10 @@ async function openPane($: $) {
 
 export function register(on: On) {
 	on("session.start", async ($, e, next) => {
+		// A new session in the same process starts its own journal.
+		team = undefined;
+		journal = undefined;
+
 		await $.command.register({
 			name: "bullpen",
 			description: "Open the Bullpen: a live view of your agent team",

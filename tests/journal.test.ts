@@ -4,10 +4,13 @@ import { applyBatch, Batcher, type CollectOp } from "../src/collect";
 import {
 	type BullpenEvent,
 	chunkLines,
+	chunkName,
 	chunkNames,
 	JOURNAL_VERSION,
 	journalDir,
+	lastChunk,
 	planAppend,
+	readChunks,
 	readJournal,
 	teamOf,
 	toLine,
@@ -61,50 +64,88 @@ test("readJournal skips bad lines and keeps the rest", async () => {
 	expect(skipped).toBe(7);
 });
 
+// Each "lN" line is 3 characters with its newline, so 9 fit 3 to a chunk.
+const lines = (from: number, n: number) =>
+	Array.from({ length: n }, (_, i) => `l${from + i}`);
+
 test("planAppend rewrites only the current chunk until it rolls", async () => {
-	const lines = (from: number, n: number) =>
-		Array.from({ length: n }, (_, i) => `l${from + i}`);
+	const start = { writer: "s1", index: 1, lines: lines(0, 1) };
 	// Fits: one write, the whole current chunk.
-	const first = planAppend({ index: 1, lines: lines(0, 2) }, lines(2, 1), 4, 3);
+	const first = planAppend(start, lines(1, 1), 9, 3);
 	expect(first.writes).toEqual([
-		{ name: "events-0001.jsonl", text: "l0\nl1\nl2\n" },
+		{ name: "events-s1-0001.jsonl", text: "l0\nl1\n" },
 	]);
-	expect(first.current).toEqual({ index: 1, lines: lines(0, 3) });
-	// Rolls: finishes chunk 1, starts chunk 2, and nothing touched twice.
-	const rolled = planAppend(first.current, lines(3, 3), 4, 3);
+	expect(first.current).toEqual({ writer: "s1", index: 1, lines: lines(0, 2) });
+	// Rolls: finishes chunk 1, starts chunk 2, nothing written twice.
+	const rolled = planAppend(first.current, lines(2, 3), 9, 3);
 	expect(rolled.writes.map((w) => w.name)).toEqual([
-		"events-0001.jsonl",
-		"events-0002.jsonl",
+		"events-s1-0001.jsonl",
+		"events-s1-0002.jsonl",
 	]);
-	expect(rolled.current).toEqual({ index: 2, lines: ["l4", "l5"] });
+	expect(rolled.current).toEqual({
+		writer: "s1",
+		index: 2,
+		lines: ["l3", "l4"],
+	});
 	// A full chunk with nothing new isn't rewritten before rolling.
-	const fresh = planAppend({ index: 2, lines: lines(0, 4) }, ["x"], 4, 3);
-	expect(fresh.writes).toEqual([{ name: "events-0003.jsonl", text: "x\n" }]);
-	expect(planAppend(first.current, [], 4, 3).writes).toEqual([]);
+	const full = { writer: "s1", index: 2, lines: lines(0, 3) };
+	expect(planAppend(full, ["x"], 9, 3).writes).toEqual([
+		{ name: "events-s1-0003.jsonl", text: "x\n" },
+	]);
+	expect(planAppend(first.current, [], 9, 3).writes).toEqual([]);
+	// A line longer than a chunk still gets written, alone in the next one.
+	expect(
+		planAppend(start, ["x".repeat(20)], 9, 3).writes.map((w) => w.name),
+	).toEqual(["events-s1-0002.jsonl"]);
 });
 
-test("planAppend empties chunks past the cap", async () => {
-	const full = { index: 3, lines: ["a", "b"] };
-	const out = planAppend(full, ["c", "d", "e"], 2, 3);
+test("planAppend empties a writer's chunks past the cap", async () => {
+	const full = { writer: "s1", index: 3, lines: lines(0, 3) };
+	const out = planAppend(full, lines(3, 4), 9, 3);
 	expect(out.writes).toEqual([
-		{ name: "events-0001.jsonl", text: "" },
-		{ name: "events-0004.jsonl", text: "c\nd\n" },
-		{ name: "events-0002.jsonl", text: "" },
-		{ name: "events-0005.jsonl", text: "e\n" },
+		{ name: "events-s1-0001.jsonl", text: "" },
+		{ name: "events-s1-0004.jsonl", text: "l3\nl4\nl5\n" },
+		{ name: "events-s1-0002.jsonl", text: "" },
+		{ name: "events-s1-0005.jsonl", text: "l6\n" },
 	]);
 });
 
-test("chunk files list in order and read back their lines", async () => {
-	expect(
-		chunkNames([
-			"events-0010.jsonl",
-			"notes.txt",
-			"events-0002.jsonl",
-			"events-x.jsonl",
-		]),
-	).toEqual(["events-0002.jsonl", "events-0010.jsonl"]);
+test("each writer has its own chunks, found by name", async () => {
+	expect(chunkName("abc-123", 7)).toBe("events-abc-123-0007.jsonl");
+	const names = [
+		"events-s2-0010.jsonl",
+		"notes.txt",
+		"events-s1-0002.jsonl",
+		"events-s2-0002.jsonl",
+		"events-s1-x.jsonl",
+		"events-s1-0001.jsonl",
+	];
+	expect(chunkNames(names)).toEqual([
+		"events-s1-0001.jsonl",
+		"events-s1-0002.jsonl",
+		"events-s2-0002.jsonl",
+		"events-s2-0010.jsonl",
+	]);
+	// Another session's chunks never count as this writer's.
+	expect(lastChunk(names, "s1")).toBe(2);
+	expect(lastChunk(names, "s2")).toBe(10);
+	expect(lastChunk(names, "s3")).toBe(0);
 	expect(chunkLines("a\n\nb\n")).toEqual(["a", "b"]);
 	expect(chunkLines("")).toEqual([]);
+});
+
+test("readChunks merges writers in time order", async () => {
+	const a = [event({ at: 1, who: "smith" }), event({ at: 4, who: "smith" })];
+	const b = [event({ at: 2, who: "ada" }), event({ at: 4, who: "ada" })];
+	const text = (list: BullpenEvent[]) => list.map(toLine).join("\n");
+	const { events, skipped } = readChunks([text(a), `${text(b)}\n{bad`]);
+	expect(events.map((e) => `${e.at}${e.who}`)).toEqual([
+		"1smith",
+		"2ada",
+		"4smith",
+		"4ada",
+	]);
+	expect(skipped).toBe(1);
 });
 
 test("journalDir and teamOf", async () => {
