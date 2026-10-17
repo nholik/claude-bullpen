@@ -45,13 +45,13 @@ test("tables use both dimensions, wrap and never overlap", async () => {
 	expect(
 		layout(
 			110,
-			25,
+			42,
 			Array.from({ length: 20 }, (_, i) => i),
 		).tables.size,
 	).toBeGreaterThan(
 		layout(
 			110,
-			10,
+			18,
 			Array.from({ length: 20 }, (_, i) => i),
 		).tables.size,
 	);
@@ -182,4 +182,26 @@ test("supplementary-plane labels normalize to portable glyphs without surrogate 
 	expect(words[index + 3]).toBe("x".codePointAt(0));
 	for (let i = 0; i < words.length; i += 3)
 		expect((words[i] ?? 0) >= 0xd800 && (words[i] ?? 0) <= 0xdfff).toBe(false);
+});
+
+test("detailed studio seats remain distinct and inside the floor even with crowded issues", () => {
+	for (const columns of [48, 72, 110, 160])
+		for (const rows of [18, 25, 29, 40]) {
+			const members = team(60, 10);
+			const floor = drawFloor(members, columns, rows, 0);
+			expect(floor.seats.size + floor.overflowMembers.length).toBe(
+				members.length,
+			);
+			const occupied = new Set<string>();
+			for (const seat of floor.seats.values())
+				for (let x = seat.col; x < seat.col + 5; x++)
+					for (let y = seat.pixel; y < seat.pixel + 7; y++) {
+						expect(x > 0 && x < columns - 1 && y > 0 && y < rows * 2 - 1).toBe(
+							true,
+						);
+						const key = `${x},${y}`;
+						expect(occupied.has(key)).toBe(false);
+						occupied.add(key);
+					}
+		}
 });

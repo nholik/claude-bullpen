@@ -24,27 +24,33 @@ out="$root/.scratch/snaps"
 session="bullpen-snap-$$"
 
 mkdir -p "$out"
-cleanup() { tmux kill-session -t "$session" 2>/dev/null || true; }
+tmux_cmd=(tmux -L "$session" -f "$out/tmux.conf")
+cleanup() { "${tmux_cmd[@]}" kill-server 2>/dev/null || true; }
 trap cleanup EXIT
 
-tmux new-session -d -s "$session" -x "$cols" -y "$rows" \
-	-e COLORTERM=truecolor -c "$root" "claude --plugin-dir '$root'"
+# Isolate capture settings from the user's tmux server, preserving RGB colors.
+cat >"$out/tmux.conf" <<'EOF'
+set -g default-terminal "tmux-256color"
+set -as terminal-features ",*:RGB"
+EOF
+"${tmux_cmd[@]}" new-session -d -s "$session" -x "$cols" -y "$rows" \
+	-e COLORTERM=truecolor -e FORCE_COLOR=3 -c "$root" "claude --plugin-dir '$root'"
 sleep "$startup"
-if tmux capture-pane -p -t "$session" | grep -q "one you trust"; then
+if "${tmux_cmd[@]}" capture-pane -p -t "$session" | grep -q "one you trust"; then
 	echo "Claude Code is asking whether to trust $root." >&2
 	echo "Run \`claude\` there once and choose 'Yes, I trust this folder', then retry." >&2
 	exit 2
 fi
-tmux send-keys -t "$session" -l "$cmd"
+"${tmux_cmd[@]}" send-keys -t "$session" -l "$cmd"
 sleep 0.5
-tmux send-keys -t "$session" Enter
+"${tmux_cmd[@]}" send-keys -t "$session" Enter
 
 elapsed=0
 for t in $shots; do
 	sleep $((t - elapsed))
 	elapsed=$t
 	file="$out/$name-${t}s"
-	tmux capture-pane -p -e -t "$session" >"$file.ansi"
+	"${tmux_cmd[@]}" capture-pane -p -e -t "$session" >"$file.ansi"
 	if python3 -c "import PIL" 2>/dev/null; then
 		python3 "$root/scripts/ansi2png.py" "$file.ansi" "$file.png"
 	fi

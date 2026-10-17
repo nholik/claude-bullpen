@@ -13,7 +13,7 @@ between tables; message dots and close confetti show activity without reading lo
 Morale changes the floor lighting and suggests one check-in. Press a huddle heading
 for its cross-agent story, or a teammate name for Claude's transcript.
 
-![Wide pane preview](docs/img/bullpen-160.png)
+![Studio theme at 160 pane columns](docs/img/studio-160.png)
 
 ## Requirements
 
@@ -111,6 +111,62 @@ through [#47](https://github.com/nholik/claude-bullpen/issues/47), plus
 [#52](https://github.com/nholik/claude-bullpen/issues/52) for Unicode teammate names in ASCII story links
 and [#53](https://github.com/nholik/claude-bullpen/issues/53) for an unnecessary overflow row in exact-fit stories.
 
+## Appearance and terminal setup
+
+The default `"style":"studio"` draws teammates at desks, recent messages on the
+work surfaces, a quiet lounge, and completion effects. For an abstract work
+console, use `"style":"operations"`: agent nodes, issue hubs, workstream cards,
+and an event trace replace the office imagery. Set either in project
+`.claude/bullpen.json` or the user profile, then `/bullpen reload`:
+
+```json
+{ "style": "operations", "glyphs": "unicode", "animations": true }
+```
+
+![Operations theme at 160 pane columns](docs/img/operations-160.png)
+
+The side-by-side studio/topology layout starts at **110 pane-body columns and
+28 rows**. Aim for **160 columns and 40 rows in the pane** for more space; Claude's
+conversation and chrome also need room in the terminal window. Smaller panes
+use a compact floor and cards. `f`, `h`, and `t` focus a region when space is tight.
+The animated floor uses ordinary single-cell text and half-blocks; no Nerd Font,
+emoji, graphics protocol, or font installation is required.
+
+Recommended GNOME Terminal profile (personal preference; nothing is changed automatically):
+
+- In **Preferences → profile → Text**, try an installed fixed-width font such as
+  DejaVu Sans Mono at 11–12 pt. Keep **Cell spacing** width and height at **1.0**
+  so pixels and borders meet. See [GNOME's font/spacing settings](https://help.gnome.org/gnome-terminal/app-fonts.html).
+- Use a dark background with light text; `#101923` is a good starting point for
+  matching the floor. Turn off **Show bold text in bright colors** to keep weight
+  independent of color. See [GNOME's color settings](https://help.gnome.org/gnome-terminal/app-colors.html).
+- Keep the background opaque and give the pane enough room before shrinking the
+  font. Enlarged line spacing can introduce visible seams in half-block sprites.
+
+For Windows Terminal, start with **Cascadia Mono**, normal weight, around 12 pt.
+Use an opaque dark background with background images and retro effects off.
+These are profile appearance options, described in
+[Microsoft's settings reference](https://learn.microsoft.com/en-us/windows/terminal/customize-settings/profile-appearance).
+No PowerShell-specific rendering settings are needed. Native Windows font and
+raster rendering still require a check on an actual Windows machine.
+
+Graceful fallbacks:
+
+- `"glyphs":"ascii"` replaces the pixel floor with a readable one-row team strip,
+  and uses ASCII borders and symbols throughout both styles. It retains issue
+  and teammate links in the cards.
+- `"animations":false` keeps the same information in a static view.
+- Narrow or short panes show compact cards and explicit overflow counts. On
+  surfaces without Raster support, text regions use the available space.
+- Status labels accompany color; active, idle, review and decision states do not
+  depend on color alone. External names and titles are sanitized to single-cell
+  glyphs.
+
+If using tmux, the full palette needs RGB support through tmux as well as the outer
+terminal. The screenshot helper uses a separate tmux server with RGB enabled and
+leaves your normal tmux configuration alone. The app cannot reliably identify a
+broken font; choose ASCII mode explicitly if you see missing glyphs or gaps.
+
 ## Use
 
 - `/bullpen` opens the Bullpen pane.
@@ -140,6 +196,7 @@ Optional. Put a `bullpen.json` in your project's `.claude/` folder (`/bullpen re
 - `issues.pollSeconds`: how often GitHub is polled (default 60, minimum 15).
 - `roles`: a teammate name or agent type to `{ role, color }`. `color` is `#rrggbb` or an index into the palette.
 - `animations`: set `false` to stop the floor animating (default `true`).
+- `style`: `"studio"` (default) shows the animated office; `"operations"` uses abstract workstream nodes and console labels.
 - `glyphs`: `"unicode"` (default) uses portable single-cell symbols; `"ascii"` uses plain ASCII for fonts that show boxes.
 - `palette`: member colors selected by stable teammate name, as `#rrggbb` (default: the built-in palette). Bad entries are dropped with a warning; an empty list keeps the default.
 

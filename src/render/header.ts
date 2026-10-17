@@ -1,9 +1,10 @@
 import type { BurndownPoint, GithubSource, Profile } from "../../types";
 import { exactCounts, headerText } from "../github";
 import type { BullpenModel } from "../model";
-import { colorFor, colorIndex } from "../profile";
+import { colorFor, colorIndex, DEFAULT_PROFILE } from "../profile";
 import { fit, glyphLines, type Line, textLine, width, wrapText } from "./lines";
 import { moraleHint } from "./morale";
+import { STUDIO } from "./studio";
 
 /** Time-bucketed samples preserve the time axis even when snapshots compress. */
 export function sparkline(
@@ -47,6 +48,7 @@ export function header(
 	github: GithubSource,
 	columns: number,
 	now: number,
+	profile: Profile = DEFAULT_PROFILE,
 ): Line[] {
 	const counts =
 		github.result?.status === "ok" ? exactCounts(github.result) : undefined;
@@ -55,14 +57,24 @@ export function header(
 		counts && total ? Math.round((8 * counts.closed) / total) : 0;
 	const date = new Date(now);
 	const clock = `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
-	const suffix = ` ${model.morale.glyph} ${clock}`;
+	const teammates = Object.values(model.teammates).filter(
+		(m) => m.status !== "gone",
+	).length;
+	const suffix =
+		columns >= 110
+			? ` ● LIVE · ${teammates} teammates · ${clock}`
+			: ` ${model.morale.glyph} ${clock}`;
 	const prefix = fit(
 		[
 			{
-				text: `Bullpen · ${github.filter || "all issues"} · ${github.result ? headerText(github.result) : "no GitHub data"} `,
+				text: `${profile.style === "operations" ? "Bullpen / OPERATIONS" : "Bullpen"} · ${github.filter || "all issues"} · ${github.result ? headerText(github.result) : "no GitHub data"} `,
 				bold: true,
+				fg: STUDIO.text,
 			},
-			{ text: counts ? "━".repeat(progress) + "─".repeat(8 - progress) : "" },
+			{
+				text: counts ? "━".repeat(progress) + "─".repeat(8 - progress) : "",
+				fg: STUDIO.mint,
+			},
 		],
 		Math.max(0, columns - suffix.length),
 	);
@@ -74,13 +86,37 @@ export function header(
 					text:
 						" ".repeat(Math.max(0, columns - width(prefix) - suffix.length)) +
 						suffix,
+					fg: STUDIO.mint,
 				},
 			],
 			columns,
 		),
 	];
 	const ask = model.asks.find((a) => a.open);
-	if (ask) lines.push(...wrapText(`⚑ ${ask.from}: "${ask.text}"`, columns));
+	if (ask)
+		lines.push(
+			...wrapText(` NEEDS YOU · ${ask.from}: "${ask.text}"`, columns).map(
+				(line) =>
+					line.map((seg) => ({ ...seg, fg: STUDIO.amber, bg: STUDIO.panel })),
+			),
+		);
+	else if (columns >= 60)
+		lines.push(
+			fit(
+				[
+					{
+						text: ` ${model.closed.length ? `✓ ${model.closed.length} shipped` : profile.style === "operations" ? "OPERATIONS" : "STUDIO"}`,
+						fg: STUDIO.mint,
+						bold: true,
+					},
+					{
+						text: ` · ${model.huddles.length} active huddles · ${Object.values(model.teammates).filter((m) => m.status === "running").length} working`,
+						fg: STUDIO.muted,
+					},
+				],
+				columns,
+			),
+		);
 	const hint = moraleHint(model, now);
 	if (hint && !hint.includes(ask?.text ?? "\0"))
 		lines.push(textLine(hint, columns));
@@ -96,9 +132,25 @@ export function footer(github: GithubSource, columns: number): Line[] {
 			),
 		];
 	const series = github.burndown;
+	const first = series[0];
+	const last = series[series.length - 1];
+	const flat =
+		!first ||
+		!last ||
+		(first.open === last.open && first.closed === last.closed);
 	return [
-		textLine(
-			`burndown ${series[0]?.open ?? "—"} ${sparkline(series, Math.max(1, Math.min(24, columns - 45)))} ${series[series.length - 1]?.open ?? "—"} · ${pace(series)}`,
+		fit(
+			[
+				{ text: "burndown ", fg: STUDIO.muted },
+				{
+					text: sparkline(series, Math.max(1, Math.min(24, columns - 45))),
+					fg: STUDIO.mint,
+				},
+				{
+					text: ` · ${last?.open ?? "—"} open · ${flat ? "no change yet" : pace(series)}`,
+					fg: STUDIO.muted,
+				},
+			],
 			columns,
 		),
 	];
