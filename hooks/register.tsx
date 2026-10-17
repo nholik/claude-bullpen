@@ -1,4 +1,4 @@
-import type { EngineInterface, On, RenderChildren } from "claude-code";
+import type { EngineInterface, FsEntry, On, RenderChildren } from "claude-code";
 import { atom, read, update } from "claude-code";
 import {
 	applyBatch,
@@ -19,6 +19,7 @@ import {
 	chunkName,
 	journalDir,
 	lastChunk,
+	MAX_CHUNKS,
 	planAppend,
 	STATE_EVENTS,
 	teamOf,
@@ -70,29 +71,42 @@ async function flushState($: $, ops: CollectOp[]) {
 		if (!ev.agentId?.startsWith(DEMO_PREFIX)) writerOf($).push(ev);
 }
 
+/** Whether a journal problem was logged yet; once per session is enough. */
+let journalWarned = false;
+
+function warnJournal($: $, text: string) {
+	if (journalWarned) return;
+	journalWarned = true;
+	$.ui.log(`bullpen: ${text}`, { to: "debug" });
+}
+
 /**
  * This writer's newest chunk in `dir`, or an empty chunk 1 for a new journal.
- * A chunk that exists but can't be read is left alone: journaling moves on to
- * a fresh chunk after it rather than overwrite what it couldn't read.
+ * Never guesses: when the folder can't be listed it answers undefined and the
+ * batch isn't written, and a chunk that exists but can't be read is left
+ * alone while journaling moves on to the next one in the ring.
  */
-async function loadChunk($: $, dir: string, writer: string): Promise<Chunk> {
-	const entries = await $.fs.list(dir).catch(() => []);
-	const index = Math.max(
-		1,
-		lastChunk(
-			entries.map((f) => f.name),
-			writer,
-		),
-	);
+async function loadChunk(
+	$: $,
+	dir: string,
+	writer: string,
+): Promise<Chunk | undefined> {
+	if (!(await $.fs.exists(dir))) return { writer, index: 1, lines: [] };
+	let entries: FsEntry[];
+	try {
+		entries = await $.fs.list(dir);
+	} catch (error) {
+		warnJournal($, `can't list ${dir} (${error}); not journaling`);
+		return undefined;
+	}
+	const index = Math.max(1, lastChunk(entries, writer));
 	const path = `${dir}/${chunkName(writer, index)}`;
 	if (!(await $.fs.exists(path))) return { writer, index, lines: [] };
 	try {
 		return { writer, index, lines: chunkLines(await $.fs.read(path)) };
 	} catch (error) {
-		$.ui.log(`bullpen: can't read ${path} (${error}); starting a new chunk`, {
-			to: "debug",
-		});
-		return { writer, index: index + 1, lines: [] };
+		warnJournal($, `can't read ${path} (${error}); starting the next chunk`);
+		return { writer, index: (index % MAX_CHUNKS) + 1, lines: [] };
 	}
 }
 
@@ -101,8 +115,11 @@ async function writeJournal($: $, added: BullpenEvent[]) {
 	if (!home) return;
 	const writer = await $.session.id();
 	const dir = journalDir(home, team ?? writer);
-	if (journal?.dir !== dir || journal.current.writer !== writer)
-		journal = { dir, current: await loadChunk($, dir, writer) };
+	if (journal?.dir !== dir || journal.current.writer !== writer) {
+		const current = await loadChunk($, dir, writer);
+		if (!current) return;
+		journal = { dir, current };
+	}
 	const plan = planAppend(journal.current, added.map(toLine));
 	for (const { name, text } of plan.writes)
 		await $.fs.write(`${dir}/${name}`, text);
@@ -185,6 +202,7 @@ async function playStep($: $, step: DemoStep) {
 			return;
 		case "leave":
 			await touch($, id, { status: "gone" });
+			await record($, "leave", id, `${step.who} left`, { attribute: false });
 			return;
 	}
 }
@@ -208,6 +226,7 @@ export function register(on: On) {
 		// A new session in the same process starts its own journal.
 		team = undefined;
 		journal = undefined;
+		journalWarned = false;
 
 		await $.command.register({
 			name: "bullpen",

@@ -45,7 +45,10 @@ export type CollectOp =
 			/** False to leave the member's issue as it is. */
 			attribute: boolean;
 	  }
-	/** Syncs status with `$.agent.list()`; members not listed are gone. */
+	/**
+	 * Syncs status with `$.agent.list()`. Members no longer listed are gone,
+	 * with a `leave` event the first time.
+	 */
 	| { op: "reconcile"; at: number; listed: ListedAgent[] }
 	/** Removes every demo member. */
 	| { op: "clear-demo" };
@@ -71,8 +74,9 @@ function reconciled(
 	all: Record<string, Member>,
 	listed: ListedAgent[],
 	at: number,
-): Record<string, Member> {
+): { members: Record<string, Member>; left: Member[] } {
 	const next = { ...all };
+	const left: Member[] = [];
 	for (const agent of listed) {
 		const prev = next[agent.id];
 		if (!prev && !agent.teammateId) continue;
@@ -87,10 +91,11 @@ function reconciled(
 	}
 	for (const [id, member] of Object.entries(next)) {
 		const isDemo = id.startsWith(DEMO_PREFIX);
-		if (id !== LEAD && !isDemo && !listed.some((a) => a.id === id))
-			next[id] = { ...member, status: "gone" };
+		if (id === LEAD || isDemo || listed.some((a) => a.id === id)) continue;
+		if (member.status !== "gone") left.push(member);
+		next[id] = { ...member, status: "gone" };
 	}
-	return next;
+	return { members: next, left };
 }
 
 /**
@@ -108,9 +113,21 @@ export function applyBatch(
 			case "touch":
 				all = { ...all, [op.id]: touched(all, op.id, op.patch, op.at) };
 				break;
-			case "reconcile":
-				all = reconciled(all, op.listed, op.at);
+			case "reconcile": {
+				const out = reconciled(all, op.listed, op.at);
+				all = out.members;
+				for (const member of out.left)
+					events.push({
+						version: JOURNAL_VERSION,
+						at: op.at,
+						kind: "leave",
+						agentId: member.id,
+						who: member.name,
+						detail: `${member.name} left`,
+						issues: [],
+					});
 				break;
+			}
 			case "clear-demo":
 				all = Object.fromEntries(
 					Object.entries(all).filter(([id]) => !id.startsWith(DEMO_PREFIX)),
@@ -129,9 +146,10 @@ export function applyBatch(
 					detail: op.detail,
 					issues,
 				});
-				const issue = op.attribute
-					? nextIssue(op.kind, all[id]?.issue, issues)
-					: undefined;
+				const issue =
+					op.attribute && op.kind !== "leave"
+						? nextIssue(op.kind, all[id]?.issue, issues)
+						: undefined;
 				const patch = issue === undefined ? {} : { issue };
 				all = { ...all, [id]: touched(all, id, patch, op.at) };
 				break;

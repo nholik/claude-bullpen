@@ -99,15 +99,15 @@ test("planAppend rewrites only the current chunk until it rolls", async () => {
 	).toEqual(["events-s1-0002.jsonl"]);
 });
 
-test("planAppend empties a writer's chunks past the cap", async () => {
-	const full = { writer: "s1", index: 3, lines: lines(0, 3) };
+test("planAppend wraps the ring and replaces the oldest chunk", async () => {
+	const full = { writer: "s1", index: 2, lines: lines(0, 3) };
 	const out = planAppend(full, lines(3, 4), 9, 3);
 	expect(out.writes).toEqual([
-		{ name: "events-s1-0001.jsonl", text: "" },
-		{ name: "events-s1-0004.jsonl", text: "l3\nl4\nl5\n" },
-		{ name: "events-s1-0002.jsonl", text: "" },
-		{ name: "events-s1-0005.jsonl", text: "l6\n" },
+		{ name: "events-s1-0003.jsonl", text: "l3\nl4\nl5\n" },
+		// After chunk 3 of 3 comes chunk 1, with only the new lines.
+		{ name: "events-s1-0001.jsonl", text: "l6\n" },
 	]);
+	expect(out.current).toEqual({ writer: "s1", index: 1, lines: ["l6"] });
 });
 
 test("each writer has its own chunks, found by name", async () => {
@@ -126,10 +126,17 @@ test("each writer has its own chunks, found by name", async () => {
 		"events-s2-0002.jsonl",
 		"events-s2-0010.jsonl",
 	]);
+	// The newest file wins, since a ring wraps; then the higher number.
+	const entries = names.map((name) => ({ name, mtimeMs: 100 }));
+	expect(lastChunk(entries, "s1")).toBe(2);
+	const wrapped = [
+		{ name: "events-s2-0020.jsonl", mtimeMs: 100 },
+		{ name: "events-s2-0001.jsonl", mtimeMs: 200 },
+	];
+	expect(lastChunk(wrapped, "s2")).toBe(1);
 	// Another session's chunks never count as this writer's.
-	expect(lastChunk(names, "s1")).toBe(2);
-	expect(lastChunk(names, "s2")).toBe(10);
-	expect(lastChunk(names, "s3")).toBe(0);
+	expect(lastChunk(wrapped, "s1")).toBe(0);
+	expect(lastChunk(entries, "s3")).toBe(0);
 	expect(chunkLines("a\n\nb\n")).toEqual(["a", "b"]);
 	expect(chunkLines("")).toEqual([]);
 });
@@ -262,12 +269,12 @@ test("applyBatch folds a batch into members and named events", async () => {
 	expect(readJournal(out.events.map(toLine).join("\n")).skipped).toBe(0);
 });
 
-test("applyBatch reconcile marks unlisted members gone but keeps demo ones", async () => {
+test("applyBatch reconcile marks unlisted members gone, with one leave each", async () => {
 	const start = applyBatch({}, [
 		{ op: "touch", at: 1, id: "a1", patch: { name: "smith" } },
 		{ op: "touch", at: 1, id: "demo-ada", patch: { name: "ada" } },
 	]).members;
-	const out = applyBatch(start, [
+	const { members: out, events: left } = applyBatch(start, [
 		{
 			op: "reconcile",
 			at: 2,
@@ -281,8 +288,15 @@ test("applyBatch reconcile marks unlisted members gone but keeps demo ones", asy
 				},
 			],
 		},
-	]).members;
+	]);
 	expect(out.a1?.status).toBe("gone");
+	expect(left.map((e) => [e.kind, e.agentId, e.who, e.detail])).toEqual([
+		["leave", "a1", "smith", "smith left"],
+	]);
+	// Only the first reconcile that misses a member says it left.
+	const again = applyBatch(out, [{ op: "reconcile", at: 3, listed: [] }]);
+	expect(again.events.map((e) => e.who)).toEqual(["gate"]);
+	expect(readJournal(left.map(toLine).join("\n")).skipped).toBe(0);
 	expect(out["demo-ada"]?.status).toBe("running");
 	expect(out.a2?.name).toBe("gate");
 	const cleared = applyBatch(out, [{ op: "clear-demo" }]).members;

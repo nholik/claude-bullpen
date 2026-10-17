@@ -3,7 +3,9 @@ export type BullpenEventKind =
 	| "turn-start"
 	| "turn-end"
 	| "tool"
-	| "message";
+	| "message"
+	/** A member left: gone from `$.agent.list()`, or a demo `leave` step. */
+	| "leave";
 
 /**
  * One normalized thing that happened on the team, as the journal keeps it.

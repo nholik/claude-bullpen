@@ -34,8 +34,8 @@ export const STATE_EVENTS = 300;
 export const CHUNK_CHARS = 100_000;
 
 /**
- * Chunks per writer kept with content, about 2 MB. `$.fs` can't delete, so
- * older ones are emptied rather than removed.
+ * Chunk files per writer, about 2 MB. They form a ring: after the last one the
+ * first is overwritten, since `$.fs` can't delete.
  */
 export const MAX_CHUNKS = 20;
 
@@ -43,7 +43,14 @@ export const BullpenEventSchema = object({
 	version: literal(JOURNAL_VERSION),
 	/** Milliseconds since the epoch, from `$.clock.now()`. */
 	at: number(),
-	kind: picklist(["spawn", "turn-start", "turn-end", "tool", "message"]),
+	kind: picklist([
+		"spawn",
+		"turn-start",
+		"turn-end",
+		"tool",
+		"message",
+		"leave",
+	]),
 	/** The loop it happened in; absent for the lead (main loop). */
 	agentId: optional(string()),
 	/** Who did it, by team name (`lead` for the main loop). */
@@ -114,18 +121,28 @@ export function parseChunkName(
 		: { writer: match[1], index: Number(match[2]) };
 }
 
-/** The highest chunk number `writer` has among `names`, or 0 for none. */
-export function lastChunk(names: readonly string[], writer: string): number {
+/**
+ * The chunk `writer` wrote last among `entries` (a ring wraps, so by
+ * modification time, then number), or 0 for none.
+ */
+export function lastChunk(
+	entries: readonly { name: string; mtimeMs: number }[],
+	writer: string,
+): number {
 	const own = safeSegment(writer);
-	let last = 0;
-	for (const name of names) {
+	let last = { index: 0, mtimeMs: -1 };
+	for (const { name, mtimeMs } of entries) {
 		const chunk = parseChunkName(name);
-		if (chunk?.writer === own) last = Math.max(last, chunk.index);
+		if (chunk?.writer !== own) continue;
+		const isNewer =
+			mtimeMs > last.mtimeMs ||
+			(mtimeMs === last.mtimeMs && chunk.index > last.index);
+		if (isNewer) last = { index: chunk.index, mtimeMs };
 	}
-	return last;
+	return last.index;
 }
 
-/** The journal chunk file names among `names`, by writer, oldest first. */
+/** The journal chunk file names among `names`, by writer and number. */
 export function chunkNames(names: readonly string[]): string[] {
 	return names
 		.flatMap((name) => {
@@ -165,15 +182,15 @@ function chunkSize(lines: readonly string[]): number {
 
 /**
  * Appends `lines` to the `current` chunk, starting the next one once a chunk
- * holds `rollAt` characters. Returns the files to write, whole, in order (each
- * touched chunk, and an empty text for any chunk now more than `keep` behind)
- * and the new current chunk.
+ * holds `rollAt` characters; after chunk `ring` comes chunk 1 again, its old
+ * lines replaced. Returns the files to write, whole, in order, and the new
+ * current chunk.
  */
 export function planAppend(
 	current: Chunk,
 	lines: readonly string[],
 	rollAt = CHUNK_CHARS,
-	keep = MAX_CHUNKS,
+	ring = MAX_CHUNKS,
 ): { writes: { name: string; text: string }[]; current: Chunk } {
 	const writes: { name: string; text: string }[] = [];
 	const { writer } = current;
@@ -183,10 +200,8 @@ export function planAppend(
 	for (const line of lines) {
 		if (size > 0 && size + line.length + 1 > rollAt) {
 			if (isDirty) writes.push(chunkFile(chunk));
-			chunk = { writer, index: chunk.index + 1, lines: [] };
+			chunk = { writer, index: (chunk.index % ring) + 1, lines: [] };
 			size = 0;
-			if (chunk.index > keep)
-				writes.push({ name: chunkName(writer, chunk.index - keep), text: "" });
 		}
 		chunk.lines.push(line);
 		size += line.length + 1;
