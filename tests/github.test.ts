@@ -13,6 +13,7 @@ import {
 	parseBurndown,
 	parseIssueList,
 	parseRepo,
+	parseRepoHost,
 	readCount,
 	readIssueList,
 	runFailure,
@@ -253,6 +254,8 @@ test("search counts scope the repository, filter and state without shell interpo
 		"gh",
 		"api",
 		"search/issues",
+		"--hostname",
+		"github.com",
 		"-X",
 		"GET",
 		"-f",
@@ -300,4 +303,34 @@ test("count parsing rejects incomplete, failed and malformed responses", async (
 	expect(readCount(fail("rate limited"))).toBeUndefined();
 	expect(readCount(ok("0\n"))).toBe(0);
 	expect(await fetchCounts(async () => ok(""), "o/r", "")).toBeUndefined();
+});
+
+test("Enterprise counts carry the resolved host and isolate stored history", async () => {
+	const host = parseRepoHost(
+		'{"url":"https://github.example.test/owner/repo"}',
+	);
+	expect(host).toBe("github.example.test");
+	expect(parseRepoHost("{}")).toBeUndefined();
+	expect(parseRepoHost('{"url":"not a URL"}')).toBeUndefined();
+	expect(parseRepoHost('{"url":"file:///repo"}')).toBeUndefined();
+	const calls: string[][] = [];
+	const counts = await fetchCounts(
+		async (argv) => {
+			calls.push(argv);
+			return ok("12");
+		},
+		"owner/repo",
+		"",
+		host,
+	);
+	expect(counts).toEqual({ open: 12, closed: 12 });
+	expect(calls.length).toBe(2);
+	for (const argv of calls)
+		expect(argv[argv.indexOf("--hostname") + 1]).toBe(host);
+	expect(burndownKey("owner/repo", "", host)).toBe(
+		"burndown:github.example.test/owner/repo:",
+	);
+	expect(burndownKey("owner/repo", "", host)).not.toBe(
+		burndownKey("owner/repo", ""),
+	);
 });
