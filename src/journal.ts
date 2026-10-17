@@ -61,6 +61,7 @@ export const BullpenEventSchema = object({
 	detail: string(),
 	/** Issue numbers referenced (`#123`). */
 	issues: array(pipe(number(), integer(), minValue(1))),
+	confirmedCloses: optional(array(pipe(number(), integer(), minValue(1)))),
 });
 
 export type BullpenEvent = InferOutput<typeof BullpenEventSchema>;

@@ -39,8 +39,11 @@ function unnegatedFailure(text: string): boolean {
  * ux) reports a failure and no pass.
  */
 export function isKickback(text: string, reviewer: boolean): boolean {
-	if (SENT_BACK.test(text)) return true;
-	return reviewer && !PASSED.test(text) && unnegatedFailure(text);
+	return text.split(/[;\n]|\bbut\b/i).some((clause) => {
+		const sent = SENT_BACK.exec(clause);
+		if (sent && !NEGATED.test(clause.slice(0, sent.index))) return true;
+		return reviewer && !PASSED.test(clause) && unnegatedFailure(clause);
+	});
 }
 
 /** Roles whose failures send work back, by team name when no role is given. */
@@ -50,7 +53,6 @@ export function isReviewer(name: string, role: string | undefined): boolean {
 
 const CLOSED = new RegExp(
 	[
-		/\bgh issue close\s+#?(\d{1,7})\b/,
 		/\b(?:closed|shipped)\s+#(\d{1,7})\b/,
 		/#(\d{1,7})\s+(?:is\s+)?(?:closed|shipped)\b/,
 		/#(\d{1,7})\s*✓/,
@@ -62,7 +64,7 @@ const CLOSED = new RegExp(
 );
 
 /**
- * Issues a tool call or message says were closed: `gh issue close 208`,
+ * Issues a message explicitly confirms closed:
  * "closed #208", "#208 shipped", "#208 ✓". Not "closes #208", a PR promising
  * to close it on merge, nor "merged #13", which is usually a PR number, nor
  * anything negated ("not closed #12").
@@ -72,6 +74,18 @@ const NEGATED = /\b(not|never|no|yet to)\b|n't\b/i;
 
 export function closedIssues(text: string): number[] {
 	const found: number[] = [];
+	// Questions and quoted commands are not confirmations.
+	text = text
+		.split(/(?<=[.!?])\s+|[;\n]/)
+		.filter(
+			(clause) =>
+				!clause.includes("?") &&
+				!/^\s*(?:who|what|when|where|why|how|is|are|was|were|did|has|have|can|could|should|would)\b/i.test(
+					clause,
+				) &&
+				!/\bgh\s+issue\s+close\b/.test(clause),
+		)
+		.join("; ");
 	for (const m of text.matchAll(CLOSED)) {
 		const clause =
 			text
@@ -83,4 +97,32 @@ export function closedIssues(text: string): number[] {
 		if (!found.includes(issue)) found.push(issue);
 	}
 	return found;
+}
+
+/** Only a simple foreground close with a successful Bash result is evidence. */
+export function confirmedToolCloses(
+	command: string,
+	outcome: unknown,
+): number[] {
+	const match = /^\s*gh\s+issue\s+close\s+#?(\d{1,7})\s*$/.exec(command);
+	if (!match || !outcome || typeof outcome !== "object") return [];
+	if ("deny" in outcome && outcome.deny !== undefined) return [];
+	if ("isError" in outcome && outcome.isError) return [];
+	if (
+		!("result" in outcome) ||
+		!outcome.result ||
+		typeof outcome.result !== "object"
+	)
+		return [];
+	const result = outcome.result;
+	if (
+		!("interrupted" in result) ||
+		result.interrupted !== false ||
+		("backgroundTaskId" in result && result.backgroundTaskId) ||
+		("backgroundedByUser" in result && result.backgroundedByUser) ||
+		("timedOutAfterMs" in result && result.timedOutAfterMs)
+	)
+		return [];
+	const issue = Number(match[1]);
+	return issue > 0 ? [issue] : [];
 }
