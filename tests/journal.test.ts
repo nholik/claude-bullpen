@@ -10,6 +10,7 @@ import {
 	journalDir,
 	lastChunk,
 	planAppend,
+	planRetention,
 	readChunks,
 	readJournal,
 	teamOf,
@@ -308,4 +309,88 @@ test("applyBatch reconcile marks unlisted members gone, with one leave each", as
 	expect(out.a2?.name).toBe("gate");
 	const cleared = applyBatch(out, [{ op: "clear-demo" }]).members;
 	expect(Object.keys(cleared).sort()).toEqual(["a1", "a2"]);
+});
+
+const DAY = 24 * 60 * 60 * 1000;
+const NOW = 100 * DAY;
+const file = (writer: string, index: number, age: number, size = 100) => ({
+	name: chunkName(writer, index),
+	mtimeMs: NOW - age,
+	size,
+});
+
+test("an empty chunk reads as zero events", async () => {
+	expect(readJournal("")).toEqual({ events: [], skipped: 0 });
+	expect(readChunks(["", ""]).events).toEqual([]);
+	expect(chunkLines("")).toEqual([]);
+});
+
+test("planRetention never touches the own or a young session", async () => {
+	const files = [file("me", 1, 10 * DAY), file("live", 1, DAY / 2)];
+	expect(planRetention(files, NOW, "me", { keepSessions: 0 })).toEqual([]);
+});
+
+test("planRetention keeps the newest sessions and empties the rest", async () => {
+	const files = [
+		file("a", 1, 2 * DAY),
+		file("a", 2, 3 * DAY),
+		file("b", 1, 5 * DAY),
+		file("c", 1, 4 * DAY),
+	];
+	expect(planRetention(files, NOW, "me", { keepSessions: 2 }).sort()).toEqual([
+		chunkName("b", 1),
+	]);
+	expect(planRetention(files, NOW, "me", { keepSessions: 0 }).length).toBe(4);
+});
+
+test("planRetention cuts oldest sessions past maxBytes", async () => {
+	const files = [
+		file("a", 1, 2 * DAY, 60),
+		file("b", 1, 3 * DAY, 60),
+		file("c", 1, 4 * DAY, 10),
+	];
+	// c is small enough to fit but is older than b, so it goes too.
+	expect(planRetention(files, NOW, "me", { maxBytes: 100 }).sort()).toEqual([
+		chunkName("b", 1),
+		chunkName("c", 1),
+	]);
+});
+
+test("planRetention skips empty files and other names", async () => {
+	const files = [
+		file("a", 1, 5 * DAY, 0),
+		file("a", 2, 5 * DAY, 10),
+		{ name: "notes.txt", mtimeMs: 0, size: 5 },
+	];
+	expect(planRetention(files, NOW, "me", { keepSessions: 0 })).toEqual([
+		chunkName("a", 2),
+	]);
+});
+
+test("an emptied chunk of another session doesn't move lastChunk", async () => {
+	const entries = [
+		{ name: chunkName("me", 3), mtimeMs: 5 },
+		{ name: chunkName("old", 7), mtimeMs: 9 },
+	];
+	expect(lastChunk(entries, "me")).toBe(3);
+});
+
+test("planRetention ignores emptied sessions on a later pass", async () => {
+	const keep = 2;
+	const old = Array.from({ length: 5 }, (_, i) =>
+		file(`s${i}`, 1, (5 + i) * DAY),
+	);
+	const first = planRetention(old, NOW, "me", { keepSessions: keep });
+	expect(first.length).toBe(3);
+	// Pruning rewrote those files empty, with a fresh mtime.
+	const later = NOW + 2 * DAY;
+	const after = old.map((f) =>
+		first.includes(f.name) ? { ...f, size: 0, mtimeMs: NOW } : f,
+	);
+	// Nothing left to prune: the empties neither crowd out nor age the rest.
+	expect(planRetention(after, later, "me", { keepSessions: keep })).toEqual([]);
+	// With keep 1, only the older survivor goes.
+	expect(planRetention(after, later, "me", { keepSessions: 1 })).toEqual([
+		chunkName("s1", 1),
+	]);
 });

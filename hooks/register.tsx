@@ -21,6 +21,7 @@ import {
 	lastChunk,
 	MAX_CHUNKS,
 	planAppend,
+	planRetention,
 	STATE_EVENTS,
 	teamOf,
 	toLine,
@@ -110,6 +111,17 @@ async function loadChunk(
 	}
 }
 
+/** Empties other sessions' old chunks (`$.fs` can't delete); best effort. */
+async function pruneJournal($: $, dir: string, writer: string) {
+	try {
+		const entries = await $.fs.list(dir);
+		for (const name of planRetention(entries, await $.clock.now(), writer))
+			await $.fs.write(`${dir}/${name}`, "");
+	} catch (error) {
+		warnJournal($, `can't prune ${dir} (${error})`);
+	}
+}
+
 async function writeJournal($: $, added: BullpenEvent[]) {
 	const home = (await $.env.get("HOME")) ?? (await $.env.get("USERPROFILE"));
 	if (!home) return;
@@ -119,6 +131,7 @@ async function writeJournal($: $, added: BullpenEvent[]) {
 		const current = await loadChunk($, dir, writer);
 		if (!current) return;
 		journal = { dir, current };
+		void pruneJournal($, dir, writer).catch(() => {});
 	}
 	const plan = planAppend(journal.current, added.map(toLine));
 	for (const { name, text } of plan.writes)
