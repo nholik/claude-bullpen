@@ -72,7 +72,7 @@ test("mixed-type palette retains valid colors and affects floor pixels", () => {
 		lastActiveAt: 0,
 		issue: 1,
 	};
-	expect(drawFloor([member], 110, 6, 0, {}, parsed.profile).cells).not.toBe(
-		drawFloor([member], 110, 6, 0).cells,
+	expect(drawFloor([member], 110, 13, 0, {}, parsed.profile).cells).not.toBe(
+		drawFloor([member], 110, 13, 0).cells,
 	);
 });
