@@ -75,12 +75,12 @@ test("the floor packs columns*rows cells and gives each issue a table", async ()
 		member("gate", 2, 204),
 		member("scout", 3),
 	];
-	const { cells, labels } = drawFloor(team, 60, 6, 0);
+	const { cells, labels } = drawFloor(team, 110, 10, 0);
 	// 3 u32 words per cell, base64 of 4 bytes each.
-	expect(cells.length).toBe(Math.ceil((60 * 6 * 12) / 3) * 4);
+	expect(cells.length).toBe(Math.ceil((110 * 10 * 12) / 3) * 4);
 	expect(labels.map((l) => l.text)).toContain("#208");
 	expect(labels.map((l) => l.text)).toContain("#204");
-	expect(layout(60, 6, [208, 204]).tables.size).toBe(2);
+	expect(layout(110, 10, [208, 204]).tables.size).toBe(2);
 });
 
 test("an idle team draws the same frame every tick", async () => {
