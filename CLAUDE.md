@@ -30,6 +30,8 @@ scripts/snap.sh        # real screenshot: runs `/bullpen demo` in tmux → .scra
 - `src/` holds pure, engine-free modules (normalizing, model reducers, floor drawing, color),
   tested in `tests/*.test.ts` via `claude plugin test`. New logic goes here first, with tests.
 - `types/index.d.ts` is the `$.state` contract; declare every state key there.
+- Tests run in a sandbox with no fs: fixtures are TypeScript modules exporting JSONL strings
+  (`tests/fixtures/*.ts`), not `.jsonl` files.
 - Observer hooks (`tool.call`, `session.send`, `turn.*`, `agent.spawn`) must never block, deny or
   rewrite: record with `void ... .catch(() => {})` and `return next(e)` immediately.
 - Performance: batch state writes, throttle redraws (≤10 Hz), animate only while something
