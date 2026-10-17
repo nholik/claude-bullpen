@@ -1,144 +1,302 @@
-# Bullpen design
+# Bullpen design brief
 
-This is the design that came out of the planning session on 2026-10-17. Mockups are targets, not specs: build toward them and adjust them as you dogfood.
+**The glass wall into your agent team.** Glance at it for three seconds and you know
+what needs you, who is stuck, and what is shipping. When nothing needs you, it stays out of the way.
 
-## Context
-The user runs agent teams (now enabled in `~/.claude/settings.json`) and wants to point them at
-GitHub issues. Claude Code's own UI already drills into single agents; what's missing is the
-**overview**: walking into an organized office and seeing at a glance who is huddled on which
-issue, what got kicked back, what teammates are saying to each other, how the burndown is going,
-and whether morale is good or the office needs help. TUI-first (GNOME Terminal at home, Windows
-Terminal/PowerShell at work); browser not a goal but not precluded. The MVP is a base to morph
-per use case (home vs work, different team shapes), pushed to a repo the user will create, then
-built further *by an agent team watching itself in the mod* (dogfooding).
+This brief is the bar for every visual PR. Mockups are targets: build toward them and
+change them when dogfooding proves them wrong. The pixel floor from the first planning
+round (sprites, walking, confetti, floor lighting) is **retired**. It looked bad in a
+real terminal. Studio glyph cards are the canvas now.
 
-Design converged over 4 rounds of mockups: V1+V2 blend (desk cards with relationship tags,
-grouped into huddles by issue — a swarm, not a pipeline), Riff 1 header + auto-waking hallway,
-plus a live pixel floorplan with light animation as the "wow".
+## The three questions
 
-## Target layout (one pane, regions expand/focus)
+A glance answers these, in this order:
+
+1. **What needs me?** Asks, decisions and blocked work that only the human can unblock.
+2. **Who is stuck?** A teammate who is spinning, failing, idle with work open, or waiting too long.
+3. **What is shipping?** Where each issue is on the way to done: issue, PR, review, merge.
+
+Everything else (conversation, morale, burndown) is texture. It may be on screen, but
+it never competes with the three answers.
+
+## Principles
+
+- **Calm by default.** A healthy team looks quiet. Color and motion are alarms, so spend them only when there is something to act on.
+- **Truth over coverage.** A blank cell is better than a wrong one. Don't show
+  "teammate", raw shell text or guessed attribution. If we can't say it plainly, say less.
+- **Words, not codes.** Activity reads like a sentence: "reviewing PR #77", not
+  `gh pr review 77 --comment --body "...`. Tool names, paths under `$HOME` and shell
+  plumbing never reach the screen.
+- **Cheap to leave open.** Nothing animates while nothing changes. Redraws stay at 10 Hz or less and buffers are capped.
+- **Portable.** GNOME Terminal (VTE) and Windows Terminal. Width-1 glyphs only, no
+  emoji, 24-bit color, box drawing. `glyphs: "ascii"` must still read well.
+- **Glass, not controls.** Bullpen observes. Acting on something (answering an ask,
+  opening a transcript) hands off to Claude Code's own UI.
+
+## Information hierarchy
+
+| Loudness | What | How it shows |
+|---|---|---|
+| Loud | Needs-you queue | Row 1 under the header at every width; amber; the only thing that pulses |
+| Loud | Failing / kicked back | Coral face and card frame; ship rail stop turns ✗ |
+| Firm | Stuck | Face changes, plus a reason ("no progress 18m"); no motion |
+| Medium | Ship path changes | Rail stop fills; merge gets a one-shot flourish |
+| Quiet | Heads-down work | Normal text, no frame color |
+| Quiet | Hallway talk | Muted; sender colored; one line each at narrow widths |
+| Quietest | Idle, away, gone | Dimmed card, snoozing z's |
+| Ambient | Morale, burndown | Header glyph and a footer sparkline |
+
+If two things fight for a row, the one higher in this table wins.
+
+## Screen anatomy (top to bottom)
+
+1. **Header** (2 rows). Repo (never "workspace" when gh knows it), morale glyph, clock.
+   Row 2 shows shipped / in flight / needs-you counts. "Shipped" counts merges from the
+   ship model, so it never says 0 after a merge.
+2. **Needs you.** One row per open ask, oldest first, capped at 3 with "+N more". When the
+   queue is empty it collapses to nothing. There's no "No open decisions" row taking up space.
+3. **Shipping.** One row per issue in flight, with its rail. This replaces the old
+   Huddles list: who works on an issue together is visible on the rail's names.
+4. **Team.** Cards (wide) or two-line rows (narrow), ordered by urgency: needs-you,
+   failing, stuck, running, idle, gone.
+5. **Hallway.** Recent teammate-to-teammate messages. At 110 and up it's a sidebar; below
+   that it takes whatever rows are left.
+6. **Footer.** Burndown sparkline and key hints, one row. Say "no GitHub data" once
+   per screen, not once per region.
+
+### Needs-you queue
+
 ```
-┌ Bullpen · label:bug · 5/12 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ ☀ 14:32 ┐
-│ ⚑ gate: "#204 flaky test — skip or fix?"                 [1] answer │
-│▐   ╔═#208═╗   ·  ✉ · ·   ╔═#204═╗         ╔═#217═╗    ░DONE 7░  ▌│  floor (Raster,
-│▐  ●smith ●ada ────────▶   ◐gate             ●lead     ░░░░░░░░  ▌│  half-block pixels)
-│▐    ◐iris ↺      ○scout             ✓#199 ✦·✦ ──▶              ▌│
-├ Huddles ───────────────────────────────┬ Hallway ▾ live ───────────┤
-│ ╭ #208 auth redirect · 3 · 22m ↺1 ▁▃▅▇╮│ gate → smith ↺ test_log… │
-│ │ ●smith ⇄ ●ada  ◐iris ↺              ││ iris → lead  #199 ✓ …    │
-│ ╰─────────────────────────────────────╯│                           │
-├────────────────────────────────────────┴───────────────────────────┤
-│ burndown 12 ▇▇▇▆▆▅▄▃▂┄┄ 5 · pace ~45m      f floor h huddles t talk │
-└────────────────────────────────────────────────────────────────────┘
-band above prompt:  ☰ bullpen ☀  ●#208×3  ◐#204⚑  ✉2  5/12 ▂▃▄   (press → open pane)
+ ! gate → you  #204 flaky test: skip or fix?                     6m  [t]
+ ! ada  → you  #208 can I change the login redirect contract?    1m  [t]
 ```
-- `f`/`h`/`t` focus a region full-pane, again to restore; `Esc` back. Ellipses for overflow.
-- Narrow (<110 cols): floor collapses to a 1-row strip, huddles stack.
-- Huddle press → **issue story** (cross-agent timeline for one issue: assigned, edits, verdicts,
-  kickbacks, messages about it, GH state). Teammate press → Claude's own transcript via
-  `$.ui.view({ agentId })` (reuse, don't rebuild). Hallway auto-expands on recent messages,
-  collapses to one line after ~3 min quiet.
 
-### Eye candy — MVP set (restrained)
-- Per-teammate color identity everywhere (sprite, name, tags, sparkline).
-- Sprite **walks** between issue tables when a teammate's issue changes; **message dot**
-  travels sender→receiver in sender's color; kickback = red spark.
-- Issue close: table flashes green + small confetti burst, slides into DONE pile; burndown ticks.
-- Change-glow: card border bright → dim over ~60s.
-- **Morale**: score from closes(+), kickbacks/failing gates(−), open "needs you" asks(−),
-  stalled huddles(−), idle-while-work-open(−). Shown as floor lighting warmth/dimness + header
-  glyph `☀ ☁ ☂ ☇`. Low morale → header hint ("#204 stalled 20m — check in?").
-- Animation loop runs only while tweens are active (`$.clock.every(66)` + `$.ui.blit`), stops
-  when idle. Toggle `animations: off` in config.
+An ask is open until the lead answers it, or a later message resolves it. The age
+turns from amber to coral at 10 minutes. The pulse runs for 10 s when an ask arrives,
+then holds steady: a pulse that never stops is just noise.
 
-### Terminal compatibility (GNOME Terminal/VTE + Windows Terminal)
-Both do 24-bit color, half-block `▀▄█▌▐`, box drawing. Use only width-1 glyphs (no emoji);
-avoid braille for core visuals (font-dependent on Windows). No kitty `Image`. Keyboard-first
-(hotkeys); hover cards are a bonus where the fullscreen terminal reports the mouse. Verify on
-both in Phase 0.
+### Ship path
 
-## Architecture (layers so it can morph later)
-1. **Collector** (`src/collect.ts`) — hooks normalize engine events into `BullpenEvent`s:
-   `agent.spawn` (teammate joined, name/role), `turn.start`/`turn.complete` (busy/idle by
-   `agentId`), `tool.call` observe-only (Edit/Write → files; Bash `gh`/test runs; TaskCreate/
-   TaskUpdate → task + issue refs), `session.send` (hallway message, from/to/text), periodic
-   `$.agent.list()` reconcile for status. Never blocks or rewrites; always `return next(e)`.
-2. **Journal** (`src/journal.ts`) — ring buffer in `$.state`, appended to
-   `~/.claude/bullpen/<team>/events.jsonl` via `$.fs` (replay, tests, future browser view).
-3. **Model** (`src/model/*.ts`) — pure reducers `events → BullpenModel` { teammates, huddles
-   (by issue), hallway, issues/burndown, asks, morale }. Issue attribution: `#N` refs in spawn
-   prompt/description, SendMessage text, task subjects/metadata, `gh issue` args, branch names;
-   last-ref-wins per teammate. All pure → unit-testable.
-4. **Sources** (`src/github.ts`) — read-only `gh issue list --json number,title,state,labels,
-   closedAt,assignees --search <filter>` via `$.process.run` every 60s; burndown snapshots kept
-   in `$.store`. Graceful when `gh` missing/unauthed (header says so).
-5. **Profile** (`bullpen.json` in project `.claude/` or plugin `userConfig`) — issue filter,
-   role map (teammate name/type → role, color), animations on/off. This is the morph point for
-   home vs work variants.
-6. **Render** (`src/render/*.tsx`) — header, floor (Raster + `src/anim.ts` tween engine),
-   huddles, hallway, burndown, band, issue story. Draw from `$.state` atoms only.
-7. **Commands** — `/bullpen` (toggle pane), `/bullpen story <#N>`, `/bullpen filter <query>`,
-   `/bullpen demo` (replay a fixture journal — drives the UI with no live team; key for dev,
-   tests, screenshots).
+Four stops, issue → PR → review → merged:
 
-## Repo layout (plugin at repo root, installable as its own marketplace)
 ```
-.claude-plugin/plugin.json        name "bullpen", types → ./types/index.d.ts
-.claude-plugin/marketplace.json   { plugins: [{ name: "bullpen", source: "./" }] }
-hooks/hooks.json                  { "modules": ["./register.tsx"] }
-hooks/register.tsx                wires collector, timers, commands, render hooks
-src/{collect,journal,github,anim,profile}.ts  src/model/*.ts  src/render/*.tsx
-types/index.d.ts                  PluginState contract for "bullpen"
-fixtures/demo-*.jsonl             recorded/synthetic sessions for /bullpen demo + tests
-tests/*.test.ts                   claude plugin test
-docs/design.md                    mockups + design decisions from this planning session
-README.md                         install line, config, screenshots
+ #204 session expiry   ●━━●━━✗━━○  PR #91 · changes asked     smith gate
+ #208 auth redirect    ●━━○━━○━━○  no PR yet · 22m            ada
+ #199 tooltip align    ●━━●━━●━━✓  merged 2m ago              iris
 ```
-Reference: mod skill examples `pane.tsx` (pane + command + atoms), `band.tsx` (band + toast)
-under the bundled plugin-authoring skill; API types laid into `.claude-plugin/types/` on load.
 
-## Build phases (each a task set for the team; dependencies noted)
-- **P0 Spike (lead, blocking)** — scaffold mod; confirm in this build: `tool.call`/`turn.*`
-  carry teammate `agentId`; `session.send` fires for teammate SendMessage; multiple pane ids
-  layout vs one pane; Raster half-block sprite + blit animation in GNOME Terminal and Windows
-  Terminal. Record a real team session journal as first fixture.
-- **P1 Core** (parallel after P0): (a) collector + journal; (b) model reducers + attribution +
-  morale with tests; (c) GitHub poller + burndown; (d) profile/config.
-- **P2 Views** (after P1b): (e) header + band + burndown; (f) huddles + hallway (auto-wake);
-  (g) floor static layout + color identity; (h) `/bullpen` commands, region focus, narrow layout.
-- **P3 Alive** (after P2g): (i) tween engine + walk/message-dot/close-burst/glow; (j) morale →
-  lighting + hints; (k) issue story drill-down; (l) `/bullpen demo` polish + screenshots.
-- **Later (not MVP)**: per-huddle plain-English narration via throttled `$.model.complete`;
-  "since you looked away" replay card; hallway threads; role-kit agent definitions +
-  `/issues-team` kickoff command; sound; browser view off the same journal.
+- `●` reached, `○` not yet, `✗` review asked for changes (coral), `✓` merged (mint).
+- The current stop takes the owner's color. Earlier stops are muted.
+- The label says the one fact that matters now: the PR number and the last verdict, or how long it's
+  been waiting. If a review loops (✗ twice), add "2nd round".
+- Merged rows stay for 10 minutes, then fold into the header's shipped count.
+- The model is `src/model/ship.ts` (PR #77). The model doesn't guess: a stop only fills on evidence.
+
+### Card anatomy (4 rows, wide layouts)
+
+```
+╭──────────────────────────────────╮
+│ (o_o)/ gate · reviewer        6m │   face · name · role, age of last change
+│ #204 session expiry · review ✗   │   issue, title and ship stop
+│ needs you: skip or fix flaky…    │   activity, as a verb phrase
+│ → lead: #204 flaky test – skip…  │   last thing said or heard, muted
+╰──────────────────────────────────╯
+```
+
+- 4 content rows plus a border. The old 8-row card spent half its height on chrome
+  (status row, divider). Cards sit in 6-row slots; no blank bands between rows.
+- **Role** comes from the agent type or the profile role map. If neither knows, show no
+  role at all. "teammate" is never correct.
+- **Activity** comes from a small verb vocabulary over the latest tool event: reading,
+  editing `file.ts`, running tests, reviewing PR #N, opening PR #N, rebasing,
+  merging, messaging NAME, researching. If nothing matches, fall back to the last message.
+  Never show raw commands, tool names (`Monitor`), or `cd /home/...`.
+- **Frame** is muted except for needs-you (amber) and failing (coral). The change-glow
+  (a bright border decaying over 60 s) is the only other frame color.
+- Unassigned teammates (lead, directors, reviewers between reviews) show their
+  activity instead of an issue row. Reading or reviewing an issue doesn't make someone its owner.
+
+### Narrow team row (2 rows, below 110 cols)
+
+```
+ (o_o)/ gate   reviewer #204  needs you: skip or fix the flaky test?
+        → lead: #204 flaky test – skip or fix?                     6m
+```
+
+## State vocabulary and moods
+
+Faces are printable ASCII so every terminal and font draws them the same. A face always
+appears with its word: color and face are never the only signal.
+
+| State | Face | Word | Color | Card | Motion |
+|---|---|---|---|---|---|
+| needs you | `(o_o)/` | needs you | amber | amber frame | 10 s pulse, then steady |
+| failing | `(>_<)` | checks red ×N | coral | coral frame | none |
+| kicked back | `(>_<)` | sent back | coral | coral frame | none |
+| stuck | `(._.)` | stuck · reason | amber text | normal | none |
+| in review | `(o_o)?` | waiting on review | lavender | normal | none |
+| running | `(o.o)` | heads-down | text | normal | none |
+| merged | `(^_^)b` | merged | mint | normal | one-shot, ≤2 s |
+| idle | `(-_-)` | snoozing | muted | dimmed | z's drift |
+| away | `(-_-)` | away | muted | dimmed | z's drift |
+| gone | `(u_u)` | clocked out | edge | dimmed | none |
+
+Every state has its own face except idle/away (same face, different word). Precedence runs
+from top to bottom: the first state that matches wins.
+
+**Stuck** fires on any of: running with no tool progress for 10 min; the same failing
+command three times; two review kickbacks on one issue; idle for 5 min while assigned
+an open issue; waiting on review for 15 min. The reason goes on the card ("no progress
+14m"). Morale's stall detection and the card must agree: if the header says an issue
+stalled, its owner's card says stuck. **Cost** shows turns and wall-clock per teammate.
+Token or dollar figures appear only if the engine reports them. We never estimate.
+
+## Motion rules
+
+Only three things move, and each has to earn it:
+
+1. **Needs-you pulse.** Amber, 1 Hz, for 10 s after the ask arrives.
+2. **Merge flourish.** One shot, at most 2 s, on the card face and the rail's ✓.
+3. **Snooze.** Idle z's drift one frame every 2 s.
+
+In addition, the change-glow is a decay, not an animation: it is redrawn on the existing
+1 s refresh. Nothing else moves: no marquee text, no spinners, no walking. With nothing
+changing, the timer stops. `animations: false` freezes all three at their resting frame.
+
+## Hallway
+
+- One line per message below 110 columns, two lines in the sidebar. Show the sender colored, then
+  `→ receiver`, then the text. Truncate with `…`, never a space and a period.
+- Strip a leading "Name:" that repeats the sender.
+- After 3 min of quiet, collapse to `hallway quiet 12m`. A new message wakes it.
+- Ship verdicts ("PASS", "CHANGES", "merged") move the rail. They still show in the
+  hallway, but the rail is where the eye goes for them.
+
+## Identity
+
+- Each teammate gets a distinct color from the palette in join order, not from a hash of
+  their name. Two teammates on screen never share a hue.
+- That color marks the name, the rail stop and hallway sender wherever they appear.
+
+## Widths
+
+Sizes are pane body columns.
+
+| Width | Layout |
+|---|---|
+| < 60 | Header, needs-you, shipping rows (no rail labels), one-line team rows |
+| 60–109 (72) | Single column: header, needs-you, shipping, 2-row team rows, hallway one-liners in the remaining rows |
+| 110–149 | Left: shipping plus 4-row cards, 2 across. Right sidebar (≥ 34 cols): hallway |
+| ≥ 150 (160) | Left: shipping plus cards 3 across. Right sidebar (~48 cols): hallway, 2 lines per message |
+
+Needs-you always spans the full width under the header. If there are no rows left for the hallway, it
+drops before shipping or the team does. Talk must never vanish while blank rows sit
+elsewhere.
+
+### 72 columns
+
+```
+ BULLPEN  nholik/claude-bullpen                 ☀  17:32  2 shipped
+ 3 in flight · 5 teammates · 1 needs you
+ ! gate → you  #204 flaky test: skip or fix?                     6m [t]
+ ─ SHIPPING ────────────────────────────────────────────────────────────
+ #204 session expiry  ●━━●━━✗━━○  PR #91 · changes asked     smith gate
+ #208 auth redirect   ●━━○━━○━━○  no PR yet · 22m                   ada
+ #199 tooltip align   ●━━●━━●━━✓  merged 2m ago                    iris
+ ─ TEAM ────────────────────────────────────────────────────────────────
+ (o_o)/ gate   reviewer #204  needs you: skip or fix the flaky test?
+        → lead: #204 flaky test – skip or fix?                     6m
+ (o.o)  smith  engineer #204  running tests · session_test.py
+        → gate: fixed, please re-run                              <1m
+ (._.)  ada    engineer #208  stuck · no progress 14m
+        → smith: repro test is in, fails as expected              14m
+ (^_^)b iris   designer #199  merged
+ (-_-)  scout  researcher     snoozing  z z
+ ─ HALLWAY ─────────────────────────────────────────────────────────────
+ smith → gate   #204: fixed, please re-run                          17:31
+ iris → lead    #199 looks good, filed a spacing nit as #217        17:29
+ burndown ▇▇▆▅▄▃ 5 open · pace ~45m              f team · t talk · r reset
+```
+
+### 160 columns
+
+```
+ BULLPEN  nholik/claude-bullpen                                                                       ☀  17:32
+ 3 in flight · 5 teammates · 2 shipped this session                                                  1 needs you
+ ! gate → you  #204 flaky test: skip or fix?                                                                       6m  [t] answer
+ ─ SHIPPING ───────────────────────────────────────────────────────────────────────────────┬─ HALLWAY ─────────────────────────────────────
+ #204 session expiry   ●━━●━━✗━━○  PR #91 · changes asked, 2nd round        smith gate      │ smith → gate                            17:31
+ #208 auth redirect    ●━━○━━○━━○  no PR yet · 22m                                 ada      │ #204: fixed, please re-run
+ #199 tooltip align    ●━━●━━●━━✓  merged 2m ago                                   iris     │
+ ─ TEAM ───────────────────────────────────────────────────────────────────────────────────┤ iris → lead                             17:29
+ ╭────────────────────────────╮ ╭────────────────────────────╮ ╭────────────────────────────╮ │ #199 looks good, filed a spacing nit as
+ │ (o_o)/ gate · reviewer  6m │ │ (o.o) smith · engineer <1m │ │ (._.) ada · engineer   14m │ │ #217
+ │ #204 session expiry · ✗    │ │ #204 session expiry · ✗    │ │ #208 auth redirect · issue │ │
+ │ needs you: skip or fix?    │ │ running tests              │ │ stuck · no progress 14m    │ │ ada → smith                             17:18
+ │ → lead: flaky test – skip… │ │ → gate: fixed, please re-… │ │ → smith: repro test is in… │ │ #208: repro test is in, fails as
+ ╰────────────────────────────╯ ╰────────────────────────────╯ ╰────────────────────────────╯ │ expected
+ ╭────────────────────────────╮ ╭────────────────────────────╮                                │
+ │ (^_^)b iris · designer  2m │ │ (-_-) scout · researcher   │                                │
+ │ #199 tooltip align · ✓     │ │ unassigned                 │                                │
+ │ merged                     │ │ snoozing   z Z             │                                │
+ │ → lead: #199 looks good…   │ │                            │                                │
+ ╰────────────────────────────╯ ╰────────────────────────────╯                                │
+ burndown ▇▇▇▆▆▅▄▃▂ 12 → 5 · pace ~45m                                                        f team · t talk · r reset
+```
+
+## Drill-downs
+
+- Press an issue (rail or card) to open the **issue story**: the cross-agent timeline for
+  one issue, including assigned, edits, verdicts, kickbacks, messages about it and GitHub state.
+- Press a name to open Claude Code's own transcript via `$.ui.view({ agentId })`. Reuse it; don't rebuild it.
+- The band above the prompt is the one-line version of the three questions:
+  `bullpen ☀  !1  #204 ✗  #208 ○  #199 ✓  2 shipped`.
+
+## Non-goals
+
+- Pixel floor, sprites, walking, confetti, floor lighting. Retired.
+- Controlling the team from the pane. Bullpen observes; Claude Code acts.
+- Rebuilding transcripts or the agent detail view.
+- Estimated tokens or dollars. Only what the engine reports.
+- Emoji, braille, kitty images, or anything wider than one cell.
+- Sound, desktop notifications, a browser view. All possible later off the same journal,
+  but none of them is the product now.
+- A second dashboard. Studio is the product. Operations gets no new features, and folds into
+  Studio or retires once Studio answers the three questions.
+
+## Roadmap (pillars)
+
+1. **Role and live activity on every card.** #72 / PR #80. Includes the verb vocabulary and no-"teammate".
+2. **Ship path.** #73: model in PR #77, then the Shipping rail and the header's shipped count.
+3. **Needs-you queue.** Promote asks to row 1, add multiple asks and ages.
+4. **Stuck and cost signals.** The stuck rules above, plus turns and wall-clock per teammate.
+5. **Moods.** #74 / PR #92. The faces, words and motion above.
+6. **Truth fixes.** Attribution (touching ≠ owning), join-order colors, repo name in the header.
+
+## Architecture
+
+The layers stay, so the mod can be reshaped later:
+
+1. **Collector** (`src/collect.ts`). Hooks normalize engine events into journal events.
+   Observers never block, deny or rewrite. They always `return next(e)`.
+2. **Journal** (`src/journal.ts`). A ring buffer in `$.state`, appended under
+   `~/.claude/bullpen/<session>/` for replay, tests and the demo.
+3. **Model** (`src/model/*.ts`). Pure reducers: teammates, huddles, hallway, asks, ship
+   path, morale. All of them unit-tested.
+4. **Sources** (`src/github.ts`). Read-only `gh` polling for issue state and burndown.
+   Degrades gracefully without `gh`.
+5. **Profile** (`.claude/bullpen.json`). Issue filter, role map, glyphs, animations. This is
+   where the mod gets reshaped per team.
+6. **Render** (`src/render/*.ts`). View-models from model atoms. `team-studio.ts` is the
+   canvas.
+7. **Commands.** `/bullpen`, `/bullpen story #N`, `/bullpen demo`, `/bullpen live`,
+   `/bullpen reload`.
 
 ## Verification
-- `claude plugin validate .` and `tsc -p .` clean after every phase.
-- `claude plugin test .`: reducer tests over fixture journals (huddle grouping, kickback
-  detection, attribution, morale), UI mount tests on `terminal` surface for header/band/
-  huddles/hallway/story, tween engine with mocked clock.
-- Dev loop: `claude --plugin-dir <repo>` (hot reload); `/bullpen demo` for visuals; `--debug`
-  for refused trees.
-- Manual: run in GNOME Terminal and Windows Terminal at 80, 120, 180 cols; check glyphs,
-  colors, animation stops when idle.
-- Dogfood: once pushed, open a few real issues on the repo and spawn a team (lead + builders +
-  gate + UX + QA) to work them while the Bullpen pane is open; file what feels wrong as issues.
 
-## Tech stack (decided 2026-10-17)
-- TypeScript 7 (the native Go compiler) for type-checking; Biome 2.5 with default settings
-  for formatting and linting; Node 24+ for tooling only; MIT license.
-- No whole-mod build step: the engine loads `hooks/register.tsx` directly, so hot reload and
-  `claude plugin test` work on source. Borrowed npm libraries are compiled by esbuild into
-  `src/vendor/*.js` (committed, pinned, licenses collected) and imported by relative path,
-  because a mod and its tests may import only their own files and `claude-code`.
-- Rule: borrow when a small pure-JS library saves real work or brings correctness we shouldn't
-  hand-write; vendor only the exports we use. Current: culori, string-width, valibot.
-- Performance habits: batch state writes (~100 ms), throttle redraws (≤10 Hz), animate only
-  while something moves, cap buffers; no minification (readable stack traces).
-- CI (GitHub Actions): Biome, vendor freshness, tsc, `claude plugin validate/test`. All run
-  signed out; `scripts/ci-types.sh` gets the mod API types from a signed-out session.
-
-## Status
-- P0 spike in progress: scaffold, event recorder (`hooks/register.tsx`, `src/events.ts`),
-  half-block floor (`src/floor.ts`), `/bullpen` pane and band. Still to confirm: which events
-  carry teammate `agentId` in practice, multi-pane layout, and rendering in Windows Terminal.
+- Every visual PR attaches previews at 72, 110 and 160 (`scripts/preview.ts`, always under
+  `timeout 10`) and one real-terminal snap (`scripts/snap.sh`).
+- Check it against the live team (`--journal`), not just the demo: the demo is where the design
+  was tuned, and the live team is where it breaks.
+- The three-second test: show the screenshot, cover it, and ask what needs you, who is stuck and
+  what is shipping. If those take longer than three seconds to answer, the PR isn't done.

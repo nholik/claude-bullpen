@@ -262,7 +262,7 @@ src/vendor/       compiled third-party code (generated; don't edit)
 scripts/          vendor.mjs
 types/index.d.ts  the mod's state contract
 tests/            claude plugin test suites
-docs/design.md    design, mockups, build phases (planned files live there)
+docs/design.md    design brief: the three questions, layout and moods
 ```
 
 ## License
