@@ -12,7 +12,9 @@ export function isAsk(text: string): boolean {
 const SENT_BACK =
 	/\bkick(ing|ed|s)? (it |this |that )?back\b|\bsend(ing)? (it|this|that) back\b|\bsent (it|this|that) back\b|↺/i;
 const FAIL = /\bfail(s|ed|ing|ure|ures)?\b/i;
-const NOT_FAIL = /\b(no|0|zero|not|without) fail/i;
+// "no failures", "0 tests failed", "zero flaky tests failing": a negation up
+// to three words before the failure, within one clause.
+const NOT_FAIL = /\b(no|0|zero|not|none|without)(\s+[\w-]+){0,3}\s+fail/i;
 // A verdict that work is through outweighs any failure it mentions. PASS only
 // in capitals, so a test summary's "2 failed, 5 passed" is still a failure.
 const PASSED =
@@ -50,11 +52,21 @@ const CLOSED = new RegExp(
 /**
  * Issues a tool call or message says were closed: `gh issue close 208`,
  * "closed #208", "#208 shipped", "#208 ✓". Not "closes #208", a PR promising
- * to close it on merge, nor "merged #13", which is usually a PR number.
+ * to close it on merge, nor "merged #13", which is usually a PR number, nor
+ * anything negated ("not closed #12").
  */
+// A negation earlier in the same clause: "not closed #12", "isn't ✓ #12".
+const NEGATED = /\b(not|never|no|yet to)\b|n't\b/i;
+
 export function closedIssues(text: string): number[] {
 	const found: number[] = [];
 	for (const m of text.matchAll(CLOSED)) {
+		const clause =
+			text
+				.slice(0, m.index)
+				.split(/[.,;:!?\n]/)
+				.pop() ?? "";
+		if (NEGATED.test(clause)) continue;
 		const issue = Number(m.slice(1).find((g) => g !== undefined));
 		if (!found.includes(issue)) found.push(issue);
 	}

@@ -73,6 +73,13 @@ test("isKickback: saying so, or a reviewer reporting failure", async () => {
 		false,
 	);
 	expect(isKickback("all green, no failures", true)).toBe(false);
+	// Success said as a negated failure, a few words apart.
+	expect(isKickback("no test failures", true)).toBe(false);
+	expect(isKickback("0 tests failed", true)).toBe(false);
+	expect(isKickback("zero flaky e2e tests failing now", true)).toBe(false);
+	expect(isKickback("ran it: none of the tests fail", true)).toBe(false);
+	// A negation in another clause doesn't excuse a failure.
+	expect(isKickback("no lint errors, 3 tests failed", true)).toBe(true);
 	expect(isKickback("#12 passes, approved", true)).toBe(false);
 	// An explicit pass outweighs the failures it mentions.
 	expect(isKickback("PASS: the previously failing test now passes", true)).toBe(
@@ -110,6 +117,13 @@ test("closedIssues: closes said or run, not promised", async () => {
 	// "merged #13" usually names a PR, not an issue.
 	expect(closedIssues("merged #13")).toEqual([]);
 	expect(closedIssues("#13 merged")).toEqual([]);
+	// Negated closes don't count; one clause's negation doesn't reach the next.
+	expect(closedIssues("not closed #12")).toEqual([]);
+	expect(closedIssues("#12 is not closed yet")).toEqual([]);
+	expect(closedIssues("I haven't closed #12")).toEqual([]);
+	expect(closedIssues("never shipped #12, sorry")).toEqual([]);
+	expect(closedIssues("#12 isn't ✓ yet")).toEqual([]);
+	expect(closedIssues("not #12, but closed #13")).toEqual([13]);
 	expect(closedIssues("gh issue view 12")).toEqual([]);
 });
 
