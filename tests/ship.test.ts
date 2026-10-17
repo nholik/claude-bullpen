@@ -115,6 +115,27 @@ test("commands that cannot be tied to an issue move nothing", () => {
 		expect(shipPaths([bash("gate", detail)])).toEqual({});
 });
 
+test("merged and shipped do not regress on later talk", () => {
+	const merged = shipPaths([
+		msg("kit", `#46 PR: ${pr}/62 (x)`),
+		bash("lead", "gh pr merge 62 --squash"),
+		msg("gate", "PR #62 (#46): PASS, merged."),
+	]);
+	expect(merged[46]).toMatchObject({ stage: "merged", verdict: "pass" });
+	const shipped = shipPaths([
+		msg("kit", `#46 PR: ${pr}/62 (x)`),
+		{ ...bash("lead", "gh issue close 46"), confirmedCloses: [46] },
+		msg("kit", `#46 please review ${pr}/62`),
+	]);
+	expect(shipped[46]?.stage).toBe("shipped");
+	const advanced = shipPaths([
+		msg("kit", `#46 PR: ${pr}/62 (x)`),
+		bash("lead", "gh pr merge 62 --squash"),
+		{ ...bash("lead", "gh issue close 46"), confirmedCloses: [46] },
+	]);
+	expect(advanced[46]?.stage).toBe("shipped");
+});
+
 test("closed issues from the model mark shipped", () => {
 	expect(shipPaths([], [12])[12]?.stage).toBe("shipped");
 });

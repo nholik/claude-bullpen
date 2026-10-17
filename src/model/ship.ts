@@ -79,8 +79,16 @@ function move(
 		codex: false,
 		at,
 	};
+	// Merged and shipped are terminal: a recap or stale ask must not undo them.
+	// Merged can only advance to shipped.
+	const locked =
+		prev.stage === "shipped" ||
+		(prev.stage === "merged" &&
+			patch.stage !== undefined &&
+			patch.stage !== "shipped");
 	const next = { ...prev, ...patch };
-	if (patch.stage !== undefined && patch.stage !== prev.stage) next.at = at;
+	if (locked) next.stage = prev.stage;
+	if (next.stage !== prev.stage) next.at = at;
 	const prIssue =
 		patch.pr === undefined
 			? state.prIssue
