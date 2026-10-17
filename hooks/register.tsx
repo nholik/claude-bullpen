@@ -708,6 +708,7 @@ export function register(on: On) {
 			github: source,
 			profile: config,
 			focus: focused || undefined,
+			raster: e.surface === "terminal",
 			seenAt: await read($, seenAt),
 		});
 		const floorHeight = view.floorRows;
