@@ -2,6 +2,7 @@ import type { GithubSource, Profile } from "../../types";
 import { glow } from "../anim";
 import { mix } from "../color";
 import { type BullpenModel, isHallwayLive } from "../model";
+import { STALL_MS } from "../model/morale";
 import { colorFor, colorIndex } from "../profile";
 import { fit, type Line, textLine, width } from "./lines";
 
@@ -28,7 +29,7 @@ export function huddles(
 			github.result?.status === "ok"
 				? github.result.issues.find((i) => i.number === h.issue)?.title
 				: undefined;
-		const stalled = now - h.lastActiveAt >= 15 * 60000;
+		const stalled = now - h.lastActiveAt > STALL_MS;
 		const age = Math.max(0, Math.floor((now - h.startedAt) / 60000));
 		const activity = Array.from({ length: 4 }, (_, i) => {
 			const end = now - (3 - i) * 60000;

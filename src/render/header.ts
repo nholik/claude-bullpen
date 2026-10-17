@@ -3,6 +3,7 @@ import { exactCounts, headerText } from "../github";
 import type { BullpenModel } from "../model";
 import { colorFor, colorIndex } from "../profile";
 import { fit, type Line, textLine, width } from "./lines";
+import { moraleHint } from "./morale";
 
 /** Time-bucketed samples preserve the time axis even when snapshots compress. */
 export function sparkline(
@@ -80,6 +81,9 @@ export function header(
 	];
 	const ask = model.asks.find((a) => a.open);
 	if (ask) lines.push(textLine(`⚑ ${ask.from}: "${ask.text}"`, columns));
+	const hint = moraleHint(model, now);
+	if (hint && !hint.includes(ask?.text ?? "\0"))
+		lines.push(textLine(hint, columns));
 	return lines;
 }
 
