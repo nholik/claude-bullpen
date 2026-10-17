@@ -90,7 +90,7 @@ export function layout(
 	rows: number,
 	issues: number[],
 ): FloorLayout {
-	const unique = [...new Set(issues)];
+	const unique = [...new Set(issues)].sort((a, b) => a - b);
 	const tables: FloorLayout["tables"] = new Map();
 	const lobbyCol = Math.max(0, columns - 17);
 	const across =
@@ -121,6 +121,13 @@ export function layout(
 }
 
 type Seat = { col: number; pixel: number };
+export type FloorEffects = {
+	closed: number[];
+	walkers: { id: string; x: number; y: number }[];
+	dots: { x: number; y: number; color: number; spark?: boolean }[];
+	tables: { issue: number; x: number; y: number; color: number }[];
+};
+
 export type FloorFrame = {
 	cells: string;
 	labels: TextCell[];
@@ -218,8 +225,13 @@ export function drawFloor(
 	frame: number,
 	titles: Record<number, string> = {},
 	profile: Profile = DEFAULT_PROFILE,
+	effects: FloorEffects = { closed: [], walkers: [], dots: [], tables: [] },
 ): FloorFrame {
-	const active = members.filter((m) => m.status !== "gone");
+	const active = members
+		.filter((m) => m.status !== "gone")
+		.map((m) =>
+			effects.closed.includes(m.issue ?? -1) ? { ...m, issue: undefined } : m,
+		);
 	if (columns < 48 || rows < 6) return strip(active, columns, rows, profile);
 	const p = canvas(columns, rows * 2);
 	const plan = layout(
@@ -291,7 +303,13 @@ export function drawFloor(
 		const seat = seats.get(m.id);
 		if (!seat) continue;
 		const bob = m.status === "running" && (frame + m.color) % 4 < 2 ? 1 : 0;
-		person(p, seat.col, seat.pixel - bob, memberColor(m, profile));
+		const moving = effects.walkers.find((w) => w.id === m.id);
+		person(
+			p,
+			Math.round(moving?.x ?? seat.col),
+			Math.round(moving?.y ?? seat.pixel) - bob,
+			memberColor(m, profile),
+		);
 	}
 	if (plan.overflow.length > 0)
 		label(2, rows - 1, `+${plan.overflow.length} more issues`);
@@ -303,6 +321,32 @@ export function drawFloor(
 			rows - 1,
 			cellText(`+${lobbyOverflow} more`, 14),
 			0xc9bba8,
+			LOBBY,
+		);
+	for (const table of effects.tables) {
+		const x = Math.round(table.x),
+			y = Math.round(table.y);
+		rect(p, x, y, 10, 2, table.color);
+		label(x, Math.floor(y / 2), `#${table.issue}`, 0x122018, table.color);
+	}
+	for (const dot of effects.dots) {
+		rect(
+			p,
+			Math.round(dot.x),
+			Math.round(dot.y),
+			dot.spark ? 3 : 1,
+			1,
+			dot.color,
+		);
+		if (dot.spark)
+			rect(p, Math.round(dot.x) + 1, Math.round(dot.y) - 1, 1, 3, dot.color);
+	}
+	if (effects.closed.length)
+		label(
+			plan.lobbyCol + 1,
+			rows - 1,
+			cellText(`DONE ${effects.closed.length}`, 14),
+			0x81c784,
 			LOBBY,
 		);
 	return { cells: pack(p, labels), labels, seats, overflowMembers };
