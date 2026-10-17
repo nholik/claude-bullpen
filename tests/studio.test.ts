@@ -176,7 +176,7 @@ for (const style of ["studio", "operations"] as const)
 		expect((await ui.find({ key: "floor-focus" }))?.text).toContain(
 			style === "operations" ? "topology" : "team",
 		);
-		await ui.press({ key: style === "operations" ? "story-2-1" : "story-4-1" });
+		await ui.press({ key: style === "operations" ? "story-2-1" : "story-3-1" });
 		expect(opened).toBe("bullpen-story");
 		await ui.unmount();
 	});

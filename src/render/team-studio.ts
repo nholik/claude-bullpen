@@ -33,6 +33,9 @@ function activity(member: Teammate, model: BullpenModel, now: number) {
 	return undefined;
 }
 
+/** Top edge, four rows, bottom edge. */
+const CARD_ROWS = 6;
+
 /** Minutes the member's issue has been stalled, when the morale model says so. */
 function stalledMin(member: Teammate, model: BullpenModel, now: number) {
 	const huddle = model.huddles.find(
@@ -63,14 +66,6 @@ function workstation(
 	});
 	// The z's drift once per redraw (1 s while a highlight fades, else 15 s).
 	const zs = feel.snoozes ? snoozeFrame(now, profile.animations) : "";
-	const mood: Line = [
-		{ text: `${feel.face} `, fg: feel.color },
-		{ text: zs, fg: STUDIO.muted },
-		{ text: feel.label, fg: feel.color, bold: feel.pulse },
-	];
-	// The state word outranks the age: the age goes first when the line is tight.
-	const stamp = text(age(now, member.lastActiveAt), STUDIO.muted);
-	const ageFits = width(mood) + width(stamp) + 1 <= columns - 4;
 	const signal = profile.animations ? activity(member, model, now) : undefined;
 	const bright = signal && Math.floor((now - signal.at) / 1000) % 2 === 0;
 	const border = bright ? signal.color : (feel.frame ?? STUDIO.edge);
@@ -93,35 +88,56 @@ function workstation(
 				STUDIO.muted,
 			)
 		: [];
-	const name: Line = [
-		{ text: member.name, fg: color, agentId: member.agentId, bold: true },
+	// Messages and finished turns recolor the face and frame; they take no row.
+	const mood: Line = [
+		{
+			text: `${feel.face} `,
+			fg: bright && signal ? signal.color : feel.color,
+			bold: feel.pulse || Boolean(bright),
+		},
 	];
+	const name: Line = [
+		...mood,
+		{ text: member.name, fg: color, agentId: member.agentId, bold: true },
+		{ text: zs ? ` ${zs.trim()}` : "", fg: STUDIO.muted },
+	];
+	// The state word outranks the role, and the role the age: drop in that order
+	// when the line is tight, keeping a gap before the right edge text.
+	const stamp = age(now, member.lastActiveAt);
+	const word = text(feel.label, feel.color);
+	const dot = " · ";
+	const tails: Line[] = [
+		[...word, ...text(`${dot}${role}${dot}${stamp}`, STUDIO.muted)],
+		[...word, ...text(`${dot}${stamp}`, STUDIO.muted)],
+		word,
+	];
+	const tail =
+		tails.find((t) => width(name) + width(t) + 2 <= columns - 4) ??
+		tails[tails.length - 1] ??
+		[];
+	// Idle, away and gone cards sit back so working cards stand out.
+	const soften = (line: Line): Line =>
+		feel.dim ? line.map((seg) => ({ ...seg, dim: true })) : line;
 	return [
 		edge(columns, false, border),
-		inside(align(name, text(role, STUDIO.muted), columns - 4), columns, border),
-		inside(align(mood, ageFits ? stamp : [], columns - 4), columns, border),
+		inside(align(soften(name), soften(tail), columns - 4), columns, border),
 		inside(
-			member.issue === undefined
-				? text("Unassigned", STUDIO.muted)
-				: [
-						{
-							text: `#${member.issue} ${title ?? ""}`,
-							fg: STUDIO.text,
-							story: member.issue,
-						},
-					],
+			soften(
+				member.issue === undefined
+					? text("Unassigned", STUDIO.muted)
+					: [
+							{
+								text: `#${member.issue} ${title ?? ""}`,
+								fg: STUDIO.text,
+								story: member.issue,
+							},
+						],
+			),
 			columns,
 			border,
 		),
-		inside(
-			signal
-				? [{ text: signal.label, fg: signal.color, bold: Boolean(bright) }]
-				: text("─".repeat(Math.max(0, columns - 4)), STUDIO.edge),
-			columns,
-			border,
-		),
-		inside(doing, columns, border),
-		inside(earlier, columns, border),
+		inside(soften(doing), columns, border),
+		inside(soften(earlier), columns, border),
 		edge(columns, true, border),
 	];
 }
@@ -172,7 +188,8 @@ export function teamStudioView(
 		12,
 		Math.floor((leftWidth - (across - 1) * 2) / across),
 	);
-	const capacity = across * Math.max(0, Math.floor((room - 3) / 9));
+	const capacity =
+		across * Math.max(0, Math.floor((room - 3) / (CARD_ROWS + 1)));
 	const shown = team.slice(0, capacity);
 	const left: Line[] = [section("WORKSTATIONS / teammates", leftWidth)];
 	for (let index = 0; index < shown.length; index += across) {
@@ -181,7 +198,7 @@ export function teamStudioView(
 			.map((member) =>
 				workstation(member, model, github, profile, cardWidth, now),
 			);
-		for (let row = 0; row < 8; row++) {
+		for (let row = 0; row < CARD_ROWS; row++) {
 			const line: Line = [];
 			for (const [i, card] of cards.entries()) {
 				if (i) line.push({ text: "  " });
