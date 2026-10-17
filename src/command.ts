@@ -38,7 +38,7 @@ export function mergedPrs(command: string): number[] {
 	const loops = new Map<string, number[]>();
 	const merged: number[] = [];
 	for (const part of segments(command)) {
-		const loop = /^for\s+(\w+)\s+in\s+((?:#?\d+\s*)+)$/.exec(part);
+		const loop = /^for\s+(\w+)\s+in\s+([#\d\s]+)$/.exec(part);
 		if (loop?.[1] && loop[2]) {
 			loops.set(loop[1], loop[2].match(/\d+/g)?.map(Number) ?? []);
 			continue;

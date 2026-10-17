@@ -198,3 +198,13 @@ test("merges inside shell chains and loops move every PR", () => {
 	expect(view[92]?.stage).toBe("pr-open");
 	expect(view[94]?.stage).toBe("merged");
 });
+
+test("a long digit run in a for loop does not backtrack", () => {
+	const start = Date.now();
+	expect(
+		shipPaths([
+			bash("lead", `for p in ${"1".repeat(60)}x; do gh pr merge $p; done`),
+		]),
+	).toEqual({});
+	expect(Date.now() - start).toBeLessThan(500);
+});
