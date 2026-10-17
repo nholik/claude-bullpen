@@ -57,7 +57,11 @@ import {
 import { type BullpenModel, buildModel } from "../src/model";
 import { briefIssue, confirmedToolCloses } from "../src/model/detect";
 import { createMotion, motionFor } from "../src/motion";
-import { DEFAULT_PROFILE, parseProfile } from "../src/profile";
+import {
+	DEFAULT_PROFILE,
+	parseProfile,
+	withMemberColors,
+} from "../src/profile";
 import { band } from "../src/render/header";
 import { fit, glyphLines, type Line } from "../src/render/lines";
 import { type Focus, paneView } from "../src/render/pane";
@@ -729,7 +733,7 @@ export function register(on: On) {
 		const config =
 			(await read($, demoStart)) >= 0
 				? demoProfile(await read($, profile))
-				: await read($, profile);
+				: withMemberColors(await read($, profile), list);
 		const at = snapshot.now;
 		const model = buildModel(log, at, {
 			present: Object.fromEntries(list.map((m) => [m.name, m.status])),
@@ -868,7 +872,10 @@ export function register(on: On) {
 		const config =
 			(await read($, demoStart)) >= 0
 				? demoProfile(await read($, profile))
-				: await read($, profile);
+				: withMemberColors(
+						await read($, profile),
+						Object.values(snapshot.members),
+					);
 		const columns = e.props.bodyColumns;
 		const names = new Set(story.events.map((ev) => ev.who));
 		const team = Object.values(snapshot.members).filter(
@@ -927,7 +934,10 @@ export function register(on: On) {
 			snapshot.github,
 			(await read($, demoStart)) >= 0
 				? demoProfile(await read($, profile))
-				: await read($, profile),
+				: withMemberColors(
+						await read($, profile),
+						Object.values(snapshot.members),
+					),
 			e.props.bodyColumns,
 			await read($, seenAt),
 		);
