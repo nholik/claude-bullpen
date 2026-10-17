@@ -44,11 +44,30 @@ export type Member = {
 	lastActiveAt: number;
 };
 
+/** A teammate's role entry in `.claude/bullpen.json`. */
+export type ProfileRole = {
+	role?: string;
+	/** `#rrggbb`, or an index into the floor palette. */
+	color?: string | number;
+};
+
+/** `.claude/bullpen.json` merged over the defaults (`src/profile.ts`). */
+export type Profile = {
+	/** A `gh search issues` query string. */
+	issueFilter: string;
+	/** Teammate name or agent type to role and color. */
+	roles: Record<string, ProfileRole>;
+	animations: boolean;
+	pollSeconds: number;
+};
+
 declare module "claude-code" {
 	interface PluginState {
 		bullpen: {
 			events: BullpenEvent[];
 			members: Record<string, Member>;
+			/** `.claude/bullpen.json` merged over the defaults. */
+			profile: Profile;
 		};
 	}
 }
