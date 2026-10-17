@@ -67,6 +67,13 @@ node --experimental-strip-types scripts/preview.ts --cols 72 --at 80 --story 204
 ```
 
 Omit `--out` for stdout. Frames advance by 100 ms and use numbered filenames.
+To see a real team, point `--journal` at a journal directory
+(`~/.claude/bullpen/session-<id>`): it reads every `events-*.jsonl`, keeps the last
+`STATE_EVENTS`, derives members (running if active in the last 60 s) and renders
+`--at` seconds (default 2) after the last event, e.g.
+`timeout 10 node --experimental-strip-types scripts/preview.ts --cols 110 --journal <dir>`.
+A frame that takes over 2 s aborts the process with an error, so a render hang cannot pin a CPU;
+still run previews under `timeout`.
 Sizes are **pane body** columns: check 60, 72, 80, 100, 110 and 160. The full floor
 starts at 48 columns, and regions sit side by side from 60. `npm run typecheck`
 checks both engine source and the Node preview tool. The 80-second demo explicitly

@@ -1,8 +1,16 @@
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	readdirSync,
+	readFileSync,
+	writeFileSync,
+} from "node:fs";
 import { registerHooks } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, URL } from "node:url";
+import { Worker } from "node:worker_threads";
 import type { Line } from "../src/render/lines";
+import type { BullpenEvent, GithubSource, Member } from "../types";
 
 // The engine resolves extensionless relative imports. Match it for Node tools.
 registerHooks({
@@ -28,6 +36,23 @@ const { buildModel } = await import("../src/model");
 const { drawFloor } = await import("../src/floor");
 const { storyFor, storyLines } = await import("../src/render/story");
 const { paneView } = await import("../src/render/pane");
+const { readJournal, STATE_EVENTS } = await import("../src/journal");
+
+// A render hang must not pin a CPU: a worker thread watches the frame start
+// time and kills the process if one frame runs past the limit.
+const FRAME_LIMIT_MS = 2000;
+const frameClock = new Int32Array(new SharedArrayBuffer(4));
+new Worker(
+	`const { workerData: c } = require("node:worker_threads");
+	setInterval(() => {
+		const t = Atomics.load(c, 0);
+		if (t !== 0 && (Date.now() & 0x7fffffff) - t > ${FRAME_LIMIT_MS}) {
+			require("node:fs").writeSync(2, "preview.ts: a frame took longer than ${FRAME_LIMIT_MS / 1000}s; aborting\\n");
+			process.kill(${process.pid}, "SIGKILL");
+		}
+	}, 100);`,
+	{ eval: true, workerData: frameClock },
+).unref();
 
 const args = process.argv.slice(2);
 const options = new Map<string, string>();
@@ -46,11 +71,12 @@ for (let i = 0; i < args.length; i += 2) {
 			"--style",
 			"--glyphs",
 			"--animations",
+			"--journal",
 		].includes(key) ||
 		value === undefined
 	)
 		throw new Error(
-			"Usage: preview.ts [--cols 160] [--rows 48] [--at 12] [--frames 1] [--out .scratch/preview/demo.ansi]",
+			"Usage: preview.ts [--cols 160] [--rows 48] [--at 12] [--frames 1] [--out .scratch/preview/demo.ansi] [--journal <dir>]",
 		);
 	options.set(key, value);
 }
@@ -87,7 +113,8 @@ const profile = demoProfile({
 });
 const columns = number("--cols", 160, 20, 512);
 const rows = number("--rows", 48, 8, 200);
-const at = number("--at", 12, 0, 86400) * 1000;
+const journalDir = options.get("--journal");
+const at = number("--at", journalDir ? 2 : 12, 0, 86400) * 1000;
 const frames = number("--frames", 1, 1, 1000);
 const color = (n: number, background = false) =>
 	`\x1b[${background ? 48 : 38};2;${(n >> 16) & 255};${(n >> 8) & 255};${n & 255}m`;
@@ -98,13 +125,63 @@ const line = (segments: Line) =>
 				`\x1b[0m${s.fg === undefined ? "" : color(s.fg)}${s.bg === undefined ? "" : color(s.bg, true)}${s.bold ? "\x1b[1m" : ""}${s.dim ? "\x1b[2m" : ""}${s.text}`,
 		)
 		.join("")}\x1b[0m`;
-for (let frame = 0; frame < frames; frame++) {
-	const elapsed = at + frame * 100;
-	const now = demoClock(elapsed);
+
+type Replay = { events: BullpenEvent[]; members: Member[] };
+type Frame = { now: number; replay: Replay; source: GithubSource };
+
+/** The newest events of a real team journal directory, with members derived. */
+function readTeam(dir: string): Replay {
+	const events: BullpenEvent[] = [];
+	for (const name of readdirSync(dir).sort())
+		if (/^events-.*\.jsonl$/.test(name))
+			events.push(
+				...readJournal(readFileSync(resolve(dir, name), "utf8")).events,
+			);
+	if (!events.length) throw new Error(`No events in ${dir}`);
+	events.sort((a, b) => a.at - b.at);
+	const kept = events.slice(-STATE_EVENTS);
+	const last = kept.at(-1)?.at ?? 0;
+	const lastSeen = new Map<string, number>();
+	for (const e of kept) lastSeen.set(e.who, e.at);
+	const members = [...lastSeen].map(([name, active], color) => ({
+		id: kept.find((e) => e.who === name)?.agentId ?? name,
+		name,
+		status: last - active < 60_000 ? ("running" as const) : ("idle" as const),
+		color,
+		lastActiveAt: active,
+	}));
+	return { events: kept, members };
+}
+const team = journalDir ? readTeam(resolve(journalDir)) : undefined;
+
+function frameAt(elapsed: number): Frame {
+	if (team) {
+		const now = (team.events.at(-1)?.at ?? 0) + elapsed;
+		return {
+			now,
+			replay: team,
+			source: { repo: "", filter: "", burndown: [], checkedAt: now },
+		};
+	}
 	const replay = demoAt(elapsed);
-	const members = Object.values(replay.members);
-	const model = buildModel(replay.events, now);
-	const source = demoGithubAt(elapsed);
+	return {
+		now: demoClock(elapsed),
+		replay: { events: replay.events, members: Object.values(replay.members) },
+		source: demoGithubAt(elapsed),
+	};
+}
+
+for (let frame = 0; frame < frames; frame++) {
+	Atomics.store(frameClock, 0, Date.now() & 0x7fffffff);
+	const { now, replay, source } = frameAt(at + frame * 100);
+	const members = replay.members;
+	const model = buildModel(
+		replay.events,
+		now,
+		team
+			? { present: Object.fromEntries(members.map((m) => [m.name, m.status])) }
+			: undefined,
+	);
 	const view = paneView(model, members, columns, rows, now, {
 		github: source,
 		profile: profile,
@@ -178,4 +255,5 @@ for (let frame = 0; frame < frames; frame++) {
 		mkdirSync(dirname(path), { recursive: true });
 		writeFileSync(path, ansi);
 	} else process.stdout.write(ansi);
+	Atomics.store(frameClock, 0, 0);
 }
