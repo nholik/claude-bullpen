@@ -26,6 +26,19 @@ import {
 	toLine,
 } from "../src/journal";
 import type { BullpenEventKind } from "../types";
+import {
+	addSnapshot,
+	burndownKey,
+	headerText,
+	issueListArgv,
+	POLL_MS,
+	parseBurndown,
+	parseRepo,
+	REPO_ARGV,
+	readIssueList,
+	runFailure,
+	tally,
+} from "../src/github";
 
 const PANE = "bullpen";
 const FLOOR_KEY = "floor";
@@ -35,6 +48,11 @@ const JOURNAL_FLUSH_MS = 1000;
 
 const events = atom({ plugin: "bullpen", key: "events" } as const, []);
 const members = atom({ plugin: "bullpen", key: "members" } as const, {});
+const github = atom({ plugin: "bullpen", key: "github" } as const, {
+	filter: "",
+	burndown: [],
+	checkedAt: 0,
+});
 
 type $ = EngineInterface;
 
@@ -173,6 +191,32 @@ async function reconcile($: $) {
 	collectorOf($).push({ op: "reconcile", at: await now($), listed });
 }
 
+/** Polls `gh` for the issue list and adds a burndown point to `$.store`. */
+async function pollGithub($: $) {
+	const prev = await read($, github);
+	const at = await now($);
+	const result = await $.process
+		.run(issueListArgv(prev.filter))
+		.then(readIssueList, runFailure);
+	let { repo, burndown } = prev;
+	if (result.status === "ok") {
+		repo ??= parseRepo((await $.process.run(REPO_ARGV)).stdout);
+		if (repo) {
+			const key = burndownKey(repo, prev.filter);
+			const point = { at, ...tally(result.issues) };
+			burndown = addSnapshot(parseBurndown(await $.store.get(key)), point);
+			await $.store.set(key, burndown);
+		}
+	}
+	await update($, github, (cur) => ({
+		...cur,
+		result,
+		repo,
+		burndown,
+		checkedAt: at,
+	}));
+}
+
 /** Plays one step of the demo script through the same path real events take. */
 async function playStep($: $, step: DemoStep) {
 	const id = `${DEMO_PREFIX}${step.who}`;
@@ -235,6 +279,9 @@ export function register(on: On) {
 		});
 
 		$.clock.every(4000, () => void reconcile($));
+
+		void pollGithub($).catch(() => {});
+		$.clock.every(POLL_MS, () => void pollGithub($).catch(() => {}));
 
 		// Animate only while someone is working; an idle office draws nothing new.
 		$.clock.every(250, async () => {
@@ -346,6 +393,7 @@ export function register(on: On) {
 		const all = await read($, members);
 		const list = Object.values(all);
 		const log = await read($, events);
+		const issues = headerText((await read($, github)).result);
 		const columns = Math.max(20, Math.min(512, e.props.bodyColumns ?? 60));
 		const viewportRows = e.viewport?.rows ?? 30;
 		const logRoom = Math.max(3, viewportRows - FLOOR_ROWS - list.length - 6);
@@ -373,6 +421,7 @@ export function register(on: On) {
 			<Box flexDirection="column">
 				<Text bold>
 					Bullpen · {active.length} on the floor · ✉ {messages}
+					{issues && ` · ${issues}`}
 				</Text>
 				{floor}
 				{active.map((m) => (
