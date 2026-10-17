@@ -28,6 +28,8 @@ export type BullpenEvent = {
 	detail: string;
 	/** Issue numbers referenced (`#123`). */
 	issues: number[];
+	/** On `spawn`: the agent type the target was spawned as. */
+	agentType?: string;
 	/** Verified successful foreground gh issue close results. */
 	confirmedCloses?: number[];
 };

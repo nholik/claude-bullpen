@@ -87,6 +87,7 @@ function step(
 	return {
 		name,
 		agentId: prev?.agentId,
+		agentType: prev?.agentType,
 		color: prev?.color ?? Object.keys(teammates).length,
 		status: prev?.status ?? "running",
 		issue: prev?.issue,
@@ -113,7 +114,12 @@ export function applyEvent(
 
 	// A spawn brings in `target` (a teammate joining reports itself, with no
 	// target). Its brief's first issue is the newcomer's, if it has none yet.
-	const trailStep = { at: e.at, kind: e.kind, detail: e.detail };
+	const trailStep = {
+		at: e.at,
+		kind: e.kind,
+		detail: e.detail,
+		...(e.kind === "tool" && e.target ? { target: e.target } : {}),
+	};
 	const spawned = e.kind === "spawn" ? (e.target ?? e.who) : undefined;
 	if (spawned !== undefined && spawned !== e.who) {
 		const prev = teammates[spawned];
@@ -121,6 +127,7 @@ export function applyEvent(
 		teammates[spawned] = step(teammates, spawned, e, {
 			status: "running",
 			issue,
+			agentType: e.agentType ?? prev?.agentType,
 			trail: keepLast(prev?.trail ?? [], trailStep, TRAIL_LENGTH),
 		});
 		take(issue);

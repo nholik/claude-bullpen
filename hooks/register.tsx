@@ -377,6 +377,7 @@ async function record(
 		text?: string;
 		attribute?: boolean;
 		confirmedCloses?: number[];
+		agentType?: string;
 	} = {},
 ) {
 	collectorOf($).push({
@@ -388,6 +389,7 @@ async function record(
 		target: extra.target,
 		text: extra.text,
 		confirmedCloses: extra.confirmedCloses,
+		agentType: extra.agentType,
 		attribute: extra.attribute ?? true,
 	});
 }
@@ -632,6 +634,7 @@ export function register(on: On) {
 							target: e.name,
 							text: assigned === undefined ? "" : `#${assigned}`,
 							attribute: false,
+							agentType: e.subagentType,
 						},
 					);
 				}),

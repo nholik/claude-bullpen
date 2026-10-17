@@ -44,6 +44,8 @@ export type CollectOp =
 			/** Extra text scanned for issue refs alongside `detail`. */
 			text?: string;
 			confirmedCloses?: number[];
+			/** On `spawn`: the agent type the target was spawned as. */
+			agentType?: string;
 			/** False to leave the member's issue as it is. */
 			attribute: boolean;
 	  }
@@ -149,6 +151,7 @@ export function applyBatch(
 					target: op.target,
 					detail: op.detail,
 					issues,
+					...(op.agentType ? { agentType: op.agentType } : {}),
 					...(op.confirmedCloses
 						? { confirmedCloses: op.confirmedCloses }
 						: {}),

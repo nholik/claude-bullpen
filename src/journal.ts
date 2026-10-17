@@ -62,6 +62,8 @@ export const BullpenEventSchema = object({
 	detail: string(),
 	/** Issue numbers referenced (`#123`). */
 	issues: array(pipe(number(), integer(), minValue(1))),
+	/** On `spawn`: the agent type the target was spawned as. */
+	agentType: optional(string()),
 	confirmedCloses: optional(array(pipe(number(), integer(), minValue(1)))),
 });
 

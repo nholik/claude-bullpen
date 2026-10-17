@@ -252,3 +252,20 @@ test("Studio header carries the morale glyph and the stalled-issue hint at low m
 	);
 	expect(flat(view.header)).not.toContain("check in?");
 });
+
+test("narrow Studio fills spare rows with the hallway", () => {
+	const replay = demoAt(16000);
+	const now = demoClock(16000);
+	const view = paneView(
+		buildModel(replay.events, now),
+		Object.values(replay.members),
+		80,
+		48,
+		now,
+		{ profile: DEFAULT_PROFILE },
+	);
+	const rows = view.regions.map((line) => line.map((s) => s.text).join(""));
+	const at = rows.findIndex((r) => r.includes("HALLWAY"));
+	expect(at).toBeGreaterThan(-1);
+	expect(rows[at + 1]?.includes("→")).toBe(true);
+});

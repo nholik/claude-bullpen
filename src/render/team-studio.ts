@@ -1,6 +1,7 @@
 import type { GithubSource, Profile } from "../../types";
 import type { BullpenModel, Teammate } from "../model";
-import { colorFor, colorIndex, roleFor } from "../profile";
+import { colorFor, colorIndex, roleLabel } from "../profile";
+import { activityPhrase } from "./activity";
 import { fit, glyphLines, type Line, textLine, width, wrapText } from "./lines";
 import { moraleHint } from "./morale";
 import { age, align, clock, edge, inside, section, text } from "./operations";
@@ -40,7 +41,7 @@ function workstation(
 	now: number,
 ): Line[] {
 	const color = colorFor(member.name, profile, colorIndex(member.name));
-	const role = roleFor(member.name, profile)?.role ?? "teammate";
+	const role = roleLabel(member.name, member.agentType, profile);
 	const signal = profile.animations ? activity(member, model, now) : undefined;
 	const bright = signal && Math.floor((now - signal.at) / 1000) % 2 === 0;
 	const border = bright ? signal.color : STUDIO.edge;
@@ -48,11 +49,21 @@ function workstation(
 		github.result?.status === "ok"
 			? github.result.issues.find((i) => i.number === member.issue)?.title
 			: undefined;
-	const last = member.trail[member.trail.length - 1];
-	const action = wrapText(
-		last?.detail ?? "Waiting for activity",
-		Math.max(1, columns - 4),
+	const tool = member.trail.findLast((s) => s.kind === "tool");
+	const said = model.hallway.findLast(
+		(m) => m.from === member.name || m.to === member.name,
 	);
+	const doing: Line = tool
+		? text(activityPhrase(tool), STUDIO.text)
+		: text("Waiting for activity", STUDIO.text);
+	const earlier: Line = said
+		? text(
+				said.from === member.name
+					? `→ ${said.to}: ${said.text}`
+					: `← ${said.from}: ${said.text}`,
+				STUDIO.muted,
+			)
+		: [];
 	const name: Line = [
 		{ text: member.name, fg: color, agentId: member.agentId, bold: true },
 	];
@@ -91,8 +102,8 @@ function workstation(
 			columns,
 			border,
 		),
-		inside(action[0] ?? [], columns, border),
-		inside(action[1] ?? [], columns, border),
+		inside(doing, columns, border),
+		inside(earlier, columns, border),
 		edge(columns, true, border),
 	];
 }
@@ -114,6 +125,7 @@ export function teamStudioView(
 				a.name.localeCompare(b.name),
 		);
 	const hint = moraleHint(model, now);
+	const working = team.filter((m) => m.status === "running").length;
 	const header = [
 		align(
 			text(" BULLPEN / TEAM STUDIO", STUDIO.lavender),
@@ -204,7 +216,25 @@ export function teamStudioView(
 					leftWidth,
 				),
 			);
-			left.push([]);
+			if (columns >= 120) left.push([]);
+		}
+		// Narrow panes have no hallway column: use the rows left over for it.
+		const spare = room - left.length;
+		if (columns < 120 && spare >= 2) {
+			left.push(section("HALLWAY / conversation", leftWidth));
+			for (const message of model.hallway.slice(-(spare - 1)))
+				left.push(
+					fit(
+						[
+							{
+								text: `${message.from} → ${message.to}: `,
+								fg: colorFor(message.from, profile, colorIndex(message.from)),
+							},
+							{ text: message.text, fg: STUDIO.muted },
+						],
+						leftWidth,
+					),
+				);
 		}
 	}
 	const right: Line[] =
@@ -228,7 +258,12 @@ export function teamStudioView(
 			right.push([]);
 		}
 		if (!history.length)
-			right.push(textLine("The hallway is quiet.", rightWidth));
+			right.push(
+				textLine(
+					working ? `heads-down · ${working} working` : "The hallway is quiet.",
+					rightWidth,
+				),
+			);
 		while (right.length < room - 7) right.push([]);
 		right.push(section("NEEDS YOU", rightWidth));
 		if (asks[0]) {
