@@ -122,24 +122,31 @@ export function parseChunkName(
 }
 
 /**
- * The chunk `writer` wrote last among `entries` (a ring wraps, so by
- * modification time, then number), or 0 for none.
+ * The chunk `writer` wrote last among `entries`, or 0 for none. A ring wraps,
+ * so it goes by modification time; one batch can write several chunks in the
+ * same millisecond, so among those it takes the end of the run (the one whose
+ * successor in the ring isn't among them: 1 over 20 after a wrap).
  */
 export function lastChunk(
 	entries: readonly { name: string; mtimeMs: number }[],
 	writer: string,
+	ring = MAX_CHUNKS,
 ): number {
 	const own = safeSegment(writer);
-	let last = { index: 0, mtimeMs: -1 };
+	let newest = -1;
+	let tied = new Set<number>();
 	for (const { name, mtimeMs } of entries) {
 		const chunk = parseChunkName(name);
 		if (chunk?.writer !== own) continue;
-		const isNewer =
-			mtimeMs > last.mtimeMs ||
-			(mtimeMs === last.mtimeMs && chunk.index > last.index);
-		if (isNewer) last = { index: chunk.index, mtimeMs };
+		if (mtimeMs > newest) {
+			newest = mtimeMs;
+			tied = new Set();
+		}
+		if (mtimeMs === newest) tied.add(chunk.index);
 	}
-	return last.index;
+	const indexes = [...tied];
+	const end = indexes.find((i) => !tied.has((i % ring) + 1));
+	return end ?? Math.max(0, ...indexes);
 }
 
 /** The journal chunk file names among `names`, by writer and number. */

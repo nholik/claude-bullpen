@@ -134,6 +134,13 @@ test("each writer has its own chunks, found by name", async () => {
 		{ name: "events-s2-0001.jsonl", mtimeMs: 200 },
 	];
 	expect(lastChunk(wrapped, "s2")).toBe(1);
+	// One batch that wraps writes 19, 20 and 1 in the same millisecond.
+	const sameMs = [19, 20, 1].map((i) => ({
+		name: `events-s2-${String(i).padStart(4, "0")}.jsonl`,
+		mtimeMs: 300,
+	}));
+	expect(lastChunk(sameMs, "s2")).toBe(1);
+	expect(lastChunk(sameMs.slice(0, 2), "s2")).toBe(20);
 	// Another session's chunks never count as this writer's.
 	expect(lastChunk(wrapped, "s1")).toBe(0);
 	expect(lastChunk(entries, "s3")).toBe(0);
