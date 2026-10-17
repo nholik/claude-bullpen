@@ -458,7 +458,13 @@ async function playDemo($: $) {
 	for (const at of times)
 		demoTimers.push(
 			$.clock.after(at, () => {
-				void update($, viewTime, () => start + at).catch(() => {});
+				// A scripted step is activity: keep highlights on the one-second pulse.
+				void now($)
+					.then((real) => {
+						lastActivityAt = real;
+						return update($, viewTime, () => start + at);
+					})
+					.catch(() => {});
 			}),
 		);
 }

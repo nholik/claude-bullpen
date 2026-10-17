@@ -159,10 +159,11 @@ Graceful fallbacks:
 - `"glyphs":"ascii"` keeps the console layout with ASCII borders and symbols.
   It retains issue and teammate links. Below the console minimum, the legacy
   pixel floor becomes a readable one-row team strip.
-- Studio briefly highlights both message participants, pulses running indicators,
-  and marks completed turns. These effects use the existing one-second refresh
-  without moving or resizing cards. `"animations":false` disables the pulses and
-  transient highlights; activity text and status still update.
+- Studio briefly highlights both message participants and marks completed turns.
+  The pane redraws every second only while such a highlight is fading, and
+  otherwise every 15 seconds, so it stays cheap to leave open. Running
+  indicators hold steady. `"animations":false` disables the transient
+  highlights; activity text and status still update.
 - Narrow or short panes show compact cards and explicit overflow counts. On
   surfaces without Raster support, text regions use the available space.
 - Status labels accompany color; active, idle, review and decision states do not
