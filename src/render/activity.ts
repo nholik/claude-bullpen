@@ -1,29 +1,51 @@
 import { commandPhrase } from "../command";
 import type { TrailStep } from "../model/types";
 
-const VERBS: Record<string, string> = {
+const FILE_VERBS: Record<string, string> = {
 	Edit: "editing",
 	Write: "writing",
 	NotebookEdit: "editing",
 	Read: "reading",
-	Grep: "searching",
-	Glob: "searching",
 };
 
-const FILE_TOOLS = ["Edit", "Write", "Read", "NotebookEdit"];
+/** Tools with a fixed phrase, however they were called. */
+const FIXED: Record<string, string> = {
+	Grep: "searching code",
+	Glob: "searching files",
+	Monitor: "watching a task",
+	ToolSearch: "looking up tools",
+	SubagentHandback: "handing back results",
+	WebFetch: "reading the web",
+	WebSearch: "searching the web",
+	Skill: "using a skill",
+	TaskCreate: "planning tasks",
+	TaskUpdate: "updating tasks",
+	TaskList: "checking tasks",
+	TaskGet: "checking tasks",
+	TaskStop: "stopping a task",
+	Artifact: "publishing a page",
+	AskUserQuestion: "asking the user",
+};
 
-/** `describeTool` puts the tool's verb first for file tools; the file name is the rest. */
+/** `describeTool` puts a verb or arrow first; the object is the rest. */
 function rest(detail: string): string {
-	return detail.replace(/^\S+\s+/, "");
+	return detail.replace(/^\S+\s+(?:→\s+)?/, "");
 }
 
-/** A live phrase for the latest tool call, like `editing detect.ts`. */
-export function activityPhrase(step: TrailStep): string {
+/**
+ * A verb phrase for the latest tool call, like `editing detect.ts`, or
+ * undefined when it can't be phrased (callers fall back to the latest message).
+ */
+export function activityPhrase(step: TrailStep): string | undefined {
 	const tool = step.target;
-	if (tool === undefined) return step.detail;
+	if (tool === undefined) return undefined;
 	if (tool === "Bash") return commandPhrase(step.detail);
-	const verb = VERBS[tool];
-	if (verb && FILE_TOOLS.includes(tool)) return `${verb} ${rest(step.detail)}`;
-	if (verb) return verb;
-	return step.detail;
+	const verb = FILE_VERBS[tool];
+	if (verb) {
+		const file = rest(step.detail);
+		return file && file !== step.detail ? `${verb} ${file}` : verb;
+	}
+	if (tool === "SendMessage") return `messaging ${rest(step.detail)}`;
+	if (tool === "Agent") return `spawning ${rest(step.detail)}`;
+	return FIXED[tool];
 }
