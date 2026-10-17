@@ -1,7 +1,7 @@
 import type { GithubSource, Profile } from "../../types";
 import type { BullpenModel, Teammate } from "../model";
 import { colorFor, colorIndex, roleLabel } from "../profile";
-import { activityPhrase, shortAge } from "./activity";
+import { activityPhrase } from "./activity";
 import { fit, glyphLines, type Line, textLine, width, wrapText } from "./lines";
 import { moraleHint } from "./morale";
 import { age, align, clock, edge, inside, section, text } from "./operations";
@@ -50,14 +50,20 @@ function workstation(
 			? github.result.issues.find((i) => i.number === member.issue)?.title
 			: undefined;
 	const tool = member.trail.findLast((s) => s.kind === "tool");
-	const said = member.trail.findLast((s) => s.kind !== "tool");
+	const said = model.hallway.findLast(
+		(m) => m.from === member.name || m.to === member.name,
+	);
 	const doing: Line = tool
-		? [
-				{ text: activityPhrase(tool), fg: STUDIO.text },
-				{ text: ` · ${shortAge(now, tool.at)}`, fg: STUDIO.muted },
-			]
-		: text(said?.detail ?? "Waiting for activity", STUDIO.text);
-	const earlier: Line = tool && said ? text(said.detail, STUDIO.muted) : [];
+		? text(activityPhrase(tool), STUDIO.text)
+		: text("Waiting for activity", STUDIO.text);
+	const earlier: Line = said
+		? text(
+				said.from === member.name
+					? `→ ${said.to}: ${said.text}`
+					: `← ${said.from}: ${said.text}`,
+				STUDIO.muted,
+			)
+		: [];
 	const name: Line = [
 		{ text: member.name, fg: color, agentId: member.agentId, bold: true },
 	];

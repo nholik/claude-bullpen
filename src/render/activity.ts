@@ -1,3 +1,4 @@
+import { commandPhrase } from "../command";
 import type { TrailStep } from "../model/types";
 
 const VERBS: Record<string, string> = {
@@ -20,18 +21,9 @@ function rest(detail: string): string {
 export function activityPhrase(step: TrailStep): string {
 	const tool = step.target;
 	if (tool === undefined) return step.detail;
-	if (tool === "Bash") {
-		const issue = /^gh issue view\s+#?(\d+)/.exec(step.detail);
-		return issue ? `reading #${issue[1]}` : `running ${step.detail}`;
-	}
+	if (tool === "Bash") return commandPhrase(step.detail);
 	const verb = VERBS[tool];
 	if (verb && FILE_TOOLS.includes(tool)) return `${verb} ${rest(step.detail)}`;
 	if (verb) return verb;
 	return step.detail;
-}
-
-/** Minute-step age, like `age()`: a seconds counter would redraw every second. */
-export function shortAge(now: number, at: number): string {
-	const seconds = Math.max(0, Math.floor((now - at) / 1000));
-	return seconds < 60 ? "<1m" : `${Math.floor(seconds / 60)}m`;
 }

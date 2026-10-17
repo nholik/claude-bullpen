@@ -1,6 +1,7 @@
 import { expect, test } from "claude-code/testing";
+import { commandPhrase } from "../src/command";
 import { DEFAULT_PROFILE, roleLabel } from "../src/profile";
-import { activityPhrase, shortAge } from "../src/render/activity";
+import { activityPhrase } from "../src/render/activity";
 
 const step = (target: string, detail: string) => ({
 	at: 0,
@@ -13,16 +14,53 @@ test("activityPhrase reads like a verb and an object", () => {
 	expect(activityPhrase(step("Edit", "Edit detect.ts"))).toBe(
 		"editing detect.ts",
 	);
-	expect(activityPhrase(step("Bash", "npm run check"))).toBe(
-		"running npm run check",
-	);
+	expect(activityPhrase(step("Bash", "npm run check"))).toBe("running checks");
 	expect(activityPhrase(step("Bash", "gh issue view 46"))).toBe("reading #46");
 	expect(activityPhrase(step("Grep", "Grep foo"))).toBe("searching");
 });
 
-test("shortAge steps by the minute", () => {
-	expect(shortAge(30_000, 0)).toBe("<1m");
-	expect(shortAge(180_000, 0)).toBe("3m");
+const COMMANDS: [string, string][] = [
+	[
+		"cd /home/max/source/github.com/nholik/claude-team-viz && gh…",
+		"working in the shell",
+	],
+	[
+		"cd /home/max/source/github.com/nholik/claude-team-viz && gi…",
+		"working in the shell",
+	],
+	[
+		"cd /home/max/x/.worktrees/72 && npm run check 2>&1 | tail -12",
+		"running checks",
+	],
+	["npm install 2>&1 | tail -2; npm run check", "installing deps"],
+	[
+		"cd /home/max/source/github.com/nholik/claude-team-viz/.work…",
+		"working in the shell",
+	],
+	["cd /w && npm run typecheck 2>&1 | tail -5", "typechecking"],
+	['git add -A && git commit -qm "Show activity"', "committing"],
+	["git push -qu origin 72-roles-activity 2>&1|tail -1", "pushing"],
+	["git fetch -q && git rebase origin/main 2>&1 | tail -5", "rebasing"],
+	['gh pr create --title "x" --body "y"', "opening a PR"],
+	["gh pr view 76 --json title,body,headRefName,files", "reviewing PR #76"],
+	["gh pr diff 69", "reviewing PR #69"],
+	["gh issue view 72 --json body -q .body; gh issue view 63", "reading #72"],
+	[
+		'gh pr comment 80 --body "@codex review" >/dev/null',
+		"commenting on PR #80",
+	],
+	[
+		"node --experimental-strip-types scripts/preview.ts --cols 72",
+		"previewing the UI",
+	],
+	["FOO=1 scripts/snap.sh", "previewing the UI"],
+	["git worktree add -q .worktrees/66b -b 66 o…", "git worktree"],
+	['rg -n "update" hooks', "rg update"],
+];
+
+test("commandPhrase summarizes real commands", () => {
+	for (const [command, phrase] of COMMANDS)
+		expect(commandPhrase(command)).toBe(phrase);
 });
 
 test("roleLabel defaults from the agent type", () => {

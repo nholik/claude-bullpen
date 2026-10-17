@@ -1,5 +1,6 @@
 // Pure helpers that turn raw engine event fields into journal-friendly pieces.
 
+import { withoutCd } from "./command";
 import { ghTargets } from "./model/detect";
 import { cells } from "./width";
 
@@ -54,7 +55,7 @@ export function describeTool(
 		typeof args[key] === "string" ? (args[key] as string) : "";
 	switch (tool) {
 		case "Bash":
-			return oneLine(str("command"), 60);
+			return oneLine(withoutCd(str("command")), 60);
 		case "Edit":
 		case "Write":
 		case "Read":
