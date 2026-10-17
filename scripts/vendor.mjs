@@ -14,6 +14,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import * as esbuild from "esbuild";
 
 const VENDOR = {
+	pathe: { pkg: "pathe", source: `export { join } from "pathe";` },
 	// Color math (OKLCH mixing) for the floor, glow and morale lighting.
 	culori: {
 		pkg: "culori",

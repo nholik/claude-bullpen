@@ -1,4 +1,5 @@
 import { oneLine } from "../events";
+import { type GlyphMode, glyphText } from "../glyphs";
 import stringWidth from "../vendor/string-width.js";
 
 export type Seg = {
@@ -23,9 +24,9 @@ export function fit(line: Line, columns: number): Line {
 	for (const seg of line) {
 		if (!left) break;
 		// oneLine trims: preserve intentional spacing between styled segments.
-		const flat = seg.text.replace(/[\r\n\t]/g, " ");
+		const flat = glyphText(seg.text.replace(/[\r\n\t]/g, " "));
 		const text = stringWidth(flat) <= left ? flat : oneLine(flat, left);
-		out.push({ ...seg, text });
+		out.push({ ...seg, text: glyphText(text) });
 		left -= stringWidth(text);
 	}
 	return out;
@@ -45,4 +46,10 @@ export function beside(left: Line[], right: Line[], columns: number): Line[] {
 			...fit(right[i] ?? [], columns - split - 3),
 		];
 	});
+}
+
+export function glyphLines(lines: Line[], mode: GlyphMode = "unicode"): Line[] {
+	return lines.map((line) =>
+		line.map((seg) => ({ ...seg, text: glyphText(seg.text, mode) })),
+	);
 }

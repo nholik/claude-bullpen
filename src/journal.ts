@@ -1,3 +1,4 @@
+import { join } from "./vendor/pathe.js";
 // The journal: what the team did, as validated `BullpenEvent`s. Kept as a ring
 // buffer in `$.state` and appended to numbered JSONL chunks under
 // `~/.claude/bullpen/<team>/` for replay, fixtures and tests. Each writer (one
@@ -248,7 +249,7 @@ export function teamOf(teammateId: string | undefined): string | undefined {
  * accepts too, and drops a trailing separator from `home`.
  */
 export function journalDir(home: string, team: string): string {
-	return `${home.replace(/[\\/]+$/, "")}/.claude/bullpen/${safeSegment(team)}`;
+	return join(home, ".claude", "bullpen", safeSegment(team));
 }
 
 /** Retention defaults: see `planRetention`. */

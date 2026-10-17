@@ -168,7 +168,7 @@ test("journalDir and teamOf", async () => {
 		"/home/me/.claude/bullpen/bullpen",
 	);
 	expect(journalDir("C:\\Users\\me\\", "../a b")).toBe(
-		"C:\\Users\\me/.claude/bullpen/a-b",
+		"C:/Users/me/.claude/bullpen/a-b",
 	);
 	expect(teamOf("smith@bullpen")).toBe("bullpen");
 	expect(teamOf("smith")).toBeUndefined();

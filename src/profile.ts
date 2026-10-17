@@ -12,6 +12,7 @@ import {
 	minValue,
 	number,
 	optional,
+	picklist,
 	pipe,
 	record,
 	safeParse,
@@ -36,6 +37,7 @@ const ProfileSchema = looseObject({
 	issues: optional(IssuesSchema),
 	roles: optional(record(string(), RoleSchema)),
 	animations: optional(boolean()),
+	glyphs: optional(picklist(["unicode", "ascii"])),
 	palette: optional(array(string())),
 });
 
@@ -46,6 +48,7 @@ export const DEFAULT_PROFILE: Profile = {
 	issues: { filter: "", pollSeconds: 60 },
 	roles: {},
 	animations: true,
+	glyphs: "unicode",
 	palette: [...PALETTE],
 };
 
@@ -106,6 +109,11 @@ export function parsePartial(text: string | undefined): {
 		return { set, warnings: ["bullpen.json must be a JSON object"] };
 
 	const fields = ProfileSchema.entries;
+	if (json.glyphs !== undefined) {
+		const parsed = safeParse(fields.glyphs, json.glyphs);
+		if (parsed.success && parsed.output) set.glyphs = parsed.output;
+		else warnings.push("glyphs: expected unicode or ascii; using the default");
+	}
 	type Obj = Record<string, unknown>;
 	const obj = json as Record<string, unknown>;
 
@@ -207,6 +215,7 @@ export function mergeProfiles(
 	for (const layer of [user, project]) {
 		out.issues = { ...out.issues, ...layer.issues };
 		out.animations = layer.animations ?? out.animations;
+		out.glyphs = layer.glyphs ?? out.glyphs;
 		out.palette = layer.palette?.length ? layer.palette : out.palette;
 		out.roles = { ...out.roles, ...layer.roles };
 	}

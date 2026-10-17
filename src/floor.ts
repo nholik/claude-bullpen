@@ -1,3 +1,4 @@
+import { type GlyphMode, glyphText } from "./glyphs";
 // The floorplan: a half-block pixel canvas packed into Raster cells.
 // Each terminal cell is two pixels stacked: '▀' with the top pixel as
 // foreground and the bottom pixel as background. Only width-1 glyphs are
@@ -213,7 +214,12 @@ function strip(
 			bg: FLOOR,
 		});
 	}
-	return { cells: pack(p, labels), labels, seats, overflowMembers };
+	return {
+		cells: pack(p, labels, profile.glyphs),
+		labels,
+		seats,
+		overflowMembers,
+	};
 }
 
 /** Idle frames stay identical; running members retain their one-pixel bob. */
@@ -352,23 +358,33 @@ export function drawFloor(
 			0x81c784,
 			LOBBY,
 		);
-	return { cells: pack(p, labels), labels, seats, overflowMembers };
+	return {
+		cells: pack(p, labels, profile.glyphs),
+		labels,
+		seats,
+		overflowMembers,
+	};
 }
 
 /** Packs pixels (and text overlays) into a Raster's base64 `cells`. */
-function pack(p: Pixels, labels: TextCell[]): string {
+function pack(
+	p: Pixels,
+	labels: TextCell[],
+	mode: GlyphMode = "unicode",
+): string {
 	const columns = p.width;
 	const rows = p.height / 2;
 	const words = new Uint32Array(columns * rows * 3);
 	for (let row = 0; row < rows; row++) {
 		for (let col = 0; col < columns; col++) {
 			const i = (row * columns + col) * 3;
-			words[i] = UPPER_HALF;
+			words[i] = mode === "ascii" ? 35 : UPPER_HALF;
 			words[i + 1] = p.px[row * 2 * columns + col] ?? 0;
 			words[i + 2] = p.px[(row * 2 + 1) * columns + col] ?? 0;
 		}
 	}
 	for (const label of labels) {
+		label.text = glyphText(label.text, mode);
 		if (label.row < 0 || label.row >= rows || label.col < 0) continue;
 		for (let k = 0; k < label.text.length && label.col + k < columns; k++) {
 			const i = (label.row * columns + label.col + k) * 3;

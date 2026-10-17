@@ -4,9 +4,9 @@ import { mix } from "../color";
 import { type BullpenModel, isHallwayLive } from "../model";
 import { STALL_MS } from "../model/morale";
 import { colorFor, colorIndex } from "../profile";
-import { fit, type Line, textLine, width } from "./lines";
+import { fit, glyphLines, type Line, textLine, width } from "./lines";
 
-export function huddles(
+function huddlesImpl(
 	model: BullpenModel,
 	github: GithubSource,
 	profile: Profile,
@@ -92,7 +92,7 @@ export function huddles(
 	return lines.slice(0, rows);
 }
 
-export function hallway(
+function hallwayImpl(
 	model: BullpenModel,
 	profile: Profile,
 	columns: number,
@@ -124,4 +124,12 @@ export function hallway(
 				),
 			);
 	return lines;
+}
+
+export function huddles(...args: Parameters<typeof huddlesImpl>): Line[] {
+	return glyphLines(huddlesImpl(...args), args[2].glyphs);
+}
+
+export function hallway(...args: Parameters<typeof hallwayImpl>): Line[] {
+	return glyphLines(hallwayImpl(...args), args[1].glyphs);
 }

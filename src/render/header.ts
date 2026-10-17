@@ -2,7 +2,7 @@ import type { BurndownPoint, GithubSource, Profile } from "../../types";
 import { exactCounts, headerText } from "../github";
 import type { BullpenModel } from "../model";
 import { colorFor, colorIndex } from "../profile";
-import { fit, type Line, textLine, width } from "./lines";
+import { fit, glyphLines, type Line, textLine, width } from "./lines";
 import { moraleHint } from "./morale";
 
 /** Time-bucketed samples preserve the time axis even when snapshots compress. */
@@ -130,5 +130,5 @@ export function band(
 	segments.push({
 		text: ` ✉${unread} ${github.result ? headerText(github.result) : "no GitHub data"} ${sparkline(github.burndown, 5)}`,
 	});
-	return fit(segments, columns);
+	return glyphLines([fit(segments, columns)], profile.glyphs)[0] ?? [];
 }
