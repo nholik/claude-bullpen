@@ -234,11 +234,10 @@ export function drawFloor(
 		);
 	if (columns < 48 || rows < 6) return strip(active, columns, rows, profile);
 	const p = canvas(columns, rows * 2, morale);
-	const plan = layout(
-		columns,
-		rows,
-		active.flatMap((m) => (m.issue === undefined ? [] : [m.issue])),
-	);
+	const plan = layout(columns, rows, [
+		...active.flatMap((m) => (m.issue === undefined ? [] : [m.issue])),
+		...effects.closed,
+	]);
 	const labels: TextCell[] = [];
 	const seats = new Map<string, Seat>();
 	const overflowMembers: string[] = [];
@@ -254,6 +253,7 @@ export function drawFloor(
 	rect(p, plan.lobbyCol + 5, rows * 2 - 1, 6, 1, LOBBY);
 	label(plan.lobbyCol + 5, 0, "lobby", 0x9aa4ae, LOBBY);
 	for (const [issue, at] of plan.tables) {
+		if (effects.closed.includes(issue)) continue;
 		rect(p, at.col, at.row * 2, at.width, 2, TABLE);
 		rect(p, at.col, at.row * 2 + 2, at.width, 1, TABLE_EDGE);
 		const title = titles[issue];
@@ -311,8 +311,11 @@ export function drawFloor(
 			memberColor(m, profile),
 		);
 	}
-	if (plan.overflow.length > 0)
-		label(2, rows - 1, `+${plan.overflow.length} more issues`);
+	const overflow = plan.overflow.filter(
+		(issue) => !effects.closed.includes(issue),
+	);
+	if (overflow.length > 0)
+		label(2, rows - 1, `+${overflow.length} more issues`);
 	const lobbyOverflow =
 		active.filter((m) => m.issue === undefined).length - lobbyIndex;
 	if (lobbyOverflow > 0)

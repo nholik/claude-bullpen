@@ -46,7 +46,7 @@ jobs:
         run: scripts/ci-types.sh
 
       - name: Typecheck
-        run: npx tsc -p .
+        run: npm run typecheck
 
       - name: Validate plugin
         run: claude plugin validate .

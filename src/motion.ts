@@ -67,8 +67,18 @@ export function motionFor(
 			continue;
 		const oldMembers = membersAt(before, members);
 		const newMembers = membersAt(state, members);
-		const oldFloor = drawFloor(oldMembers, columns, rows, 0, {}, profile);
-		const newFloor = drawFloor(newMembers, columns, rows, 0, {}, profile);
+		const oldFloor = drawFloor(oldMembers, columns, rows, 0, {}, profile, {
+			closed: before.closes.map((c) => c.issue),
+			walkers: [],
+			dots: [],
+			tables: [],
+		});
+		const newFloor = drawFloor(newMembers, columns, rows, 0, {}, profile, {
+			closed: state.closes.map((c) => c.issue),
+			walkers: [],
+			dots: [],
+			tables: [],
+		});
 		const actor = members.find((m) => m.name === event.who);
 		if (actor) {
 			const from = oldFloor.seats.get(actor.id);
@@ -112,11 +122,10 @@ export function motionFor(
 			}
 		}
 		for (const close of state.closes.slice(before.closes.length)) {
-			const table = layout(
-				columns,
-				rows,
-				oldMembers.flatMap((m) => m.issue ?? []),
-			).tables.get(close.issue);
+			const table = layout(columns, rows, [
+				...oldMembers.flatMap((m) => m.issue ?? []),
+				...before.closes.map((c) => c.issue),
+			]).tables.get(close.issue);
 			if (table)
 				specs.push({
 					id: `close:${index}:${close.issue}`,

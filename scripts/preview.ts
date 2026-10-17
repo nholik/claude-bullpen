@@ -18,9 +18,16 @@ registerHooks({
 	},
 });
 
-const { demoAt } = await import("../src/demo-replay");
+const { demoAt, demoGithubAt, demoProfile } = await import(
+	"../src/demo-replay"
+);
+const { demoClock } = await import("../src/demo");
+const { DEFAULT_PROFILE } = await import("../src/profile");
+const profile = demoProfile(DEFAULT_PROFILE);
+const { motionFor, createMotion } = await import("../src/motion");
 const { buildModel } = await import("../src/model");
 const { drawFloor } = await import("../src/floor");
+const { storyFor, storyLines } = await import("../src/render/story");
 const { paneView } = await import("../src/render/pane");
 
 const args = process.argv.slice(2);
@@ -30,7 +37,9 @@ for (let i = 0; i < args.length; i += 2) {
 	const value = args[i + 1];
 	if (
 		!key ||
-		!["--cols", "--rows", "--at", "--frames", "--out"].includes(key) ||
+		!["--cols", "--rows", "--at", "--frames", "--out", "--story"].includes(
+			key,
+		) ||
 		value === undefined
 	)
 		throw new Error(
@@ -68,11 +77,28 @@ const line = (segments: Line) =>
 		)
 		.join("")}\x1b[0m`;
 for (let frame = 0; frame < frames; frame++) {
-	const now = at + frame * 100;
-	const replay = demoAt(now);
+	const elapsed = at + frame * 100;
+	const now = demoClock(elapsed);
+	const replay = demoAt(elapsed);
 	const members = Object.values(replay.members);
 	const model = buildModel(replay.events, now);
-	const view = paneView(model, members, columns, rows, now);
+	const source = demoGithubAt(elapsed);
+	const view = paneView(model, members, columns, rows, now, {
+		github: source,
+		profile: profile,
+	});
+	if (options.has("--story")) {
+		const issue = number("--story", 204, 1, 9999999);
+		view.header = storyLines(
+			storyFor(issue, replay.events, source),
+			profile,
+			columns,
+			rows - 2,
+		);
+		view.floorRows = 0;
+		view.regions = [];
+		view.footer = [[{ text: "r Back to Bullpen" }]];
+	}
 	const output = view.header.map(line);
 	if (view.floorRows > 0) {
 		const floor = drawFloor(
@@ -80,6 +106,23 @@ for (let frame = 0; frame < frames; frame++) {
 			columns,
 			view.floorRows,
 			Math.floor(now / 250),
+			Object.fromEntries(
+				(source.result?.status === "ok" ? source.result.issues : []).map(
+					(i) => [i.number, i.title],
+				),
+			),
+			profile,
+			createMotion(
+				motionFor(
+					replay.events,
+					members,
+					columns,
+					view.floorRows,
+					now,
+					profile,
+				),
+			).sample(now),
+			model.morale.score,
 		);
 		const bytes = Buffer.from(floor.cells, "base64");
 		for (let y = 0; y < view.floorRows; y++) {

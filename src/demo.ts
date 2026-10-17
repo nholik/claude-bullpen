@@ -13,10 +13,13 @@ export type DemoStep = {
 		| { kind: "work"; detail: string; issue?: number }
 		| { kind: "rest" }
 		| { kind: "say"; to: string; text: string }
-		| { kind: "leave" };
+		| { kind: "leave" }
+		| { kind: "advance"; ms: number };
 };
 
 const LEAD = "lead";
+export const DEMO_DURATION_MS = 80_000;
+export const DEMO_EPOCH = Date.UTC(2026, 9, 17, 14, 0);
 
 export const DEMO_SCRIPT: DemoStep[] = [
 	{ wait: 0, who: "smith", do: { kind: "join", issue: 208 } },
@@ -104,3 +107,104 @@ export const DEMO_SCRIPT: DemoStep[] = [
 		do: { kind: "work", detail: "npm test -- session" },
 	},
 ];
+
+// The first act preserves the original join/pair/kickback sequence. Later beats
+// explicitly advance simulated time so quiet/stall transitions fit in 80 seconds.
+const openingDuration = DEMO_SCRIPT.reduce((n, step) => n + step.wait, 0);
+const finale: { at: number; who: string; do: DemoStep["do"] }[] = [
+	{
+		at: 16000,
+		who: "gate",
+		do: { kind: "say", to: LEAD, text: "#204 flaky test — skip or fix?" },
+	},
+	{ at: 18000, who: "smith", do: { kind: "rest" } },
+	{ at: 18000, who: "ada", do: { kind: "rest" } },
+	{ at: 18000, who: "gate", do: { kind: "rest" } },
+	{ at: 25000, who: LEAD, do: { kind: "advance", ms: 21 * 60000 } },
+	{
+		at: 35000,
+		who: "gate",
+		do: {
+			kind: "say",
+			to: LEAD,
+			text: "#204 still blocked — need a decision?",
+		},
+	},
+	{
+		at: 40000,
+		who: LEAD,
+		do: { kind: "say", to: "gate", text: "Fix #204; smith can pair with you." },
+	},
+	{
+		at: 43000,
+		who: "smith",
+		do: { kind: "work", issue: 204, detail: "edit src/session.ts" },
+	},
+	{
+		at: 48000,
+		who: "gate",
+		do: { kind: "work", issue: 204, detail: "npm test -- session" },
+	},
+	{
+		at: 52000,
+		who: "gate",
+		do: { kind: "say", to: "smith", text: "#204 PASS, all green" },
+	},
+	{
+		at: 55000,
+		who: "smith",
+		do: { kind: "say", to: LEAD, text: "closed #204" },
+	},
+	{
+		at: 58000,
+		who: "smith",
+		do: { kind: "work", issue: 208, detail: "edit src/auth/redirect.ts" },
+	},
+	{
+		at: 61000,
+		who: "ada",
+		do: { kind: "work", issue: 208, detail: "write tests/redirect.test.ts" },
+	},
+	{
+		at: 67000,
+		who: "ada",
+		do: {
+			kind: "say",
+			to: "smith",
+			text: "#208 PASS, redirect regression is covered",
+		},
+	},
+	{
+		at: 70000,
+		who: "smith",
+		do: { kind: "say", to: LEAD, text: "closed #208" },
+	},
+	{ at: 72000, who: "luna", do: { kind: "join", issue: 217 } },
+	{
+		at: 75000,
+		who: "luna",
+		do: { kind: "say", to: LEAD, text: "#217 spacing polish is underway" },
+	},
+	...["smith", "ada", "gate", "iris", "scout", "luna", LEAD].map((who) => ({
+		at: 80000,
+		who,
+		do: { kind: "rest" as const },
+	})),
+];
+let previous = openingDuration;
+for (const step of finale) {
+	DEMO_SCRIPT.push({ wait: step.at - previous, who: step.who, do: step.do });
+	previous = step.at;
+}
+
+export function demoClock(elapsed: number): number {
+	const time = Math.max(0, Math.min(DEMO_DURATION_MS, elapsed));
+	let at = 0,
+		offset = 0;
+	for (const step of DEMO_SCRIPT) {
+		at += step.wait;
+		if (at > time) break;
+		if (step.do.kind === "advance") offset += step.do.ms;
+	}
+	return DEMO_EPOCH + time + offset;
+}
