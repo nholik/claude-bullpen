@@ -2,6 +2,7 @@ import { expect, test } from "claude-code/testing";
 import { buildModel } from "../src/model";
 import { DEFAULT_PROFILE } from "../src/profile";
 import { width } from "../src/render/lines";
+import { STUDIO } from "../src/render/studio";
 import { teamStudioView } from "../src/render/team-studio";
 import type { BullpenEvent } from "../types";
 
@@ -132,4 +133,36 @@ test("a new turn clears the previous turn completion highlight", () => {
 	expect(view.regions.flat().some((s) => s.text.includes("TURN DONE"))).toBe(
 		false,
 	);
+});
+
+test("Studio pulses only card frames when teammate colors match the default edge", () => {
+	for (const now of [10000, 11000, 14000]) {
+		const view = teamStudioView(
+			model,
+			github,
+			{
+				...DEFAULT_PROFILE,
+				roles: {
+					ada: { color: "#3a5263" },
+					smith: { color: "#3a5263" },
+					scout: { color: "#3a5263" },
+				},
+			},
+			80,
+			37,
+			now,
+		);
+		const segments = view.regions.flat();
+		for (const name of ["ada", "smith", "scout"])
+			expect(segments.find((s) => s.text === name)?.fg).toBe(STUDIO.edge);
+		const statuses = segments.filter((s) => /RUNNING|IDLE/.test(s.text));
+		expect(statuses.length).toBe(3);
+		for (const status of statuses) expect(status.fg).toBe(STUDIO.edge);
+		const frames = segments.filter((s) => s.text.startsWith("╭"));
+		expect(frames.map((s) => s.fg)).toEqual(
+			now === 10000
+				? [STUDIO.lavender, STUDIO.mint, STUDIO.lavender]
+				: [STUDIO.edge, STUDIO.edge, STUDIO.edge],
+		);
+	}
 });

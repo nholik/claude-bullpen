@@ -56,9 +56,9 @@ function workstation(
 	const name: Line = [
 		{ text: member.name, fg: color, agentId: member.agentId, bold: true },
 	];
-	const card: Line[] = [
-		edge(columns),
-		inside(align(name, text(role, STUDIO.muted), columns - 4), columns),
+	return [
+		edge(columns, false, border),
+		inside(align(name, text(role, STUDIO.muted), columns - 4), columns, border),
 		inside(
 			align(
 				text(
@@ -69,6 +69,7 @@ function workstation(
 				columns - 4,
 			),
 			columns,
+			border,
 		),
 		inside(
 			member.issue === undefined
@@ -81,20 +82,19 @@ function workstation(
 						},
 					],
 			columns,
+			border,
 		),
 		inside(
 			signal
 				? [{ text: signal.label, fg: signal.color, bold: Boolean(bright) }]
 				: text("─".repeat(Math.max(0, columns - 4)), STUDIO.edge),
 			columns,
+			border,
 		),
-		inside(action[0] ?? [], columns),
-		inside(action[1] ?? [], columns),
-		edge(columns, true),
+		inside(action[0] ?? [], columns, border),
+		inside(action[1] ?? [], columns, border),
+		edge(columns, true, border),
 	];
-	return card.map((line) =>
-		line.map((seg) => (seg.fg === STUDIO.edge ? { ...seg, fg: border } : seg)),
-	);
 }
 
 /** A people-first terminal view: measured text and symbols, not an office illustration. */

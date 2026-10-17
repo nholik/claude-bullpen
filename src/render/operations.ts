@@ -27,21 +27,25 @@ export function section(title: string, columns: number): Line {
 		{ text: "─".repeat(Math.max(0, columns - width(label))), fg: STUDIO.edge },
 	];
 }
-export function inside(line: Line, columns: number): Line {
+export function inside(line: Line, columns: number, color = STUDIO.edge): Line {
 	const content = fit(line, Math.max(0, columns - 4));
 	return [
-		{ text: "│ ", fg: STUDIO.edge },
+		{ text: "│ ", fg: color },
 		...content,
 		{
 			text: `${" ".repeat(Math.max(0, columns - 4 - width(content)))} │`,
-			fg: STUDIO.edge,
+			fg: color,
 		},
 	];
 }
-export function edge(columns: number, bottom = false): Line {
+export function edge(
+	columns: number,
+	bottom = false,
+	color = STUDIO.edge,
+): Line {
 	return text(
 		`${bottom ? "╰" : "╭"}${"─".repeat(Math.max(0, columns - 2))}${bottom ? "╯" : "╮"}`,
-		STUDIO.edge,
+		color,
 	);
 }
 export function age(now: number, at: number): string {
