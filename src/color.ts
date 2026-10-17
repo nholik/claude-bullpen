@@ -42,11 +42,11 @@ export function moraleLight(score: number): {
 	const t = Number.isFinite(score) ? Math.max(0, Math.min(1, score)) : 0.7;
 	const floor =
 		t < 0.5
-			? mix(0x182330, 0x292929, t * 2)
-			: mix(0x292929, 0x413425, (t - 0.5) * 2);
+			? mix(0x101923, 0x14212c, t * 2)
+			: mix(0x14212c, 0x1e2b30, (t - 0.5) * 2);
 	return {
 		floor,
-		alternate: mix(floor, 0xffffff, 0.035),
+		alternate: mix(floor, 0xffffff, 0.012),
 		wall: mix(floor, 0xffffff, 0.18),
 	};
 }

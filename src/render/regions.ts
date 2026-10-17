@@ -5,6 +5,7 @@ import { type BullpenModel, isHallwayLive } from "../model";
 import { STALL_MS } from "../model/morale";
 import { colorFor, colorIndex } from "../profile";
 import { fit, glyphLines, type Line, textLine, width } from "./lines";
+import { issueStatus, STUDIO } from "./studio";
 
 function huddlesImpl(
 	model: BullpenModel,
@@ -15,16 +16,23 @@ function huddlesImpl(
 	now: number,
 ): Line[] {
 	if (rows < 1) return [];
-	const lines = [textLine("── Huddles ──", columns)];
+	const lines = [
+		textLine(
+			profile.style === "operations" ? "── Workstreams ──" : "── Huddles ──",
+			columns,
+		),
+	];
 	const sorted = [...model.huddles].sort(
 		(a, b) => b.lastActiveAt - a.lastActiveAt || a.issue - b.issue,
 	);
 	if (!sorted.length)
 		return [...lines, textLine("No active huddles", columns)].slice(0, rows);
+	const expanded = columns >= 34 && rows >= 11;
+	const cardRows = expanded ? 5 : 3;
 	let shown = 0;
 	for (const h of sorted) {
 		const reserve = shown < sorted.length - 1 ? 1 : 0;
-		if (lines.length + 3 + reserve > rows) break;
+		if (lines.length + cardRows + reserve > rows) break;
 		const title =
 			github.result?.status === "ok"
 				? github.result.issues.find((i) => i.number === h.issue)?.title
@@ -43,23 +51,25 @@ function huddlesImpl(
 			);
 			return "▁▂▃▄▅▆▇█"[Math.min(7, count)] ?? "▁";
 		}).join("");
+		const state = issueStatus(model, h.issue, profile, now);
 		const heading = fit(
 			[
 				{
 					story: h.issue,
-					text: `╭ #${h.issue}${title ? ` ${title}` : ""} · ${h.members.length} · ${age}m${h.kickbacks ? ` ↺${h.kickbacks}` : ""} ${activity}${stalled ? " stalled" : ""}`,
+					text: `╭ #${h.issue}${title ? ` ${title}` : ""}`,
 					dim: stalled,
 					fg: profile.animations
 						? mix(0x555555, 0xd8e9ff, glow(now, h.lastActiveAt))
 						: 0x777777,
 				},
 			],
-			Math.max(0, columns - 1),
+			Math.max(0, columns - state.label.length - 5),
 		);
 		lines.push([
 			...heading,
+			{ text: ` ${state.label} `, fg: state.color, bold: true },
 			{
-				text: `${"─".repeat(Math.max(0, columns - width(heading) - 1))}╮`,
+				text: `${"─".repeat(Math.max(0, columns - width(heading) - state.label.length - 3))}╮`,
 				dim: stalled,
 				fg: profile.animations
 					? mix(0x555555, 0xd8e9ff, glow(now, h.lastActiveAt))
@@ -84,6 +94,39 @@ function huddlesImpl(
 			...clipped,
 			{ text: `${" ".repeat(Math.max(0, columns - width(clipped) - 1))}│` },
 		]);
+		if (expanded) {
+			const steps: Line = [{ text: "│ " }];
+			for (const [index, name] of [
+				"assigned",
+				"working",
+				"review",
+				"done",
+			].entries()) {
+				steps.push({
+					text: `${index ? " ─ " : ""}${name}`,
+					fg: index === state.step ? state.color : STUDIO.muted,
+					bold: index === state.step,
+				});
+			}
+			const track = fit(steps, columns - 1);
+			lines.push([
+				...track,
+				{ text: `${" ".repeat(Math.max(0, columns - width(track) - 1))}│` },
+			]);
+			const meta = fit(
+				[
+					{
+						text: `│ ${activity}  ${age}m together${h.kickbacks ? ` · ↺${h.kickbacks} sent back` : ""}`,
+						fg: STUDIO.muted,
+					},
+				],
+				columns - 1,
+			);
+			lines.push([
+				...meta,
+				{ text: `${" ".repeat(Math.max(0, columns - width(meta) - 1))}│` },
+			]);
+		}
 		lines.push(textLine(`╰${"─".repeat(Math.max(0, columns - 2))}╯`, columns));
 		shown++;
 	}
@@ -108,12 +151,22 @@ function hallwayImpl(
 				columns,
 			),
 		];
-	const lines = [textLine("── Hallway ▾ live ──", columns)];
+	const lines = [
+		textLine(
+			profile.style === "operations"
+				? "── Recent events ▾ live ──"
+				: "── Hallway ▾ live ──",
+			columns,
+		),
+	];
 	if (rows > 1)
-		for (const m of model.hallway.slice(-(rows - 1)))
+		for (const m of model.hallway.slice(-(rows - 1))) {
+			const date = new Date(m.at);
+			const clock = `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 			lines.push(
 				fit(
 					[
+						{ text: `${clock}  `, fg: STUDIO.muted },
 						{
 							text: `${m.from} → ${m.to}: `,
 							fg: colorFor(m.from, profile, colorIndex(m.from)),
@@ -123,6 +176,7 @@ function hallwayImpl(
 					columns,
 				),
 			);
+		}
 	return lines;
 }
 
