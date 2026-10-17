@@ -28,6 +28,8 @@ export type BullpenEvent = {
 	detail: string;
 	/** Issue numbers referenced (`#123`). */
 	issues: number[];
+	/** Verified successful foreground gh issue close results. */
+	confirmedCloses?: number[];
 };
 
 export type MemberStatus = "running" | "idle" | "gone";

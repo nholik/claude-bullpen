@@ -150,7 +150,9 @@ export function applyEvent(
 
 	let { hallway, asks, kickbacks, closes } = state;
 	if (e.kind === "tool" || e.kind === "message") {
-		for (const closed of closedIssues(e.detail))
+		for (const closed of e.kind === "message"
+			? closedIssues(e.detail)
+			: (e.confirmedCloses ?? []))
 			if (!closes.some((c) => c.issue === closed))
 				closes = [...closes, { issue: closed, at: e.at }];
 	}

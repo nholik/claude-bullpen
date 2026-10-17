@@ -112,8 +112,8 @@ test("isReviewer: gate and ux by role, else by name", async () => {
 });
 
 test("closedIssues: closes said or run, not promised", async () => {
-	expect(closedIssues("gh issue close 12")).toEqual([12]);
-	expect(closedIssues("gh issue close #12 --comment done")).toEqual([12]);
+	expect(closedIssues("gh issue close 12")).toEqual([]);
+	expect(closedIssues("gh issue close #12 --comment done")).toEqual([]);
 	expect(closedIssues("#12 ✓ merged")).toEqual([12]);
 	expect(closedIssues("✓ #199, closed #200, #201 is shipped")).toEqual([
 		199, 200, 201,
@@ -498,7 +498,7 @@ test("moraleGlyph thresholds", async () => {
 
 test("morale is clamped and closes cap their lift", async () => {
 	const closes = [1, 2, 3, 4, 5].map((n) =>
-		ev(n, "lead", "tool", `gh issue close ${n}`),
+		ev(n, "lead", "message", `closed #${n}`),
 	);
 	expect(buildModel(closes, T + 10 * MINUTE).morale.score).toBe(1);
 	const asks = Array.from({ length: 10 }, (_, i) =>

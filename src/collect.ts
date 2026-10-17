@@ -43,6 +43,7 @@ export type CollectOp =
 			target?: string;
 			/** Extra text scanned for issue refs alongside `detail`. */
 			text?: string;
+			confirmedCloses?: number[];
 			/** False to leave the member's issue as it is. */
 			attribute: boolean;
 	  }
@@ -148,6 +149,9 @@ export function applyBatch(
 					target: op.target,
 					detail: op.detail,
 					issues,
+					...(op.confirmedCloses
+						? { confirmedCloses: op.confirmedCloses }
+						: {}),
 				});
 				const issue =
 					op.attribute && op.kind !== "leave"

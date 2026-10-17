@@ -54,6 +54,7 @@ import {
 	toLine,
 } from "../src/journal";
 import { buildModel } from "../src/model";
+import { confirmedToolCloses } from "../src/model/detect";
 import { createMotion, motionFor } from "../src/motion";
 import { DEFAULT_PROFILE, parseProfile } from "../src/profile";
 import { band } from "../src/render/header";
@@ -352,7 +353,12 @@ async function record(
 	kind: BullpenEventKind,
 	agentId: string | undefined,
 	detail: string,
-	extra: { target?: string; text?: string; attribute?: boolean } = {},
+	extra: {
+		target?: string;
+		text?: string;
+		attribute?: boolean;
+		confirmedCloses?: number[];
+	} = {},
 ) {
 	collectorOf($).push({
 		op: "event",
@@ -362,6 +368,7 @@ async function record(
 		detail,
 		target: extra.target,
 		text: extra.text,
+		confirmedCloses: extra.confirmedCloses,
 		attribute: extra.attribute ?? true,
 	});
 }
@@ -645,7 +652,26 @@ export function register(on: On) {
 				}),
 			)
 			.catch(() => {});
-		return next(e);
+		const result = await next(e);
+		try {
+			const closed =
+				e.tool === "Bash"
+					? confirmedToolCloses(String(args.command ?? ""), result)
+					: [];
+			if (closed.length)
+				void producers
+					.track(
+						record($, "tool", e.agentId, `closed #${closed[0]}`, {
+							target: "Bash",
+							confirmedCloses: closed,
+							attribute: false,
+						}),
+					)
+					.catch(() => {});
+		} catch {
+			/* Observation must never change the tool's outcome. */
+		}
+		return result;
 	});
 
 	on("session.send", async ($, e, next) => {
