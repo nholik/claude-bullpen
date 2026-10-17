@@ -12,7 +12,7 @@ import { type BullpenEvent, JOURNAL_VERSION } from "./journal";
 export const LEAD = "lead";
 
 /** How long events wait before they are written to `$.state`. */
-export const FLUSH_MS = 100;
+export const FLUSH_MS = 250;
 
 export type MemberPatch = {
 	name?: string;

@@ -50,7 +50,8 @@ export function edge(
 }
 export function age(now: number, at: number): string {
 	const seconds = Math.max(0, Math.floor((now - at) / 1000));
-	return seconds < 60 ? `${seconds}s ago` : `${Math.floor(seconds / 60)}m ago`;
+	// Minute steps: a ticking seconds counter forces a redraw every second.
+	return seconds < 60 ? "<1m ago" : `${Math.floor(seconds / 60)}m ago`;
 }
 export function clock(at: number): string {
 	const date = new Date(at);
@@ -269,7 +270,7 @@ export function operationsView(
 	const header = [
 		align(
 			text(" BULLPEN / OPERATIONS", STUDIO.mint),
-			text(`● LIVE  ${clock(now)} `, STUDIO.mint),
+			text(`● LIVE  ${clock(now).slice(0, 5)} `, STUDIO.mint),
 			columns,
 		),
 		align(

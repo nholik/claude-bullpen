@@ -43,7 +43,6 @@ function workstation(
 	const signal = profile.animations ? activity(member, model, now) : undefined;
 	const bright = signal && Math.floor((now - signal.at) / 1000) % 2 === 0;
 	const border = bright ? signal.color : STUDIO.edge;
-	const running = profile.animations && Math.floor(now / 1000) % 2 ? "○" : "●";
 	const title =
 		github.result?.status === "ok"
 			? github.result.issues.find((i) => i.number === member.issue)?.title
@@ -62,7 +61,7 @@ function workstation(
 		inside(
 			align(
 				text(
-					`${member.status === "running" ? `${running} RUNNING` : member.away ? "○ AWAY" : "○ IDLE"}`,
+					`${member.status === "running" ? "● RUNNING" : member.away ? "○ AWAY" : "○ IDLE"}`,
 					color,
 				),
 				text(age(now, member.lastActiveAt), STUDIO.muted),
@@ -116,7 +115,7 @@ export function teamStudioView(
 	const header = [
 		align(
 			text(" BULLPEN / TEAM STUDIO", STUDIO.lavender),
-			text(`● LIVE  ${clock(now)} `, STUDIO.mint),
+			text(`● LIVE  ${clock(now).slice(0, 5)} `, STUDIO.mint),
 			columns,
 		),
 		align(
