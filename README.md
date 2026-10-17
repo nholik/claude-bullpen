@@ -71,6 +71,17 @@ npm run format                 # Biome format and safe fixes
 
 `tsc -p .` (and `npm run check`) needs the API types, which Claude Code writes to `.claude-plugin/types/` (gitignored) the first time it loads the mod.
 
+Preview without Claude Code (Node 24):
+
+```sh
+node --experimental-strip-types scripts/preview.ts --cols 160 --rows 48 --at 12 --out .scratch/preview/demo.ansi
+python3 scripts/ansi2png.py .scratch/preview/demo.ansi .scratch/preview/demo.png
+```
+
+Omit `--out` to print truecolor ANSI. `--frames 12` writes numbered frames 100 ms apart.
+Use 160, 110 and 80 columns to inspect responsive layout. The preview replays the same
+demo operations as `/bullpen demo` with no engine or network.
+
 **Borrowed libraries.** A mod can only import its own files and `claude-code`, so npm libraries are compiled into self-contained modules under `src/vendor/` by `npm run vendor` and committed. The source imports them by relative path. Versions are pinned in `package.json`, and licenses are collected in `src/vendor/LICENSES.md`. To borrow something, add it to `dependencies` and to `scripts/vendor.mjs` (exporting only what's used), write a `.d.ts` beside it, then run `npm run vendor`. Borrowed so far: `culori` (color mixing), `string-width` (display width), `valibot` (schemas).
 
 Layout:

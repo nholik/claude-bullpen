@@ -53,6 +53,20 @@ only what's used, add a `.d.ts` re-export beside the output, run `npm run vendor
 
 ## Looking at the UI
 
+Engine-free preview (Node 24):
+
+```sh
+node --experimental-strip-types scripts/preview.ts --cols 160 --rows 48 --at 12 --out .scratch/preview/demo.ansi
+python3 scripts/ansi2png.py .scratch/preview/demo.ansi .scratch/preview/demo.png
+node --experimental-strip-types scripts/preview.ts --at 7 --frames 12 --out .scratch/preview/walk.ansi
+npx tsc -p scripts/tsconfig.json
+```
+
+Omit `--out` for ANSI on stdout. Frames advance by 100 ms and get numbered filenames.
+Check 160, 110 and 80 columns. Playback and preview share `demoOps`; the preview uses
+the pure model and region view-models. It is a layout preview, not engine input validation.
+
+
 Look at the real UI whenever drawing code changes: run `scripts/snap.sh` (or
 `SHOTS="3 8 14" scripts/snap.sh` for several moments) and read the `.png` (or `cat` the `.ansi`).
 `/bullpen demo` plays a scripted team with no model calls. Check at 110 and 160 columns.
