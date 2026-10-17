@@ -1,5 +1,4 @@
 import { expect, test } from "claude-code/testing";
-
 import { applyBatch, Batcher, type CollectOp } from "../src/collect";
 import {
 	type BullpenEvent,
@@ -16,6 +15,7 @@ import {
 	teamOf,
 	toLine,
 } from "../src/journal";
+import { colorIndex } from "../src/profile";
 
 const event = (patch: Partial<BullpenEvent> = {}): BullpenEvent => ({
 	version: JOURNAL_VERSION,
@@ -272,7 +272,7 @@ test("applyBatch folds a batch into members and named events", async () => {
 	expect(out.members.a1?.issue).toBe(1);
 	expect(out.members.a1?.lastActiveAt).toBe(3);
 	expect(out.members.lead?.issue).toBe(7);
-	expect(out.members.lead?.color).toBe(1);
+	expect(out.members.lead?.color).toBe(colorIndex("lead"));
 	// Every event it produces passes the journal schema.
 	expect(readJournal(out.events.map(toLine).join("\n")).skipped).toBe(0);
 });

@@ -1,3 +1,4 @@
+import { colorIndex } from "./profile";
 // The collector's pure half: hooks turn engine events into `CollectOp`s, a
 // `Batcher` holds them for ~100 ms, and `applyBatch` folds a whole batch into
 // the members map and new journal events in one pass, so a flush is one state
@@ -65,7 +66,7 @@ function touched(
 		name: patch.name ?? prev?.name ?? (id === LEAD ? LEAD : id.slice(0, 8)),
 		status: patch.status ?? prev?.status ?? "running",
 		issue: patch.issue ?? prev?.issue,
-		color: prev?.color ?? Object.keys(all).length,
+		color: prev?.color ?? colorIndex(patch.name ?? prev?.name ?? id),
 		lastActiveAt: at,
 	};
 }
@@ -85,7 +86,9 @@ function reconciled(
 			name: agent.name ?? prev?.name ?? agent.description,
 			status: agent.status === "running" ? "running" : "idle",
 			issue: prev?.issue,
-			color: prev?.color ?? Object.keys(next).length,
+			color:
+				prev?.color ??
+				colorIndex(agent.name ?? prev?.name ?? agent.description),
 			lastActiveAt: prev?.lastActiveAt ?? at,
 		};
 	}

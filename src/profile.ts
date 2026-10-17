@@ -3,7 +3,7 @@
 // Parsing never throws: a bad field falls back to its default and says so.
 
 import type { Profile, ProfileRole } from "../types";
-import { PALETTE } from "./floor";
+import { PALETTE } from "./palette";
 import {
 	array,
 	boolean,
@@ -43,7 +43,7 @@ export type { Profile };
 export type Role = ProfileRole;
 
 export const DEFAULT_PROFILE: Profile = {
-	issues: { filter: "is:open", pollSeconds: 60 },
+	issues: { filter: "", pollSeconds: 60 },
 	roles: {},
 	animations: true,
 	palette: [...PALETTE],
@@ -140,17 +140,17 @@ export function parsePartial(text: string | undefined): {
 		else warnings.push(`animations: ${message(r)}; using the default`);
 	}
 	if (obj.palette !== undefined) {
-		const r = safeParse(fields.palette, obj.palette);
-		if (!r.success || r.output === undefined)
+		const palette = obj.palette;
+		if (!Array.isArray(palette))
 			warnings.push("palette: must be a list of #rrggbb colors; ignoring it");
 		else {
 			const good: number[] = [];
-			for (const c of r.output) {
-				if (HEX.test(c)) good.push(hexToNumber(c));
+			for (const c of palette) {
+				if (typeof c === "string" && HEX.test(c)) good.push(hexToNumber(c));
 				else warnings.push(`palette: "${c}" is not #rrggbb; dropping it`);
 			}
 			if (good.length > 0) set.palette = good;
-			else if (r.output.length === 0)
+			else if (palette.length === 0)
 				warnings.push("palette: empty; using the default palette");
 			else warnings.push("palette: no valid colors; using the default palette");
 		}
@@ -234,4 +234,11 @@ export function colorFor(
 	const i = Math.max(0, Math.trunc(fallbackIndex));
 	const palette = profile.palette.length > 0 ? profile.palette : PALETTE;
 	return palette[i % palette.length] ?? 0xffffff;
+}
+
+/** Stable fallback identity independent of collector insertion order. */
+export function colorIndex(name: string): number {
+	let hash = 0;
+	for (const ch of name) hash = (hash * 31 + (ch.codePointAt(0) ?? 0)) >>> 0;
+	return hash;
 }

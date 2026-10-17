@@ -114,6 +114,7 @@ declare module "claude-code" {
 			/** `.claude/bullpen.json` merged over the defaults. */
 			profile: Profile;
 			github: GithubSource;
+			hallwaySeenAt: number;
 		};
 	}
 }

@@ -1,4 +1,12 @@
-import type { EngineInterface, FsEntry, On, RenderChildren } from "claude-code";
+import type {
+	ElementConstructor,
+	EngineInterface,
+	FsEntry,
+	On,
+	RenderChildren,
+	TextProps,
+	Timer,
+} from "claude-code";
 import { atom, read, update } from "claude-code";
 import {
 	applyBatch,
@@ -13,15 +21,14 @@ import { hex } from "../src/color";
 import { DEMO_PREFIX, DEMO_SCRIPT, type DemoStep } from "../src/demo";
 import { demoOps } from "../src/demo-replay";
 import { argText, describeTool, issueRefs, oneLine } from "../src/events";
-import { drawFloor, floorRows, PALETTE } from "../src/floor";
+import { drawFloor, floorRows } from "../src/floor";
 import {
 	addSnapshot,
+	allStatesFilter,
 	burndownKey,
 	exactCounts,
 	fetchCounts,
-	headerText,
 	issueListArgv,
-	POLL_MS,
 	parseBurndown,
 	parseRepo,
 	REPO_ARGV,
@@ -42,7 +49,11 @@ import {
 	teamOf,
 	toLine,
 } from "../src/journal";
+import { buildModel } from "../src/model";
 import { DEFAULT_PROFILE, parseProfile } from "../src/profile";
+import { band, footer, header } from "../src/render/header";
+import type { Line } from "../src/render/lines";
+import { roster } from "../src/render/roster";
 import type { BullpenEventKind } from "../types";
 
 const PANE = "bullpen";
@@ -67,6 +78,25 @@ type $ = EngineInterface;
 /** The size the floor Raster was last drawn at, so blits match it. */
 let floorSize: { columns: number; rows: number } | undefined;
 let frame = 0;
+let pollTimer: Timer | undefined;
+let pollGeneration = 0;
+const seenAt = atom({ plugin: "bullpen", key: "hallwaySeenAt" } as const, -1);
+
+function renderLines(Text: ElementConstructor<TextProps>, lines: Line[]) {
+	return lines.map((line) => (
+		<Text>
+			{line.map((seg) => (
+				<Text
+					color={seg.fg === undefined ? undefined : hex(seg.fg)}
+					bold={seg.bold}
+					dimColor={seg.dim}
+				>
+					{seg.text}
+				</Text>
+			))}
+		</Text>
+	));
+}
 
 /** The team name once a teammate's address shows it; until then the session id. */
 let team: string | undefined;
@@ -213,7 +243,7 @@ async function reconcile($: $) {
 }
 
 /** Polls `gh` for the issue list and adds a burndown point to `$.store`. */
-async function pollGithub($: $) {
+async function pollGithub($: $, generation = pollGeneration) {
 	const prev = await read($, github);
 	const at = await now($);
 	const result = await $.process
@@ -239,6 +269,7 @@ async function pollGithub($: $) {
 			await $.store.set(key, burndown);
 		}
 	}
+	if (generation !== pollGeneration) return;
 	await update($, github, (cur) => ({
 		...cur,
 		result,
@@ -277,6 +308,21 @@ async function loadProfile($: $) {
 	}
 	const parsed = parseProfile(text);
 	await update($, profile, () => parsed.profile);
+	const filter = allStatesFilter(parsed.profile.issues.filter);
+	await update($, github, (old) =>
+		old.filter === filter ? old : { filter, burndown: [], checkedAt: 0 },
+	);
+	pollTimer?.cancel();
+	const generation = ++pollGeneration;
+	const poll = async () => {
+		await pollGithub($, generation).catch(() => {});
+		if (generation === pollGeneration)
+			pollTimer = $.clock.after(
+				parsed.profile.issues.pollSeconds * 1000,
+				() => void poll(),
+			);
+	};
+	void poll();
 	if (parsed.warnings.length > 0)
 		$.ui.toast(`bullpen.json: ${parsed.warnings.join("; ")}`, {
 			timeoutMs: 10000,
@@ -284,6 +330,8 @@ async function loadProfile($: $) {
 }
 
 async function openPane($: $) {
+	const at = await now($);
+	await update($, seenAt, () => at);
 	return $.ui.open({ id: PANE, title: "Bullpen" });
 }
 
@@ -307,13 +355,11 @@ export function register(on: On) {
 			() => void producers.track(reconcile($)).catch(() => {}),
 		);
 
-		void pollGithub($).catch(() => {});
-		$.clock.every(POLL_MS, () => void pollGithub($).catch(() => {}));
-
 		// Animate only while someone is working; an idle office draws nothing new.
 		$.clock.every(250, async () => {
 			if (!floorSize) return;
-			if (!(await read($, profile)).animations) return;
+			const config = await read($, profile);
+			if (!config.animations) return;
 			const list = Object.values(await read($, members));
 			if (!list.some((m) => m.status === "running")) return;
 			frame++;
@@ -322,6 +368,8 @@ export function register(on: On) {
 				floorSize.columns,
 				floorSize.rows,
 				frame,
+				{},
+				config,
 			);
 			await $.ui.blit({ requestId: PANE, key: FLOOR_KEY, cells });
 		});
@@ -331,6 +379,8 @@ export function register(on: On) {
 
 	// Write out what's still batched before the session goes.
 	on("session.end", async (_$, e, next) => {
+		pollTimer?.cancel();
+		pollGeneration++;
 		await producers.drain();
 		await collector?.drain();
 		await journalWriter?.drain();
@@ -443,18 +493,34 @@ export function register(on: On) {
 		const all = await read($, members);
 		const list = Object.values(all);
 		const log = await read($, events);
-		const issues = headerText((await read($, github)).result);
+		const source = await read($, github);
+		const config = await read($, profile);
+		const at = await now($);
+		const model = buildModel(log, at, {
+			present: Object.fromEntries(list.map((m) => [m.name, m.status])),
+		});
 		const columns = Math.max(20, Math.min(512, e.props.bodyColumns ?? 60));
 		const floorHeight = floorRows(columns);
-		const viewportRows = e.viewport?.rows ?? 30;
-		const logRoom = Math.max(3, viewportRows - floorHeight - list.length - 6);
+		const viewportRows = e.props.scroll.bodyRows;
+		const heading = header(model, source, columns, at);
+		const logRoom = Math.max(
+			0,
+			viewportRows - floorHeight - heading.length - 1,
+		);
 
 		// Only the terminal draws a Raster; elsewhere the roster below stands alone.
 		let floor: RenderChildren = null;
 		if (e.surface === "terminal") {
 			const { Raster } = $.ui.resolve(e);
 			floorSize = { columns, rows: floorHeight };
-			const { cells } = drawFloor(list, columns, floorHeight, frame);
+			const { cells } = drawFloor(
+				list,
+				columns,
+				floorHeight,
+				frame,
+				{},
+				config,
+			);
 			floor = (
 				<Raster
 					key={FLOOR_KEY}
@@ -465,41 +531,12 @@ export function register(on: On) {
 			);
 		}
 
-		const active = list.filter((m) => m.status !== "gone");
-		const messages = log.filter((ev) => ev.kind === "message").length;
-
 		return (
 			<Box flexDirection="column">
-				<Text bold>
-					Bullpen · {active.length} on the floor · ✉ {messages}
-					{issues && ` · ${issues}`}
-				</Text>
+				{renderLines(Text, heading)}
 				{floor}
-				{active.map((m) => (
-					<Text>
-						<Text color={hex(PALETTE[m.color % PALETTE.length] ?? 0xffffff)}>
-							{m.status === "running" ? "●" : "○"} {m.name}
-						</Text>
-						<Text dimColor>
-							{" "}
-							{m.issue === undefined ? "no issue yet" : `#${m.issue}`}
-						</Text>
-					</Text>
-				))}
-				<Text dimColor>── recent ──</Text>
-				{log.length === 0 && (
-					<Text dimColor>
-						Nothing yet. Spawn a teammate to see the floor come alive.
-					</Text>
-				)}
-				{log.slice(-logRoom).map((ev) => (
-					<Text dimColor={ev.kind !== "message"}>
-						{ev.kind === "message"
-							? `✉ ${ev.who} → ${ev.target}: `
-							: `${ev.who}: `}
-						{oneLine(ev.detail, Math.max(10, columns - ev.who.length - 6))}
-					</Text>
-				))}
+				{renderLines(Text, roster(list, log, config, columns, logRoom))}
+				{renderLines(Text, footer(source, columns))}
 			</Box>
 		);
 	});
@@ -510,19 +547,20 @@ export function register(on: On) {
 		);
 		if (e.props.hasSurvey || list.length === 0) return next(e);
 		const { Box, Text, Button } = $.ui.resolve(e);
+		const at = await now($);
+		const model = buildModel(await read($, events), at);
+		const line = band(
+			model,
+			await read($, github),
+			await read($, profile),
+			e.props.bodyColumns,
+			await read($, seenAt),
+		);
 		return (
 			<Box>
 				<Button key="open" plain onPress={() => void openPane($)}>
-					☰ bullpen
+					{renderLines(Text, [line])}
 				</Button>
-				{list.map((m) => (
-					<Text color={hex(PALETTE[m.color % PALETTE.length] ?? 0xffffff)}>
-						{"  "}
-						{m.status === "running" ? "●" : "○"}
-						{m.name}
-						{m.issue === undefined ? "" : ` #${m.issue}`}
-					</Text>
-				))}
 			</Box>
 		);
 	});
