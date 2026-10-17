@@ -82,17 +82,18 @@ function workstation(
 	const said = model.hallway.findLast(
 		(m) => m.from === member.name || m.to === member.name,
 	);
-	const doing: Line = tool
-		? text(activityPhrase(tool), STUDIO.text)
-		: text("Waiting for activity", STUDIO.text);
-	const earlier: Line = said
-		? text(
-				said.from === member.name
-					? `→ ${said.to}: ${said.text}`
-					: `← ${said.from}: ${said.text}`,
-				STUDIO.muted,
-			)
-		: [];
+	const phrase = tool ? activityPhrase(tool) : undefined;
+	const spoken = said
+		? said.from === member.name
+			? `→ ${said.to}: ${said.text}`
+			: `← ${said.from}: ${said.text}`
+		: undefined;
+	// What it is doing, else the latest message (shown once), else nothing yet.
+	const doing: Line = text(
+		phrase ?? spoken ?? "Waiting for activity",
+		STUDIO.text,
+	);
+	const earlier: Line = spoken && phrase ? text(spoken, STUDIO.muted) : [];
 	// Messages and finished turns recolor the face and frame; they take no row.
 	const mood: Line = [
 		{
