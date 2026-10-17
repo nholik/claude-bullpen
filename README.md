@@ -17,12 +17,12 @@ for its cross-agent story, or a teammate name for Claude's transcript.
 
 ## Requirements
 
-- Claude Code 2.1.287 or later (mods). Developed on 2.1.302.
+- Claude Code 2.1.302 (the version used by CI and this release). Older mod-capable builds are not validated.
 - Agent teams enabled. In `~/.claude/settings.json`:
   ```json
   { "env": { "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1", "CLAUDE_CODE_ENABLE_TODO_TOOLS": "1" } }
   ```
-- A terminal with 24-bit color. Tested targets: GNOME Terminal and Windows Terminal.
+- A terminal with 24-bit color. Linux terminal captures are verified; Windows Terminal is a target awaiting machine verification.
 - Optional, for the burndown: the `gh` CLI, signed in.
 
 ## Install
@@ -30,21 +30,93 @@ for its cross-agent story, or a teammate name for Claude's transcript.
 At the prompt of a Claude Code terminal session:
 
 ```
-/plugin install bullpen --marketplace nholik/claude-bullpen
+/plugin marketplace add nholik/claude-bullpen
+/plugin install bullpen@claude-bullpen
 ```
 
 From a shell:
 
 ```
-claude plugin install bullpen --marketplace nholik/claude-bullpen
+claude plugin marketplace add nholik/claude-bullpen
+claude plugin install bullpen@claude-bullpen
 ```
+
+The marketplace name is `claude-bullpen`, and its root plugin is `bullpen`.
+In-session installation opens a details panel; select an install scope and follow
+any reload instruction. Syntax checked against the official
+[installation documentation](https://code.claude.com/docs/en/discover-plugins).
+
+## Use it at work
+
+Use Claude Code 2.1.302 with mods permitted by your organization's policy. Enable
+agent teams before starting Claude Code. For the current PowerShell session:
+
+```powershell
+$env:CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS = "1"
+gh auth login
+claude
+```
+
+For GitHub Enterprise, authenticate against its host instead:
+
+```powershell
+gh auth login --hostname ghe.example.com
+```
+
+Bullpen uses the repository resolved by `gh repo view`, including `GH_HOST` when
+gh uses it. Its API requests and stored history retain the resolved host. The
+read-only GitHub commands are compatible with gh 2.4.0; newer gh is fine too.
+Use the normal repository checkout as Claude's working directory.
+
+Put this optional profile in the project's `.claude/bullpen.json`:
+
+```json
+{
+  "issues": { "filter": "label:sprint-12", "pollSeconds": 60 },
+  "glyphs": "ascii",
+  "animations": true
+}
+```
+
+Run `/bullpen` to open the pane, `/bullpen demo` to check it without a live team or
+GitHub access, and `/bullpen reload` after editing the profile. `/bullpen live`
+returns to the real team. Long asks and story entries wrap; hallway rows remain
+single-line. Story panes show the most recent events within their available rows.
+
+When GitHub data is unavailable, the header reports `gh not installed`,
+`gh not signed in`, `GitHub SSO authorization required`, `GitHub rate limited`,
+`not a GitHub repo`, or `GitHub network unavailable` (timeouts say `gh timed out`).
+Unexpected failures show a short gh error. Failed automatic polls back off to
+at most ten minutes unless the configured interval is already longer. Successful
+automatic polls restore the configured cadence. If exact search totals fail for a
+full issue list, the header shows `200+ issues (counts unavailable)`.
+
+Troubleshooting:
+
+- No `/bullpen` command or band: check the Errors tab in `/plugin` and the debug
+  log. When managed policy blocks user mods, the guard message names the mod and
+  `allowManagedModsOnly`; its hooks do not run. Ask the administrator whether
+  Bullpen is permitted. See the official
+  [mod policy documentation](https://code.claude.com/docs/en/plugins/mods/admin).
+- Glyph boxes or poor font rendering: set `"glyphs":"ascii"`, then `/bullpen reload`.
+- Sign-in or SSO: authenticate to the repository's host and authorize the account
+  or token for the organization. Use `/bullpen live` for an immediate retry.
+- No teammates: the band appears after a teammate joins; `/bullpen demo` checks
+  rendering independently. A policy-blocked mod cannot run the demo either.
+
+Windows path handling has automated drive/UNC tests. Real Windows Terminal fonts,
+Windows filesystem access and a SAML-protected Enterprise deployment still need
+target-machine verification. Known follow-ups are tracked in [#44](https://github.com/nholik/claude-bullpen/issues/44)
+through [#47](https://github.com/nholik/claude-bullpen/issues/47), plus
+[#52](https://github.com/nholik/claude-bullpen/issues/52) for Unicode teammate names in ASCII story links
+and [#53](https://github.com/nholik/claude-bullpen/issues/53) for an unnecessary overflow row in exact-fit stories.
 
 ## Use
 
 - `/bullpen` opens the Bullpen pane.
 - `/bullpen demo` plays an 80-second scripted team without model calls or GitHub requests. `/bullpen live` restores live data; real observers continue recording during the demo.
 - Demo beats: pairing/kickback at 7s, ask at 16s, quiet/stall at 25s, hallway wakes at 35s, issue closes at 55s and 70s, newcomer at 72s. At 25s its simulated clock advances 21 minutes. The final scene stays visible until `/bullpen live`.
-- Once a teammate joins, a one-line band shows the team above the prompt. Press `☰ bullpen` in the band to open the pane.
+- Once a teammate joins, a one-line band shows the team above the prompt. Press `# bullpen` in the band to open the pane.
 - Ask Claude to spawn named teammates, for example "Spawn teammates named smith and gate to work on #12 and #14". Each teammate appears on the floor at its issue's table, and bobs while it's working.
 
 ## Configure
@@ -53,12 +125,13 @@ Optional. Put a `bullpen.json` in your project's `.claude/` folder (`/bullpen re
 
 ```json
 {
-	"issues": { "filter": "is:open label:ready", "pollSeconds": 60 },
+	"issues": { "filter": "label:sprint-12", "pollSeconds": 60 },
 	"roles": {
 		"smith": { "role": "builder", "color": "#4fc3f7" },
 		"gate": { "role": "reviewer", "color": 3 }
 	},
 	"animations": true,
+	"glyphs": "unicode",
 	"palette": ["#4fc3f7", "#ffb74d", "#81c784", "#f06292"]
 }
 ```
@@ -67,9 +140,10 @@ Optional. Put a `bullpen.json` in your project's `.claude/` folder (`/bullpen re
 - `issues.pollSeconds`: how often GitHub is polled (default 60, minimum 15).
 - `roles`: a teammate name or agent type to `{ role, color }`. `color` is `#rrggbb` or an index into the palette.
 - `animations`: set `false` to stop the floor animating (default `true`).
+- `glyphs`: `"unicode"` (default) uses portable single-cell symbols; `"ascii"` uses plain ASCII for fonts that show boxes.
 - `palette`: member colors selected by stable teammate name, as `#rrggbb` (default: the built-in palette). Bad entries are dropped with a warning; an empty list keeps the default.
 
-Colors by role are parsed and available as `colorFor` in `src/profile.ts`; the floor and band don't use them yet (#8).
+Role colors are shared by the floor, band, huddles and issue stories.
 
 Pane controls: `f` floor, `h` huddles, `t` talk; press again or `r` to restore.
 These keys work while the pane has keyboard focus. Escape returns keyboard focus
@@ -110,7 +184,7 @@ widths 60, 72, 80, 100, 110 and 160: a 160-column terminal may give the pane onl
 clock, view-models and animation sampling. PNG conversion uses Pillow and a local
 monospace font; the committed images are previews for the lead to replace later.
 
-**Borrowed libraries.** A mod can only import its own files and `claude-code`, so npm libraries are compiled into self-contained modules under `src/vendor/` by `npm run vendor` and committed. The source imports them by relative path. Versions are pinned in `package.json`, and licenses are collected in `src/vendor/LICENSES.md`. To borrow something, add it to `dependencies` and to `scripts/vendor.mjs` (exporting only what's used), write a `.d.ts` beside it, then run `npm run vendor`. Borrowed so far: `culori` (color mixing), `string-width` (display width), `valibot` (schemas).
+**Borrowed libraries.** A mod can only import its own files and `claude-code`, so npm libraries are compiled into self-contained modules under `src/vendor/` by `npm run vendor` and committed. The source imports them by relative path. Versions are pinned in `package.json`, and licenses are collected in `src/vendor/LICENSES.md`. To borrow something, add it to `dependencies` and to `scripts/vendor.mjs` (exporting only what's used), write a `.d.ts` beside it, then run `npm run vendor`. Borrowed so far: `culori` (color mixing), `string-width` (display width), `valibot` (schemas), `pathe` (Windows-safe joins), `wrap-ansi` (story/ask wrapping).
 
 Layout:
 
