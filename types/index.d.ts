@@ -64,7 +64,11 @@ export type GhStatus =
 
 /** One `gh issue list` poll: the issues, or a short reason it failed. */
 export type GhResult =
-	| { status: "ok"; issues: GhIssue[] }
+	| {
+			status: "ok";
+			issues: GhIssue[];
+			counts?: { open: number; closed: number };
+	  }
 	| { status: Exclude<GhStatus, "ok">; message: string };
 
 /** Open and closed counts at one poll. */

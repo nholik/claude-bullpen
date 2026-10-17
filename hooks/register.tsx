@@ -13,6 +13,20 @@ import { DEMO_PREFIX, DEMO_SCRIPT, type DemoStep } from "../src/demo";
 import { argText, describeTool, issueRefs, oneLine } from "../src/events";
 import { drawFloor, PALETTE } from "../src/floor";
 import {
+	addSnapshot,
+	burndownKey,
+	exactCounts,
+	fetchCounts,
+	headerText,
+	issueListArgv,
+	POLL_MS,
+	parseBurndown,
+	parseRepo,
+	REPO_ARGV,
+	readIssueList,
+	runFailure,
+} from "../src/github";
+import {
 	type BullpenEvent,
 	type Chunk,
 	chunkLines,
@@ -26,19 +40,6 @@ import {
 	toLine,
 } from "../src/journal";
 import type { BullpenEventKind } from "../types";
-import {
-	addSnapshot,
-	burndownKey,
-	headerText,
-	issueListArgv,
-	POLL_MS,
-	parseBurndown,
-	parseRepo,
-	REPO_ARGV,
-	readIssueList,
-	runFailure,
-	tally,
-} from "../src/github";
 
 const PANE = "bullpen";
 const FLOOR_KEY = "floor";
@@ -200,10 +201,20 @@ async function pollGithub($: $) {
 		.then(readIssueList, runFailure);
 	let { repo, burndown } = prev;
 	if (result.status === "ok") {
-		repo ??= parseRepo((await $.process.run(REPO_ARGV)).stdout);
-		if (repo) {
+		if (!repo) {
+			const resolved = await $.process.run(REPO_ARGV).catch(() => undefined);
+			if (resolved?.exitCode === 0) repo = parseRepo(resolved.stdout);
+		}
+		if (repo)
+			result.counts = await fetchCounts(
+				(argv) => $.process.run(argv),
+				repo,
+				prev.filter,
+			);
+		const counts = exactCounts(result);
+		if (repo && counts) {
 			const key = burndownKey(repo, prev.filter);
-			const point = { at, ...tally(result.issues) };
+			const point = { at, ...counts };
 			burndown = addSnapshot(parseBurndown(await $.store.get(key)), point);
 			await $.store.set(key, burndown);
 		}

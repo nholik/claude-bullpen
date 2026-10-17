@@ -25,7 +25,9 @@ export const ISSUE_FIELDS = "number,title,state,labels,closedAt,assignees";
 /** At most this many burndown points are kept per repo and filter. */
 export const BURNDOWN_CAP = 500;
 
-export function issueListArgv(filter: string, limit = 200): string[] {
+export const ISSUE_LIMIT = 200;
+
+export function issueListArgv(filter: string, limit = ISSUE_LIMIT): string[] {
 	const argv = ["gh", "issue", "list", "--json", ISSUE_FIELDS];
 	argv.push("--state", "all", "--limit", String(limit));
 	if (filter.trim()) argv.push("--search", filter.trim());
@@ -184,6 +186,70 @@ export function burndownKey(repo: string, filter: string): string {
 export function headerText(result: GhResult | undefined): string {
 	if (!result) return "";
 	if (result.status !== "ok") return result.message;
-	const { open, closed } = tally(result.issues);
+	const counts = exactCounts(result);
+	if (!counts) return `${result.issues.length}+ issues (counts unavailable)`;
+	const { open, closed } = counts;
 	return `${closed}/${open + closed} closed`;
+}
+
+/** Search counts are not restricted by the issue-list page size. */
+export function countArgv(
+	repo: string,
+	filter: string,
+	state: "open" | "closed",
+): string[] {
+	return [
+		"gh",
+		"api",
+		"search/issues",
+		"-X",
+		"GET",
+		"-f",
+		`q=repo:${repo} is:issue ${filter.trim()} state:${state}`,
+		"--jq",
+		"if .incomplete_results then empty else .total_count end",
+	];
+}
+
+/** A failed or incomplete search must never masquerade as a zero count. */
+export function readCount(run: RunOutput): number | undefined {
+	const text = run.stdout.trim();
+	if (run.exitCode !== 0 || !/^\d+$/.test(text)) return undefined;
+	const count = Number(text);
+	return Number.isSafeInteger(count) ? count : undefined;
+}
+
+/** Exact counts only: a full page may have silently truncated matching issues. */
+export function exactCounts(
+	result: Extract<GhResult, { status: "ok" }>,
+): { open: number; closed: number } | undefined {
+	return (
+		result.counts ??
+		(result.issues.length < ISSUE_LIMIT ? tally(result.issues) : undefined)
+	);
+}
+
+/** Both state searches must succeed before their totals can be used together. */
+export async function fetchCounts(
+	run: (argv: string[]) => Promise<RunOutput>,
+	repo: string,
+	filter: string,
+): Promise<{ open: number; closed: number } | undefined> {
+	const results = await Promise.allSettled([
+		run(countArgv(repo, filter, "open")),
+		run(countArgv(repo, filter, "closed")),
+	]);
+	const openResult = results[0];
+	const closedResult = results[1];
+	const open =
+		openResult?.status === "fulfilled"
+			? readCount(openResult.value)
+			: undefined;
+	const closed =
+		closedResult?.status === "fulfilled"
+			? readCount(closedResult.value)
+			: undefined;
+	return open === undefined || closed === undefined
+		? undefined
+		: { open, closed };
 }

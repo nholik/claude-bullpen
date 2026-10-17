@@ -4,12 +4,16 @@ import {
 	addSnapshot,
 	burndownKey,
 	classifyFailure,
+	countArgv,
+	exactCounts,
+	fetchCounts,
 	GH_MISSING,
 	headerText,
 	issueListArgv,
 	parseBurndown,
 	parseIssueList,
 	parseRepo,
+	readCount,
 	readIssueList,
 	runFailure,
 	tally,
@@ -234,4 +238,66 @@ test("parseBurndown keeps a stored series and drops anything else", async () => 
 test("burndownKey is per repo and trimmed filter", async () => {
 	expect(burndownKey("o/r", " label:bug ")).toBe("burndown:o/r:label:bug");
 	expect(burndownKey("o/r", "")).toBe("burndown:o/r:");
+});
+
+const capped = Array.from({ length: 200 }, (_, i) => ({
+	number: i + 1,
+	title: "issue",
+	state: "open" as const,
+	labels: [],
+	assignees: [],
+}));
+
+test("search counts scope the repository, filter and state without shell interpolation", async () => {
+	expect(countArgv("o/r", ' label:"good first issue" ', "closed")).toEqual([
+		"gh",
+		"api",
+		"search/issues",
+		"-X",
+		"GET",
+		"-f",
+		'q=repo:o/r is:issue label:"good first issue" state:closed',
+		"--jq",
+		"if .incomplete_results then empty else .total_count end",
+	]);
+});
+
+test("counts beyond 200 drive the header and snapshot data", async () => {
+	const counts = await fetchCounts(
+		async (argv) =>
+			ok(argv.includes("q=repo:o/r is:issue  state:open") ? "251" : "49"),
+		"o/r",
+		"",
+	);
+	const result = { status: "ok" as const, issues: capped, counts };
+	expect(exactCounts(result)).toEqual({ open: 251, closed: 49 });
+	expect(headerText(result)).toBe("49/300 closed");
+});
+
+test("failed searches leave capped counts unknown and do not produce snapshot counts", async () => {
+	const counts = await fetchCounts(
+		async (argv) => {
+			if (argv.some((arg) => arg.endsWith("state:closed")))
+				throw new Error("offline");
+			return ok("251");
+		},
+		"o/r",
+		"",
+	);
+	expect(counts).toBeUndefined();
+	const result = { status: "ok" as const, issues: capped, counts };
+	expect(exactCounts(result)).toBeUndefined();
+	expect(headerText(result)).toBe("200+ issues (counts unavailable)");
+	expect(exactCounts({ status: "ok", issues: [] })).toEqual({
+		open: 0,
+		closed: 0,
+	});
+});
+
+test("count parsing rejects incomplete, failed and malformed responses", async () => {
+	for (const value of ["", "null", "-1", "1.5", "NaN", "9007199254740992"])
+		expect(readCount(ok(value))).toBeUndefined();
+	expect(readCount(fail("rate limited"))).toBeUndefined();
+	expect(readCount(ok("0\n"))).toBe(0);
+	expect(await fetchCounts(async () => ok(""), "o/r", "")).toBeUndefined();
 });
