@@ -50,8 +50,8 @@ Optional. Put a `bullpen.json` in your project's `.claude/` folder (`/bullpen re
 }
 ```
 
-- `issues.filter`: a `gh search issues` query (default `is:open`).
-- `issues.pollSeconds`: how often GitHub is polled (default 60, minimum 15).
+- `issues.filter`: a `gh search issues` query (default `is:open`). *Not used yet: the GitHub source (#3) will read it.*
+- `issues.pollSeconds`: how often GitHub is polled (default 60, minimum 15). *Not used yet (#3).*
 - `roles`: a teammate name or agent type to `{ role, color }`. `color` is `#rrggbb` or an index into the palette.
 - `animations`: set `false` to stop the floor animating (default `true`).
 - `palette`: member colors in assignment order, as `#rrggbb` (default: the built-in palette). Bad entries are dropped with a warning; an empty list keeps the default.
