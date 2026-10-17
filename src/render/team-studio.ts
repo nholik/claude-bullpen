@@ -216,7 +216,25 @@ export function teamStudioView(
 					leftWidth,
 				),
 			);
-			left.push([]);
+			if (columns >= 120) left.push([]);
+		}
+		// Narrow panes have no hallway column: use the rows left over for it.
+		const spare = room - left.length;
+		if (columns < 120 && spare >= 2) {
+			left.push(section("HALLWAY / conversation", leftWidth));
+			for (const message of model.hallway.slice(-(spare - 1)))
+				left.push(
+					fit(
+						[
+							{
+								text: `${message.from} → ${message.to}: `,
+								fg: colorFor(message.from, profile, colorIndex(message.from)),
+							},
+							{ text: message.text, fg: STUDIO.muted },
+						],
+						leftWidth,
+					),
+				);
 		}
 	}
 	const right: Line[] =
