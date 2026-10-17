@@ -6,7 +6,14 @@
 //   node scripts/serial.mjs npm run check:all
 
 import { spawn } from "node:child_process";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+	mkdirSync,
+	readFileSync,
+	renameSync,
+	rmSync,
+	statSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -27,6 +34,29 @@ function alive(pid) {
 	}
 }
 
+/** A lock with no pid this long after it was made lost its owner mid-take. */
+const ORPHAN_MS = 10_000;
+
+function stale(pid) {
+	if (pid) return !alive(pid);
+	try {
+		return Date.now() - statSync(lock).mtimeMs > ORPHAN_MS;
+	} catch {
+		return false;
+	}
+}
+
+/** Clears a stale lock. Renaming first means only one waiter can win. */
+function clear() {
+	const aside = `${lock}.${process.pid}`;
+	try {
+		renameSync(lock, aside);
+	} catch {
+		return;
+	}
+	rmSync(aside, { recursive: true, force: true });
+}
+
 function holder() {
 	try {
 		return Number(readFileSync(owner, "utf8"));
@@ -44,10 +74,10 @@ for (;;) {
 	} catch (error) {
 		if (error.code !== "EEXIST") throw error;
 		const pid = holder();
-		// A holder that died without cleaning up leaves a stale lock. A lock
-		// with no pid yet is being taken right now, so wait for it.
-		if (pid && !alive(pid)) {
-			rmSync(lock, { recursive: true, force: true });
+		// A holder that died leaves a stale lock. A lock with no pid yet is
+		// being taken right now, unless it has stayed that way too long.
+		if (stale(pid)) {
+			clear();
 			continue;
 		}
 		if (!waited) {
