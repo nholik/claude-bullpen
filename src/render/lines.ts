@@ -1,7 +1,7 @@
 import { oneLine } from "../events";
 import { type GlyphMode, glyphText } from "../glyphs";
-import stringWidth from "../vendor/string-width.js";
 import { wrapAnsi } from "../vendor/wrap-ansi.js";
+import { cells } from "../width";
 
 export type Seg = {
 	text: string;
@@ -15,7 +15,7 @@ export type Seg = {
 export type Line = Seg[];
 
 export function width(line: Line): number {
-	return line.reduce((n, seg) => n + stringWidth(seg.text), 0);
+	return line.reduce((n, seg) => n + cells(seg.text), 0);
 }
 
 /** Clip by terminal cells, preserving each segment's style. */
@@ -26,9 +26,9 @@ export function fit(line: Line, columns: number): Line {
 		if (!left) break;
 		// oneLine trims: preserve intentional spacing between styled segments.
 		const flat = glyphText(seg.text.replace(/[\r\n\t]/g, " "));
-		const text = stringWidth(flat) <= left ? flat : oneLine(flat, left);
+		const text = cells(flat) <= left ? flat : oneLine(flat, left);
 		out.push({ ...seg, text: glyphText(text) });
-		left -= stringWidth(text);
+		left -= cells(text);
 	}
 	return out;
 }

@@ -169,6 +169,19 @@ async function tickAnimation($: $) {
 let pollTimer: Timer | undefined;
 let pollGeneration = 0;
 let viewTimer: Timer | undefined;
+/** When state last gained events, and when viewTime last ticked. */
+let lastActivityAt = 0;
+let lastTickAt = 0;
+const PULSE_MS = 5000;
+const IDLE_TICK_MS = 15_000;
+/** Each tick redraws the pane: every second only while a highlight is
+ * fading, otherwise often enough for minute-step ages. */
+async function tick($: $) {
+	const at = await now($);
+	if (at - lastActivityAt >= PULSE_MS && at - lastTickAt < IDLE_TICK_MS) return;
+	lastTickAt = at;
+	await update($, viewTime, () => at);
+}
 const focus = atom({ plugin: "bullpen", key: "focus" } as const, "");
 const viewTime = atom({ plugin: "bullpen", key: "viewTime" } as const, 0);
 async function focusRegion($: $, region: Focus | "") {
@@ -255,6 +268,7 @@ async function flushState($: $, ops: CollectOp[]) {
 		return out.members;
 	});
 	if (added.length === 0) return;
+	lastActivityAt = await now($);
 	await update($, events, (list) =>
 		[...(list ?? []), ...added].slice(-STATE_EVENTS),
 	);
@@ -508,9 +522,7 @@ export function register(on: On) {
 		await loadProfile($);
 		viewTimer?.cancel();
 		viewTimer = $.clock.every(1000, () => {
-			void now($)
-				.then((at) => update($, viewTime, () => at))
-				.catch(() => {});
+			void tick($).catch(() => {});
 		});
 
 		await $.command.register({

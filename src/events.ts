@@ -1,6 +1,6 @@
 // Pure helpers that turn raw engine event fields into journal-friendly pieces.
 
-import stringWidth from "./vendor/string-width.js";
+import { cells } from "./width";
 
 const ISSUE_REF = /(?:^|[^\w&])#(\d{1,7})\b/g;
 
@@ -24,11 +24,11 @@ const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
  */
 export function oneLine(text: string, max: number): string {
 	const flat = text.replace(/\s+/g, " ").trim();
-	if (stringWidth(flat) <= max) return flat;
+	if (cells(flat) <= max) return flat;
 	let out = "";
 	let width = 0;
 	for (const { segment } of graphemes.segment(flat)) {
-		const w = stringWidth(segment);
+		const w = cells(segment);
 		if (width + w > max - 1) break;
 		out += segment;
 		width += w;

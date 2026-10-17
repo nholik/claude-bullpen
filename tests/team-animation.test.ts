@@ -104,11 +104,12 @@ test("Studio animation fallback keeps status and activity without transient effe
 		expect(text.includes("TO smith")).toBe(false);
 		expect(text.includes("TURN DONE")).toBe(false);
 	}
+	// The running dot holds steady: a blink would redraw the pane every second.
 	expect(
 		render(11000)
 			.regions.flat()
 			.some((s) => s.text.includes("○ RUNNING")),
-	).toBe(true);
+	).toBe(false);
 	const ascii = render(10000, true, 80, "ascii").regions.flat();
 	expect(ascii.some((s) => s.text.includes("TO smith"))).toBe(true);
 	for (const seg of ascii) expect(/^[\x20-\x7e]*$/.test(seg.text)).toBe(true);
