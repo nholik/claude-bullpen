@@ -142,4 +142,6 @@ test("withMemberColors gives members distinct join-order colors unless the profi
 	expect(color("lead", 0)).toBe(PALETTE[0]);
 	expect(color("gate", 2)).toBe(0xff0000);
 	expect(color("kit", 3, "gate")).toBe(0xff0000);
+	// Name-only lookups (hallway, huddles, header) agree with the card.
+	expect(colorFor("kit", out, 3)).toBe(0xff0000);
 });

@@ -305,11 +305,12 @@ export function withMemberColors(
 ): Profile {
 	let roles = profile.roles;
 	for (const m of members) {
-		const set = roleFor(m.name, profile) ?? roleFor(m.agentType ?? "", profile);
-		if (set?.color !== undefined) continue;
 		const own = roleFor(m.name, profile);
+		if (own?.color !== undefined) continue;
+		// A type's color is written under the name too, so name-only lookups agree.
+		const typed = m.agentType ? roleFor(m.agentType, profile) : undefined;
 		if (roles === profile.roles) roles = { ...roles };
-		roles[m.name] = { ...own, color: m.color };
+		roles[m.name] = { ...own, color: typed?.color ?? m.color };
 	}
 	return roles === profile.roles ? profile : { ...profile, roles };
 }
