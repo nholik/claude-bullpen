@@ -84,8 +84,10 @@ const NEGATED = /\b(not|never|no|yet to)\b|n't\b/i;
 
 // "Can confirm #12 is closed", "Have closed #12": a leading auxiliary that
 // goes straight to a confirming verb has dropped its subject; it is no question.
+// "Could" is a request ("Could confirm #12 shipped"), and "confirm whether/if"
+// is an indirect question, so neither is exempt.
 const ELIDED_CONFIRM =
-	/^\s*(?:can|could|have|has)\s+(?:now\s+|also\s+|just\s+)?(?:confirm\w*|closed|shipped)\b/i;
+	/^\s*(?:can|have|has)\s+(?:now\s+|also\s+|just\s+)?(?:confirm\w*|closed|shipped)\b(?!\s+(?:whether|if)\b)/i;
 const QUESTION_WORD =
 	/^\s*(?:who|what|when|where|why|how|is|are|was|were|did|has|have|can|could|should|would)\b/i;
 
