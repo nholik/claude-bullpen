@@ -5,6 +5,7 @@
 // firing; an event that cannot be tied to an issue moves nothing.
 
 import type { BullpenEvent } from "../../types";
+import { mergedPrs } from "../command";
 
 export type ShipStage =
 	| "working"
@@ -155,7 +156,10 @@ export function applyShip(state: ShipState, e: BullpenEvent): ShipState {
 				});
 			else if (/@codex\s+review/i.test(e.detail))
 				next = move(next, issue, e.at, { codex: true, stage: "in-review" });
-			else if (/\bgh\s+pr\s+merge\b/.test(e.detail))
+		}
+		for (const pr of mergedPrs(e.detail)) {
+			const issue = next.prIssue[pr];
+			if (issue !== undefined)
 				next = move(next, issue, e.at, { stage: "merged" });
 		}
 	}
