@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The mod API types come from the Claude Code build; bump this with the
+  # version you develop against so tsc checks the same API.
+  CLAUDE_CODE_VERSION: "2.1.302"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Biome
+        run: npx biome ci .
+
+      - name: Vendor freshness
+        run: npm run vendor:verify
+
+      # validate and test run signed out; tsc needs .claude-plugin/types/,
+      # which a signed-out session writes when it loads the mod.
+      - name: Install Claude Code
+        run: npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
+
+      - name: Mod API types
+        run: scripts/ci-types.sh
+
+      - name: Typecheck
+        run: npx tsc -p .
+
+      - name: Validate plugin
+        run: claude plugin validate .
+
+      - name: Tests
+        run: claude plugin test .
