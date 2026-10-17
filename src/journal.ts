@@ -249,3 +249,61 @@ export function teamOf(teammateId: string | undefined): string | undefined {
 export function journalDir(home: string, team: string): string {
 	return `${home.replace(/[\\/]+$/, "")}/.claude/bullpen/${safeSegment(team)}`;
 }
+
+/** Retention defaults: see `planRetention`. */
+export const RETAIN_MIN_AGE_MS = 24 * 60 * 60 * 1000;
+export const RETAIN_SESSIONS = 10;
+export const RETAIN_MAX_BYTES = 20_000_000;
+
+/**
+ * The chunk files to empty so the journal folder stops growing; `$.fs` can't
+ * delete, so an emptied file is one that holds nothing. Sessions are judged
+ * whole, by their newest chunk. Never touches `ownWriter`'s files, nor a
+ * session active within `minAgeMs` (it may be live in another process). Of the
+ * rest, the newest stay while there are at most `keepSessions` of them and their
+ * files add up to at most `maxBytes`; once one is cut, every older one is too. Files
+ * already empty are skipped.
+ */
+export function planRetention(
+	files: readonly { name: string; mtimeMs: number; size: number }[],
+	now: number,
+	ownWriter: string,
+	opts: { minAgeMs?: number; keepSessions?: number; maxBytes?: number } = {},
+): string[] {
+	const minAgeMs = opts.minAgeMs ?? RETAIN_MIN_AGE_MS;
+	const keepSessions = opts.keepSessions ?? RETAIN_SESSIONS;
+	const maxBytes = opts.maxBytes ?? RETAIN_MAX_BYTES;
+	const own = safeSegment(ownWriter);
+	const sessions = new Map<
+		string,
+		{ newest: number; bytes: number; names: string[] }
+	>();
+	for (const file of files) {
+		const chunk = parseChunkName(file.name);
+		if (!chunk || chunk.writer === own) continue;
+		const s = sessions.get(chunk.writer) ?? { newest: 0, bytes: 0, names: [] };
+		s.newest = Math.max(s.newest, file.mtimeMs);
+		if (file.size > 0) {
+			s.bytes += file.size;
+			s.names.push(file.name);
+		}
+		sessions.set(chunk.writer, s);
+	}
+	const candidates = [...sessions.values()]
+		.filter((s) => now - s.newest >= minAgeMs)
+		.sort((a, b) => b.newest - a.newest);
+	const out: string[] = [];
+	let kept = 0;
+	let bytes = 0;
+	let cut = false;
+	for (const s of candidates) {
+		if (!cut && kept < keepSessions && bytes + s.bytes <= maxBytes) {
+			kept++;
+			bytes += s.bytes;
+		} else {
+			cut = true;
+			out.push(...s.names);
+		}
+	}
+	return out;
+}
