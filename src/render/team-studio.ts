@@ -3,6 +3,7 @@ import type { BullpenModel, Teammate } from "../model";
 import { colorFor, colorIndex, roleLabel } from "../profile";
 import { activityPhrase } from "./activity";
 import { fit, glyphLines, type Line, textLine, width, wrapText } from "./lines";
+import { moodFor, snoozeFrame } from "./mood";
 import { moraleHint } from "./morale";
 import { age, align, clock, edge, inside, section, text } from "./operations";
 import { STUDIO } from "./studio";
@@ -42,9 +43,21 @@ function workstation(
 ): Line[] {
 	const color = colorFor(member.name, profile, colorIndex(member.name));
 	const role = roleLabel(member.name, member.agentType, profile);
+	const feel = moodFor({
+		status: member.status,
+		away: member.away,
+		needsYou: model.asks.some((a) => a.open && a.from === member.name),
+	});
+	// The z's drift once per redraw (1 s while a highlight fades, else 15 s).
+	const zs = feel.snoozes ? snoozeFrame(now, profile.animations) : "";
+	const mood: Line = [
+		{ text: `${feel.face} `, fg: feel.color },
+		{ text: zs, fg: STUDIO.muted },
+		{ text: feel.label, fg: feel.color, bold: feel.pulse },
+	];
 	const signal = profile.animations ? activity(member, model, now) : undefined;
 	const bright = signal && Math.floor((now - signal.at) / 1000) % 2 === 0;
-	const border = bright ? signal.color : STUDIO.edge;
+	const border = bright ? signal.color : (feel.frame ?? STUDIO.edge);
 	const title =
 		github.result?.status === "ok"
 			? github.result.issues.find((i) => i.number === member.issue)?.title
@@ -72,10 +85,7 @@ function workstation(
 		inside(align(name, text(role, STUDIO.muted), columns - 4), columns, border),
 		inside(
 			align(
-				text(
-					`${member.status === "running" ? "● RUNNING" : member.away ? "○ AWAY" : "○ IDLE"}`,
-					color,
-				),
+				mood,
 				text(age(now, member.lastActiveAt), STUDIO.muted),
 				columns - 4,
 			),

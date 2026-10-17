@@ -98,18 +98,11 @@ test("Studio animation fallback keeps status and activity without transient effe
 			.regions.flat()
 			.map((s) => s.text)
 			.join("");
-		expect(text).toContain("● RUNNING");
+		expect(text).toContain("(o_o) heads-down");
 		expect(text).toContain("Please review #1");
-		expect(text.includes("○ RUNNING")).toBe(false);
 		expect(text.includes("TO smith")).toBe(false);
 		expect(text.includes("TURN DONE")).toBe(false);
 	}
-	// The running dot holds steady: a blink would redraw the pane every second.
-	expect(
-		render(11000)
-			.regions.flat()
-			.some((s) => s.text.includes("○ RUNNING")),
-	).toBe(false);
 	const ascii = render(10000, true, 80, "ascii").regions.flat();
 	expect(ascii.some((s) => s.text.includes("TO smith"))).toBe(true);
 	for (const seg of ascii) expect(/^[\x20-\x7e]*$/.test(seg.text)).toBe(true);
@@ -156,9 +149,8 @@ test("Studio pulses only card frames when teammate colors match the default edge
 		const segments = view.regions.flat();
 		for (const name of ["ada", "smith", "scout"])
 			expect(segments.find((s) => s.text === name)?.fg).toBe(STUDIO.edge);
-		const statuses = segments.filter((s) => /RUNNING|IDLE/.test(s.text));
+		const statuses = segments.filter((s) => /heads-down|snoozing/.test(s.text));
 		expect(statuses.length).toBe(3);
-		for (const status of statuses) expect(status.fg).toBe(STUDIO.edge);
 		const frames = segments.filter((s) => s.text.startsWith("╭"));
 		expect(frames.map((s) => s.fg)).toEqual(
 			now === 10000

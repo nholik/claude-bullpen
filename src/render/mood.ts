@@ -81,7 +81,7 @@ const MOODS: Record<MoodKind, Omit<Mood, "kind" | "label">> = {
 		snoozes: false,
 	},
 	running: {
-		face: "(-_-)",
+		face: "(o_o)",
 		color: STUDIO.text,
 		dim: false,
 		pulse: false,
