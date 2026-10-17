@@ -46,6 +46,7 @@ export function huddles(
 		const heading = fit(
 			[
 				{
+					story: h.issue,
 					text: `╭ #${h.issue}${title ? ` ${title}` : ""} · ${h.members.length} · ${age}m${h.kickbacks ? ` ↺${h.kickbacks}` : ""} ${activity}${stalled ? " stalled" : ""}`,
 					dim: stalled,
 					fg: profile.animations
@@ -74,6 +75,7 @@ export function huddles(
 			members.push({
 				text: `${m?.status === "running" ? "●" : "○"}${name}${h.members.length > 1 ? " ⇄" : ""}${kickback ? " ↺" : ""}${m?.away ? " away" : ""} `,
 				fg: colorFor(name, profile, colorIndex(name)),
+				agentId: m?.agentId,
 				dim: m?.status !== "running" || m?.away,
 			});
 		}

@@ -64,6 +64,11 @@ to Claude (the mod API does not deliver it). `/bullpen focus floor|huddles|talk|
 also works from the prompt. The full pixel floor fits pane bodies from 48 columns;
 huddles and hallway sit side by side from 60 columns.
 
+`/bullpen story #208` opens a second pane with the issue’s cross-agent journal
+and GitHub state. Press a huddle heading to open its story, or a teammate name
+to open Claude’s own transcript. `r` returns from the story. The journal only
+contains files/details the collector recorded; it does not reconstruct transcripts.
+
 ## Develop
 
 Requires Node 24+ and Claude Code 2.1.287+.

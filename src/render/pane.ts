@@ -22,12 +22,24 @@ export type PaneOptions = {
 };
 export function paneView(
 	model: BullpenModel,
-	_members: Member[],
+	members: Member[],
 	columns: number,
 	rows: number,
 	now: number,
 	options: PaneOptions = {},
 ): PaneView {
+	model = {
+		...model,
+		teammates: Object.fromEntries(
+			Object.entries(model.teammates).map(([name, t]) => [
+				name,
+				{
+					...t,
+					agentId: members.find((m) => m.name === name)?.id ?? t.agentId,
+				},
+			]),
+		),
+	};
 	const github = options.github ?? { filter: "", burndown: [], checkedAt: 0 };
 	const profile = options.profile ?? DEFAULT_PROFILE;
 	const heading = header(model, github, columns, now).slice(

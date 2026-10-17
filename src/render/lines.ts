@@ -3,6 +3,8 @@ import stringWidth from "../vendor/string-width.js";
 
 export type Seg = {
 	text: string;
+	story?: number;
+	agentId?: string;
 	fg?: number;
 	bg?: number;
 	bold?: boolean;

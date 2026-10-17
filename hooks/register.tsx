@@ -1,4 +1,6 @@
 import type {
+	BoxProps,
+	ButtonProps,
 	ElementConstructor,
 	EngineInterface,
 	FsEntry,
@@ -53,11 +55,18 @@ import { buildModel } from "../src/model";
 import { createMotion, motionFor } from "../src/motion";
 import { DEFAULT_PROFILE, parseProfile } from "../src/profile";
 import { band } from "../src/render/header";
-import type { Line } from "../src/render/lines";
+import { fit, type Line } from "../src/render/lines";
 import { type Focus, paneView } from "../src/render/pane";
+import { storyFor, storyLines } from "../src/render/story";
 import type { BullpenEventKind, Member, Profile } from "../types";
 
 const PANE = "bullpen";
+const STORY = "bullpen-story";
+const storyIssue = atom({ plugin: "bullpen", key: "storyIssue" } as const, 0);
+async function openStory($: $, issue: number) {
+	await update($, storyIssue, () => issue);
+	return $.ui.open({ id: STORY, title: `Bullpen #${issue}` });
+}
 const FLOOR_KEY = "floor";
 /** How often flushed events are appended to the journal file. */
 const JOURNAL_FLUSH_MS = 1000;
@@ -139,19 +148,55 @@ async function focusRegion($: $, region: Focus | "") {
 }
 const seenAt = atom({ plugin: "bullpen", key: "hallwaySeenAt" } as const, -1);
 
-function renderLines(Text: ElementConstructor<TextProps>, lines: Line[]) {
-	return lines.map((line) => (
-		<Text>
-			{line.map((seg) => (
-				<Text
-					color={seg.fg === undefined ? undefined : hex(seg.fg)}
-					bold={seg.bold}
-					dimColor={seg.dim}
-				>
-					{seg.text}
-				</Text>
-			))}
-		</Text>
+function renderLines(
+	Text: ElementConstructor<TextProps>,
+	lines: Line[],
+	ui: {
+		Box: ElementConstructor<BoxProps>;
+		Button: ElementConstructor<ButtonProps>;
+	},
+	$: $,
+) {
+	const { Box, Button } = ui;
+	return lines.map((line, index) => (
+		<Box>
+			{line.map((seg, j) => {
+				const text = (
+					<Text
+						color={seg.fg === undefined ? undefined : hex(seg.fg)}
+						bold={seg.bold}
+						dimColor={seg.dim}
+					>
+						{seg.text}
+					</Text>
+				);
+				if (seg.story !== undefined) {
+					const issue = seg.story;
+					return (
+						<Button
+							key={`story-${index}-${j}`}
+							plain
+							onPress={() => void openStory($, issue)}
+						>
+							{text}
+						</Button>
+					);
+				}
+				if (seg.agentId) {
+					const agentId = seg.agentId;
+					return (
+						<Button
+							key={`agent-${index}-${j}`}
+							plain
+							onPress={() => void $.ui.view({ agentId })}
+						>
+							{text}
+						</Button>
+					);
+				}
+				return text;
+			})}
+		</Box>
 	));
 }
 
@@ -419,7 +464,7 @@ export function register(on: On) {
 		await $.command.register({
 			name: "bullpen",
 			description: "Open the Bullpen: a live view of your agent team",
-			argumentHint: "[demo|reload|focus floor|huddles|talk|all]",
+			argumentHint: "[demo|reload|story #N|focus floor|huddles|talk|all]",
 		});
 
 		$.clock.every(
@@ -445,6 +490,13 @@ export function register(on: On) {
 	});
 
 	on("command.run", { command: "bullpen" }, async ($, e) => {
+		if (e.args.trim().startsWith("story")) {
+			const match = /^story\s+#?([1-9]\d{0,6})$/.exec(e.args.trim());
+			if (!match?.[1]) return { text: "Use /bullpen story #123" };
+			const issue = Number(match[1]);
+			await openStory($, issue);
+			return { text: `Bullpen story #${issue} opened.` };
+		}
 		if (e.args.trim().startsWith("focus ")) {
 			const region = e.args.trim().slice(6);
 			if (
@@ -625,10 +677,10 @@ export function register(on: On) {
 
 		return (
 			<Box flexDirection="column">
-				{renderLines(Text, view.header)}
+				{renderLines(Text, view.header, { Box, Button }, $)}
 				{floor}
-				{renderLines(Text, view.regions)}
-				{renderLines(Text, view.footer.slice(0, -1))}
+				{renderLines(Text, view.regions, { Box, Button }, $)}
+				{renderLines(Text, view.footer.slice(0, -1), { Box, Button }, $)}
 				<Box>
 					<Button
 						key="floor-focus"
@@ -667,6 +719,49 @@ export function register(on: On) {
 		);
 	});
 
+	on("ui.render", { component: "Pane", requestId: STORY }, async ($, e) => {
+		const { Box, Text, Button } = $.ui.resolve(e);
+		const issue = await read($, storyIssue);
+		const story = storyFor(issue, await read($, events), await read($, github));
+		const config = await read($, profile);
+		const columns = e.props.bodyColumns;
+		const names = new Set(story.events.map((ev) => ev.who));
+		const team = Object.values(await read($, members)).filter(
+			(m) => names.has(m.name) && m.id !== LEAD,
+		);
+		const links: Line = team.map((m) => ({
+			text: `${m.name} `,
+			agentId: m.id,
+		}));
+		return (
+			<Box flexDirection="column">
+				{renderLines(
+					Text,
+					storyLines(
+						story,
+						config,
+						columns,
+						Math.max(0, e.props.scroll.bodyRows - 2),
+					),
+					{ Box, Button },
+					$,
+				)}
+				{renderLines(Text, [fit(links, columns)], { Box, Button }, $)}
+				<Button
+					key="story-back"
+					hotkey="r"
+					plain
+					onPress={() => {
+						void $.ui.close({ id: STORY });
+						void openPane($);
+					}}
+				>
+					Back to Bullpen
+				</Button>
+			</Box>
+		);
+	});
+
 	on("ui.render", { component: "AbovePrompt" }, async ($, e, next) => {
 		const list = Object.values(await read($, members)).filter(
 			(m) => m.id !== LEAD && m.status !== "gone",
@@ -685,7 +780,7 @@ export function register(on: On) {
 		return (
 			<Box>
 				<Button key="open" plain onPress={() => void openPane($)}>
-					{renderLines(Text, [line])}
+					{renderLines(Text, [line], { Box, Button }, $)}
 				</Button>
 			</Box>
 		);

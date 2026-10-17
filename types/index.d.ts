@@ -117,6 +117,7 @@ declare module "claude-code" {
 			hallwaySeenAt: number;
 			focus: "" | "floor" | "huddles" | "talk";
 			viewTime: number;
+			storyIssue: number;
 		};
 	}
 }
