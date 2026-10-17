@@ -120,3 +120,9 @@ test("arrays and scalars are rejected where objects belong", async () => {
 	expect(issues.profile.issues).toEqual(DEFAULT_PROFILE.issues);
 	expect(issues.warnings.length).toBe(1);
 });
+
+test("colorFor falls back to the agent type's profile color", async () => {
+	const { profile } = parseProfile('{"roles":{"builder":{"color":"#ff0000"}}}');
+	expect(colorFor("smith", profile, 0, "builder")).toBe(0xff0000);
+	expect(colorFor("smith", profile, 0)).not.toBe(0xff0000);
+});

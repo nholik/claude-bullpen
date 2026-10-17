@@ -16,6 +16,7 @@ export const FLUSH_MS = 250;
 
 export type MemberPatch = {
 	name?: string;
+	agentType?: string;
 	status?: MemberStatus;
 	issue?: number;
 };
@@ -69,6 +70,7 @@ function touched(
 		name: patch.name ?? prev?.name ?? (id === LEAD ? LEAD : id.slice(0, 8)),
 		status: patch.status ?? prev?.status ?? "running",
 		issue: patch.issue ?? prev?.issue,
+		agentType: patch.agentType ?? prev?.agentType,
 		color: prev?.color ?? colorIndex(patch.name ?? prev?.name ?? id),
 		lastActiveAt: at,
 	};
@@ -89,6 +91,7 @@ function reconciled(
 			name: agent.name ?? prev?.name ?? agent.description,
 			status: agent.status === "running" ? "running" : "idle",
 			issue: prev?.issue,
+			agentType: prev?.agentType,
 			color:
 				prev?.color ??
 				colorIndex(agent.name ?? prev?.name ?? agent.description),

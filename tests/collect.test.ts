@@ -1,5 +1,5 @@
 import { expect, test } from "claude-code/testing";
-import { Batcher, InFlight } from "../src/collect";
+import { applyBatch, Batcher, InFlight } from "../src/collect";
 
 function deferred() {
 	let release = () => {};
@@ -82,4 +82,14 @@ test("drain includes producers registered while waiting", async () => {
 	second.release();
 	await end;
 	expect(finished).toBe(true);
+});
+
+test("touch keeps the agent type across later touches", async () => {
+	const first = applyBatch({}, [
+		{ op: "touch", at: 1, id: "a1", patch: { name: "x", agentType: "gate" } },
+	]);
+	const next = applyBatch(first.members, [
+		{ op: "touch", at: 2, id: "a1", patch: { status: "idle" } },
+	]);
+	expect(next.members.a1?.agentType).toBe("gate");
 });

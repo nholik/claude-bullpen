@@ -272,8 +272,15 @@ export function colorFor(
 	name: string,
 	profile: Profile,
 	fallbackIndex: number,
+	agentType?: string,
 ): number {
-	const chosen = parseColor(roleFor(name, profile)?.color, profile.palette);
+	const chosen = parseColor(
+		(
+			roleFor(name, profile) ??
+			(agentType ? roleFor(agentType, profile) : undefined)
+		)?.color,
+		profile.palette,
+	);
 	if (chosen !== undefined) return chosen;
 	const i = Math.max(0, Math.trunc(fallbackIndex));
 	const palette = profile.palette.length > 0 ? profile.palette : PALETTE;

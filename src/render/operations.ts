@@ -194,7 +194,12 @@ function agentRegister(
 	);
 	const shown = members.slice(0, Math.max(0, Math.floor((rows - 3) / 2)));
 	for (const member of shown) {
-		const color = colorFor(member.name, profile, colorIndex(member.name));
+		const color = colorFor(
+			member.name,
+			profile,
+			colorIndex(member.name),
+			member.agentType,
+		);
 		out.push(
 			align(
 				[
