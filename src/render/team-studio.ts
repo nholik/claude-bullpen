@@ -5,8 +5,34 @@ import { fit, glyphLines, type Line, textLine, width, wrapText } from "./lines";
 import { age, align, clock, edge, inside, section, text } from "./operations";
 import { STUDIO } from "./studio";
 
+/** Short-lived signals use the existing one-second view refresh; no extra timer. */
+function activity(member: Teammate, model: BullpenModel, now: number) {
+	const recent = (at: number) => at <= now && now - at < 4000;
+	const message = model.hallway.findLast(
+		(m) => recent(m.at) && (m.from === member.name || m.to === member.name),
+	);
+	const last = member.trail[member.trail.length - 1];
+	if (
+		last?.kind === "turn-end" &&
+		recent(last.at) &&
+		(!message || last.at > message.at)
+	)
+		return { at: last.at, label: "✓ TURN DONE", color: STUDIO.mint };
+	if (message)
+		return {
+			at: message.at,
+			label:
+				message.from === member.name
+					? `→ TO ${message.to}`
+					: `← FROM ${message.from}`,
+			color: STUDIO.lavender,
+		};
+	return undefined;
+}
+
 function workstation(
 	member: Teammate,
+	model: BullpenModel,
 	github: GithubSource,
 	profile: Profile,
 	columns: number,
@@ -14,6 +40,10 @@ function workstation(
 ): Line[] {
 	const color = colorFor(member.name, profile, colorIndex(member.name));
 	const role = roleFor(member.name, profile)?.role ?? "teammate";
+	const signal = profile.animations ? activity(member, model, now) : undefined;
+	const bright = signal && Math.floor((now - signal.at) / 1000) % 2 === 0;
+	const border = bright ? signal.color : STUDIO.edge;
+	const running = profile.animations && Math.floor(now / 1000) % 2 ? "○" : "●";
 	const title =
 		github.result?.status === "ok"
 			? github.result.issues.find((i) => i.number === member.issue)?.title
@@ -26,13 +56,13 @@ function workstation(
 	const name: Line = [
 		{ text: member.name, fg: color, agentId: member.agentId, bold: true },
 	];
-	return [
+	const card: Line[] = [
 		edge(columns),
 		inside(align(name, text(role, STUDIO.muted), columns - 4), columns),
 		inside(
 			align(
 				text(
-					`${member.status === "running" ? "● RUNNING" : member.away ? "○ AWAY" : "○ IDLE"}`,
+					`${member.status === "running" ? `${running} RUNNING` : member.away ? "○ AWAY" : "○ IDLE"}`,
 					color,
 				),
 				text(age(now, member.lastActiveAt), STUDIO.muted),
@@ -52,11 +82,19 @@ function workstation(
 					],
 			columns,
 		),
-		inside(text("─".repeat(Math.max(0, columns - 4)), STUDIO.edge), columns),
+		inside(
+			signal
+				? [{ text: signal.label, fg: signal.color, bold: Boolean(bright) }]
+				: text("─".repeat(Math.max(0, columns - 4)), STUDIO.edge),
+			columns,
+		),
 		inside(action[0] ?? [], columns),
 		inside(action[1] ?? [], columns),
 		edge(columns, true),
 	];
+	return card.map((line) =>
+		line.map((seg) => (seg.fg === STUDIO.edge ? { ...seg, fg: border } : seg)),
+	);
 }
 
 /** A people-first terminal view: measured text and symbols, not an office illustration. */
@@ -104,7 +142,9 @@ export function teamStudioView(
 	for (let index = 0; index < shown.length; index += across) {
 		const cards = shown
 			.slice(index, index + across)
-			.map((member) => workstation(member, github, profile, cardWidth, now));
+			.map((member) =>
+				workstation(member, model, github, profile, cardWidth, now),
+			);
 		for (let row = 0; row < 8; row++) {
 			const line: Line = [];
 			for (const [i, card] of cards.entries()) {

@@ -134,7 +134,7 @@ the existing compact floor and text regions remain available. `f`, `h`, and `t`
 focus a region; `r` restores the overview. No Nerd Font, emoji, graphics protocol,
 or font installation is required.
 
-[Studio at 80 columns](docs/img/studio-glyphs-80.png) · [Studio ASCII fallback](docs/img/studio-glyphs-ascii.png)
+[Studio at 80 columns](docs/img/studio-glyphs-80.png) · [Studio ASCII fallback](docs/img/studio-glyphs-ascii.png) · [Interaction animation](docs/img/studio-interactions.gif)
 
 Recommended GNOME Terminal profile (personal preference; nothing is changed automatically):
 
@@ -159,7 +159,10 @@ Graceful fallbacks:
 - `"glyphs":"ascii"` keeps the console layout with ASCII borders and symbols.
   It retains issue and teammate links. Below the console minimum, the legacy
   pixel floor becomes a readable one-row team strip.
-- `"animations":false` keeps the same information in a static view.
+- Studio briefly highlights both message participants, pulses running indicators,
+  and marks completed turns. These effects use the existing one-second refresh
+  without moving or resizing cards. `"animations":false` disables the pulses and
+  transient highlights; activity text and status still update.
 - Narrow or short panes show compact cards and explicit overflow counts. On
   surfaces without Raster support, text regions use the available space.
 - Status labels accompany color; active, idle, review and decision states do not
