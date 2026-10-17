@@ -108,7 +108,8 @@ Windows path handling has automated drive/UNC tests. Real Windows Terminal fonts
 Windows filesystem access and a SAML-protected Enterprise deployment still need
 target-machine verification. Known follow-ups are tracked in [#44](https://github.com/nholik/claude-bullpen/issues/44)
 through [#47](https://github.com/nholik/claude-bullpen/issues/47), plus
-[#52](https://github.com/nholik/claude-bullpen/issues/52) for Unicode teammate names in ASCII story links.
+[#52](https://github.com/nholik/claude-bullpen/issues/52) for Unicode teammate names in ASCII story links
+and [#53](https://github.com/nholik/claude-bullpen/issues/53) for an unnecessary overflow row in exact-fit stories.
 
 ## Use
 
