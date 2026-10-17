@@ -6,6 +6,7 @@ import { band, footer, header } from "./header";
 import { beside, glyphLines, type Line, textLine } from "./lines";
 import { operationsView } from "./operations";
 import { hallway, huddles } from "./regions";
+import { teamStudioView } from "./team-studio";
 
 export type Focus = "floor" | "huddles" | "talk";
 export type PaneView = {
@@ -52,13 +53,14 @@ export function paneView(
 	const github = options.github ?? { filter: "", burndown: [], checkedAt: 0 };
 	const profile = options.profile ?? DEFAULT_PROFILE;
 	if (
-		profile.style === "operations" &&
 		options.focus !== "huddles" &&
 		options.focus !== "talk" &&
 		columns >= 60 &&
 		rows >= 16
 	) {
-		const view = operationsView(model, github, profile, columns, rows - 3, now);
+		const render =
+			profile.style === "operations" ? operationsView : teamStudioView;
+		const view = render(model, github, profile, columns, rows - 3, now);
 		return {
 			header: view.header,
 			floorRows: 0,
@@ -69,7 +71,9 @@ export function paneView(
 				[
 					...footer(github, columns),
 					textLine(
-						"f topology · h workstreams · t events · r restore",
+						profile.style === "operations"
+							? "f topology · h workstreams · t events · r restore"
+							: "f team · h huddles · t talk · r restore",
 						columns,
 					),
 				],
@@ -87,7 +91,7 @@ export function paneView(
 		textLine(
 			profile.style === "operations"
 				? "f topology · h workstreams · t events · r restore"
-				: "f floor · h huddles · t talk · r restore",
+				: "f team · h huddles · t talk · r restore",
 			columns,
 		),
 	].slice(0, Math.max(0, rows - heading.length - 1));

@@ -31,8 +31,10 @@ test("both themes preserve cell budgets, portable glyphs, and explicit overflow 
 	const model = buildModel(replay.events, now);
 	for (const style of ["studio", "operations"] as const)
 		for (const glyphs of ["unicode", "ascii"] as const)
-			for (const columns of [20, 47, 48, 60, 72, 80, 100, 109, 110, 160])
-				for (const rows of [8, 17, 27, 28, 29, 40, 48]) {
+			for (const columns of [
+				20, 47, 48, 60, 72, 80, 100, 109, 110, 119, 120, 160,
+			])
+				for (const rows of [8, 16, 17, 27, 28, 29, 40, 48]) {
 					const profile = { ...DEFAULT_PROFILE, style, glyphs };
 					const view = paneView(model, members, columns, rows, now, {
 						profile,
@@ -57,10 +59,16 @@ test("both themes preserve cell budgets, portable glyphs, and explicit overflow 
 					for (const line of view.sidebar)
 						expect(width(line) + view.floorColumns + 3 <= columns).toBe(true);
 					if (glyphs === "ascii") {
-						expect(view.floorRows).toBe(
-							style === "operations" && columns >= 60 && rows >= 16 ? 0 : 1,
-						);
+						expect(view.floorRows).toBe(columns >= 60 && rows >= 16 ? 0 : 1);
 						expect(view.sidebar.length).toBe(0);
+						for (const line of [
+							...view.header,
+							...view.regions,
+							...view.footer,
+							view.band,
+						])
+							for (const seg of line)
+								expect(/^[\x20-\x7e]*$/.test(seg.text)).toBe(true);
 					}
 					if (!view.floorRows) continue;
 					const floor = drawFloor(
@@ -158,15 +166,56 @@ for (const style of ["studio", "operations"] as const)
 			},
 		});
 		if (style === "studio")
-			expect(await ui.find({ key: "floor" })).toBeDefined();
+			expect(
+				await ui.find({ type: "Text", text: /WORKSTATIONS \/ teammates/ }),
+			).toBeDefined();
 		else
 			expect(
 				await ui.find({ type: "Text", text: /WORKSTREAMS \/ live assignment/ }),
 			).toBeDefined();
 		expect((await ui.find({ key: "floor-focus" }))?.text).toContain(
-			style === "operations" ? "topology" : "floor",
+			style === "operations" ? "topology" : "team",
 		);
-		await ui.press({ key: style === "operations" ? "story-2-1" : "story-1-1" });
+		await ui.press({ key: style === "operations" ? "story-2-1" : "story-4-1" });
 		expect(opened).toBe("bullpen-story");
 		await ui.unmount();
 	});
+
+test("studio compact and sidebar layouts retain open decisions and teammate overflow", () => {
+	const replay = demoAt(16000);
+	const now = demoClock(16000);
+	const model = buildModel(replay.events, now);
+	for (const columns of [60, 80, 119, 120, 160]) {
+		const view = paneView(model, [], columns, 16, now, {
+			github: demoGithubAt(16000),
+		});
+		const content = view.regions
+			.map((line) => line.map((s) => s.text).join(" "))
+			.join("\n");
+		expect(content).toContain("more teammates");
+		expect(content).toContain(
+			model.asks.find((ask) => ask.open)?.from ?? "missing ask",
+		);
+		expect(content).toContain(columns >= 120 ? "NEEDS YOU" : "needs you");
+	}
+});
+
+test("studio workstation names keep real transcript links and suppress demo agent IDs", () => {
+	const replay = demoAt(16000);
+	const now = demoClock(16000);
+	const model = buildModel(replay.events, now);
+	const members = Object.values(replay.members);
+	const real = members.map((member) => ({
+		...member,
+		id: `real-${member.name}`,
+	}));
+	const view = paneView(model, real, 160, 40, now);
+	const links = view.regions.flat().filter((seg) => seg.agentId);
+	expect(links.length > 0).toBe(true);
+	for (const link of links)
+		expect(link.agentId).toBe(`real-${link.text.trim()}`);
+	const demo = paneView(model, members, 160, 40, now);
+	expect(
+		demo.regions.flat().some((seg) => seg.agentId?.startsWith("demo-")),
+	).toBe(false);
+});

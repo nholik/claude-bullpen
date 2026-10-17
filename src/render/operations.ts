@@ -5,8 +5,10 @@ import { colorFor, colorIndex, roleFor } from "../profile";
 import { fit, glyphLines, type Line, textLine, width } from "./lines";
 import { issueStatus, STUDIO } from "./studio";
 
-const text = (value: string, fg = STUDIO.text): Line => [{ text: value, fg }];
-function align(left: Line, right: Line, columns: number): Line {
+export const text = (value: string, fg = STUDIO.text): Line => [
+	{ text: value, fg },
+];
+export function align(left: Line, right: Line, columns: number): Line {
 	const tail = fit(right, Math.max(0, columns - 2));
 	const head = fit(left, Math.max(0, columns - width(tail) - 1));
 	return [
@@ -15,7 +17,7 @@ function align(left: Line, right: Line, columns: number): Line {
 		...tail,
 	];
 }
-function section(title: string, columns: number): Line {
+export function section(title: string, columns: number): Line {
 	const label = fit(
 		[{ text: `─ ${title} `, fg: STUDIO.muted, bold: true }],
 		columns,
@@ -25,7 +27,7 @@ function section(title: string, columns: number): Line {
 		{ text: "─".repeat(Math.max(0, columns - width(label))), fg: STUDIO.edge },
 	];
 }
-function inside(line: Line, columns: number): Line {
+export function inside(line: Line, columns: number): Line {
 	const content = fit(line, Math.max(0, columns - 4));
 	return [
 		{ text: "│ ", fg: STUDIO.edge },
@@ -36,17 +38,17 @@ function inside(line: Line, columns: number): Line {
 		},
 	];
 }
-function edge(columns: number, bottom = false): Line {
+export function edge(columns: number, bottom = false): Line {
 	return text(
 		`${bottom ? "╰" : "╭"}${"─".repeat(Math.max(0, columns - 2))}${bottom ? "╯" : "╮"}`,
 		STUDIO.edge,
 	);
 }
-function age(now: number, at: number): string {
+export function age(now: number, at: number): string {
 	const seconds = Math.max(0, Math.floor((now - at) / 1000));
 	return seconds < 60 ? `${seconds}s ago` : `${Math.floor(seconds / 60)}m ago`;
 }
-function clock(at: number): string {
+export function clock(at: number): string {
 	const date = new Date(at);
 	return [date.getHours(), date.getMinutes(), date.getSeconds()]
 		.map((n) => String(n).padStart(2, "0"))
