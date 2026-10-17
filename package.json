@@ -8,11 +8,12 @@
 		"node": ">=24"
 	},
 	"scripts": {
-		"check": "biome check . && npm run typecheck && npm run vendor:verify && claude plugin validate . && claude plugin test .",
+		"check": "node scripts/serial.mjs npm run check:all",
+		"check:all": "biome check . && npm run typecheck && npm run vendor:verify && claude plugin validate . && claude plugin test .",
 		"format": "biome check --write .",
 		"lint": "biome check .",
 		"typecheck": "tsc -p . && tsc -p scripts/tsconfig.json",
-		"test": "claude plugin test .",
+		"test": "node scripts/serial.mjs claude plugin test .",
 		"validate": "claude plugin validate .",
 		"vendor": "node scripts/vendor.mjs",
 		"vendor:verify": "node scripts/vendor.mjs && git diff --exit-code -- src/vendor"

@@ -9,6 +9,7 @@ mockups and build phases are in `docs/design.md`; read it before feature work.
 ```sh
 npm install            # dev tools (Biome, TypeScript 7, esbuild); Node 24+
 npm run check          # Biome + tsc + vendor freshness + plugin validate + tests: run before every commit
+                       # (queues behind any other check on the machine; see "Team budget")
 npm run format         # Biome format + safe fixes
 npm run vendor         # recompile borrowed libraries into src/vendor/
 scripts/snap.sh        # real screenshot: runs `/bullpen demo` in tmux → .scratch/snaps/*.ansi + .png
@@ -73,6 +74,15 @@ stalls and morale without making the viewer wait; `/bullpen live` restores live 
 Look at the real UI whenever drawing code changes: run `scripts/snap.sh` (or
 `SHOTS="3 8 14" scripts/snap.sh` for several moments) and read the `.png` (or `cat` the `.ansi`).
 `/bullpen demo` plays a scripted team with no model calls. Check at 110 and 160 columns.
+
+## Team budget
+
+The team runs on one laptop. Keep it cool:
+- At most three working agents at once; spawn reviewers when there is something to review.
+- Iterate with `npm run typecheck` and reading previews; run the full `npm run check` once,
+  right before pushing. It takes a machine-wide lock, so a second check waits its turn.
+- Never `git stash`: the stack is shared by every worktree, so a pop can take another
+  teammate's work. Commit a WIP instead.
 
 ## Git workflow
 
