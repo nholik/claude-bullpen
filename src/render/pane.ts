@@ -1,5 +1,5 @@
 import type { Member } from "../../types";
-import { PALETTE } from "../floor";
+import { floorRows, PALETTE } from "../floor";
 import { type BullpenModel, isHallwayLive } from "../model";
 import { beside, fit, type Line, textLine } from "./lines";
 
@@ -28,11 +28,11 @@ export function paneView(
 	];
 	const ask = model.asks.find((a) => a.open);
 	if (ask) header.push(textLine(`⚑ ${ask.from}: ${ask.text}`, columns));
-	const floorRows = Math.min(
-		columns < 110 ? 1 : 6,
+	const floorHeight = Math.min(
+		floorRows(columns),
 		Math.max(0, rows - header.length - 4),
 	);
-	const room = Math.max(0, rows - header.length - floorRows - 2);
+	const room = Math.max(0, rows - header.length - floorHeight - 2);
 	const huddles = [
 		textLine("── Huddles ──", columns),
 		...model.huddles.map((h) =>
@@ -64,7 +64,7 @@ export function paneView(
 	).slice(0, room);
 	return {
 		header,
-		floorRows,
+		floorRows: floorHeight,
 		regions,
 		footer: [textLine("burndown · no GitHub data", columns)],
 		band: textLine(
