@@ -4,6 +4,14 @@ import { DEMO_PREFIX, DEMO_SCRIPT, type DemoStep, demoClock } from "./demo";
 import { addSnapshot, exactCounts, readIssueList } from "./github";
 
 /** Shared by live playback and deterministic previews. */
+/** The tool a scripted detail stands for, so the demo shows live phrases. */
+function demoTool(detail: string): string | undefined {
+	const word = detail.split(" ")[0] ?? "";
+	if (["read", "write", "edit"].includes(word))
+		return word.charAt(0).toUpperCase() + word.slice(1);
+	return ["npm", "git", "gh", "node"].includes(word) ? "Bash" : undefined;
+}
+
 export function demoOps(step: DemoStep, at: number): CollectOp[] {
 	const id = `${DEMO_PREFIX}${step.who}`;
 	const act = step.do;
@@ -40,6 +48,7 @@ export function demoOps(step: DemoStep, at: number): CollectOp[] {
 			return [
 				{ op: "touch", at, id, patch: { status: "running", issue: act.issue } },
 				event("tool", act.detail, {
+					target: demoTool(act.detail),
 					text: act.issue === undefined ? "" : `#${act.issue}`,
 				}),
 			];

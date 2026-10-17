@@ -23,23 +23,14 @@ const COMMANDS: [string, string][] = [
 	["S=/tmp/x", "working in the shell"],
 	["A=1 B=2", "working in the shell"],
 	["A=1 B=2 npm test", "running checks"],
-	[
-		"cd /work/repo && gh…",
-		"working in the shell",
-	],
-	[
-		"cd /work/repo && gi…",
-		"working in the shell",
-	],
+	["cd /work/repo && gh…", "working in the shell"],
+	["cd /work/repo && gi…", "working in the shell"],
 	[
 		"cd /work/x/.worktrees/72 && npm run check 2>&1 | tail -12",
 		"running checks",
 	],
 	["npm install 2>&1 | tail -2; npm run check", "installing deps"],
-	[
-		"cd /work/repo/.work…",
-		"working in the shell",
-	],
+	["cd /work/repo/.work…", "working in the shell"],
 	["cd /w && npm run typecheck 2>&1 | tail -5", "typechecking"],
 	['git add -A && git commit -qm "Show activity"', "committing"],
 	["git push -qu origin 72-roles-activity 2>&1|tail -1", "pushing"],
