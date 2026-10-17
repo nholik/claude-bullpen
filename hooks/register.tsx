@@ -23,6 +23,7 @@ import {
 	POLL_MS,
 	parseBurndown,
 	parseRepo,
+	parseRepoHost,
 	REPO_ARGV,
 	readIssueList,
 	runFailure,
@@ -218,21 +219,25 @@ async function pollGithub($: $) {
 	const result = await $.process
 		.run(issueListArgv(prev.filter))
 		.then(readIssueList, runFailure);
-	let { repo, burndown } = prev;
+	let { repo, host, burndown } = prev;
 	if (result.status === "ok") {
-		if (!repo) {
+		if (!repo || !host) {
 			const resolved = await $.process.run(REPO_ARGV).catch(() => undefined);
-			if (resolved?.exitCode === 0) repo = parseRepo(resolved.stdout);
+			if (resolved?.exitCode === 0) {
+				repo = parseRepo(resolved.stdout);
+				host = parseRepoHost(resolved.stdout);
+			}
 		}
-		if (repo)
+		if (repo && host)
 			result.counts = await fetchCounts(
 				(argv) => $.process.run(argv),
 				repo,
 				prev.filter,
+				host,
 			);
 		const counts = exactCounts(result);
-		if (repo && counts) {
-			const key = burndownKey(repo, prev.filter);
+		if (repo && host && counts) {
+			const key = burndownKey(repo, prev.filter, host);
 			const point = { at, ...counts };
 			burndown = addSnapshot(parseBurndown(await $.store.get(key)), point);
 			await $.store.set(key, burndown);
@@ -242,6 +247,7 @@ async function pollGithub($: $) {
 		...cur,
 		result,
 		repo,
+		host,
 		burndown,
 		checkedAt: at,
 	}));

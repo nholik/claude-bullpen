@@ -101,6 +101,8 @@ export type GithubSource = {
 	result?: GhResult;
 	/** `owner/name`, once known. */
 	repo?: string;
+	/** Host resolved by gh repo view; part of stored burndown identity. */
+	host?: string;
 	filter: string;
 	burndown: BurndownPoint[];
 	checkedAt: number;

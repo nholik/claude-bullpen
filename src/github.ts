@@ -34,7 +34,7 @@ export function issueListArgv(filter: string, limit = ISSUE_LIMIT): string[] {
 	return argv;
 }
 
-export const REPO_ARGV = ["gh", "repo", "view", "--json", "nameWithOwner"];
+export const REPO_ARGV = ["gh", "repo", "view", "--json", "nameWithOwner,url"];
 
 /** What `$.process.run` resolves with, as far as this module reads it. */
 export type RunOutput = { exitCode: number; stdout: string; stderr: string };
@@ -89,6 +89,21 @@ export function parseRepo(stdout: string): string | undefined {
 			JSON.parse(stdout),
 		);
 		return parsed.success ? parsed.output.nameWithOwner : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+/** Resolve the same host as issue list; never guess github.com on parse failure. */
+export function parseRepoHost(stdout: string): string | undefined {
+	try {
+		const parsed = safeParse(
+			looseObject({ url: string() }),
+			JSON.parse(stdout),
+		);
+		if (!parsed.success) return undefined;
+		const url = new URL(parsed.output.url);
+		return url.protocol === "https:" && url.hostname ? url.host : undefined;
 	} catch {
 		return undefined;
 	}
@@ -178,8 +193,12 @@ export function parseBurndown(value: unknown): BurndownPoint[] {
 }
 
 /** The `$.store` key for one repo and filter's burndown. */
-export function burndownKey(repo: string, filter: string): string {
-	return `burndown:${repo}:${filter.trim()}`;
+export function burndownKey(
+	repo: string,
+	filter: string,
+	host = "github.com",
+): string {
+	return `burndown:${host === "github.com" ? repo : `${host}/${repo}`}:${filter.trim()}`;
 }
 
 /** A short header string: `5/12 closed`, or what is wrong with gh. */
@@ -197,11 +216,14 @@ export function countArgv(
 	repo: string,
 	filter: string,
 	state: "open" | "closed",
+	host = "github.com",
 ): string[] {
 	return [
 		"gh",
 		"api",
 		"search/issues",
+		"--hostname",
+		host,
 		"-X",
 		"GET",
 		"-f",
@@ -234,10 +256,11 @@ export async function fetchCounts(
 	run: (argv: string[]) => Promise<RunOutput>,
 	repo: string,
 	filter: string,
+	host = "github.com",
 ): Promise<{ open: number; closed: number } | undefined> {
 	const results = await Promise.allSettled([
-		run(countArgv(repo, filter, "open")),
-		run(countArgv(repo, filter, "closed")),
+		run(countArgv(repo, filter, "open", host)),
+		run(countArgv(repo, filter, "closed", host)),
 	]);
 	const openResult = results[0];
 	const closedResult = results[1];
