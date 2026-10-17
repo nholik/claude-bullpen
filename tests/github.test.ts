@@ -351,8 +351,17 @@ test("SSO and network failures have actionable distinct header states", () => {
 		"error connecting to api.github.com",
 		"dial tcp: no such host",
 		"TLS handshake timeout",
+		"dial tcp: lookup github.sso.example.test: no such host",
+		"Post https://github.saml.example.test/graphql: could not resolve host",
 	])
 		expect(classifyFailure(error).status).toBe("network");
+	expect(
+		readIssueList({
+			exitCode: 1,
+			stdout: "",
+			stderr: "lookup github.sso.example.test: no such host",
+		}).status,
+	).toBe("network");
 	expect(runFailure(new Error("permission denied")).status).toBe("error");
 });
 

@@ -132,10 +132,14 @@ export function runFailure(error: unknown): GhResult {
 	return classifyFailure(text);
 }
 
+/** Authorization phrases only: a bare "sso"/"saml" also appears in hostnames and repo names. */
+const SSO_PATTERN =
+	/saml enforcement|saml sso|sso enforcement|resource protected by (?:organization )?saml|authorize(?:d)? (?:the |this )?(?:token|pat|oauth app|ssh key)|single.sign.on (?:required|enforcement)|requires? (?:saml|sso|single.sign.on)|sso (?:authorization|required)/i;
+
 /** Names a failed `gh` run from its standard error. */
 export function classifyFailure(stderr: string): GhResult {
 	const text = stderr.toLowerCase();
-	if (/saml|sso|single.sign.on/.test(text))
+	if (SSO_PATTERN.test(text))
 		return {
 			status: "sso-required",
 			message: "GitHub SSO authorization required",
@@ -165,10 +169,7 @@ export function classifyFailure(stderr: string): GhResult {
 /** Reads one `gh issue list` run into issues or a named failure. */
 export function readIssueList(run: RunOutput): GhResult {
 	// SSO can require organization authorization even for a signed-in account.
-	if (
-		run.exitCode !== 0 &&
-		/saml|sso|single.sign.on/i.test(run.stderr || run.stdout)
-	)
+	if (run.exitCode !== 0 && SSO_PATTERN.test(run.stderr || run.stdout))
 		return classifyFailure(run.stderr || run.stdout);
 	// gh exits 4 when it needs a sign-in, and may say so on either stream.
 	if (run.exitCode === 4)
