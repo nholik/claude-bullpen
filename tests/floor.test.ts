@@ -14,7 +14,7 @@ function team(count: number, perIssue = 6): Member[] {
 }
 
 test("tables use both dimensions, wrap and never overlap", async () => {
-	for (const columns of [110, 160, 240]) {
+	for (const columns of [48, 60, 72, 100, 110, 160, 240]) {
 		for (const rows of [10, 13, 20, 30]) {
 			const issues = Array.from({ length: 30 }, (_, i) => i + 1);
 			const plan = layout(columns, rows, issues);
@@ -113,7 +113,8 @@ test("overflow issues and teammates are counted instead of silently dropped", as
 });
 
 test("narrow floors use one row with grouped blocks and explicit overflow", async () => {
-	expect(floorRows(80)).toBe(1);
+	expect(floorRows(47)).toBe(1);
+	expect(floorRows(60)).toBe(13);
 	for (const columns of [1, 8, 20, 80, 109]) {
 		const members = team(40);
 		const result = drawFloor(members, columns, 1, 0);

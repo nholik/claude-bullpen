@@ -81,8 +81,8 @@ export type FloorLayout = {
 	lobbyCol: number;
 };
 
-/** Below 110 columns the caller only needs a single raster row. */
-export const floorRows = (columns: number) => (columns < 110 ? 1 : 13);
+/** Below 48 pane columns the caller only needs a single raster row. */
+export const floorRows = (columns: number) => (columns < 48 ? 1 : 13);
 
 /** Spread table groups across both dimensions, reserving a right-hand lobby. */
 export function layout(
@@ -94,7 +94,7 @@ export function layout(
 	const tables: FloorLayout["tables"] = new Map();
 	const lobbyCol = Math.max(0, columns - 17);
 	const across =
-		columns < 110 ? 0 : Math.max(0, Math.floor((lobbyCol - 3) / 20));
+		columns < 48 ? 0 : Math.max(0, Math.floor((lobbyCol - 3) / 18));
 	const down = Math.max(0, Math.floor((rows * 2 - 2) / 12));
 	const visible = unique.slice(0, across * down);
 	const cols = Math.min(across, Math.ceil(visible.length / Math.max(1, down)));
@@ -220,7 +220,7 @@ export function drawFloor(
 	profile: Profile = DEFAULT_PROFILE,
 ): FloorFrame {
 	const active = members.filter((m) => m.status !== "gone");
-	if (columns < 110 || rows < 6) return strip(active, columns, rows, profile);
+	if (columns < 48 || rows < 6) return strip(active, columns, rows, profile);
 	const p = canvas(columns, rows * 2);
 	const plan = layout(
 		columns,

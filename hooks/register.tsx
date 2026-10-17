@@ -21,7 +21,7 @@ import { hex } from "../src/color";
 import { DEMO_PREFIX, DEMO_SCRIPT, type DemoStep } from "../src/demo";
 import { demoOps } from "../src/demo-replay";
 import { argText, describeTool, issueRefs, oneLine } from "../src/events";
-import { drawFloor, floorRows } from "../src/floor";
+import { drawFloor } from "../src/floor";
 import {
 	addSnapshot,
 	allStatesFilter,
@@ -51,9 +51,9 @@ import {
 } from "../src/journal";
 import { buildModel } from "../src/model";
 import { DEFAULT_PROFILE, parseProfile } from "../src/profile";
-import { band, footer, header } from "../src/render/header";
+import { band } from "../src/render/header";
 import type { Line } from "../src/render/lines";
-import { roster } from "../src/render/roster";
+import { type Focus, paneView } from "../src/render/pane";
 import type { BullpenEventKind } from "../types";
 
 const PANE = "bullpen";
@@ -80,6 +80,16 @@ let floorSize: { columns: number; rows: number } | undefined;
 let frame = 0;
 let pollTimer: Timer | undefined;
 let pollGeneration = 0;
+let viewTimer: Timer | undefined;
+const focus = atom({ plugin: "bullpen", key: "focus" } as const, "");
+const viewTime = atom({ plugin: "bullpen", key: "viewTime" } as const, 0);
+async function focusRegion($: $, region: Focus | "") {
+	await update($, focus, (current) => (current === region ? "" : region));
+	if (region === "talk") {
+		const at = await now($);
+		await update($, seenAt, () => at);
+	}
+}
 const seenAt = atom({ plugin: "bullpen", key: "hallwaySeenAt" } as const, -1);
 
 function renderLines(Text: ElementConstructor<TextProps>, lines: Line[]) {
@@ -343,11 +353,17 @@ export function register(on: On) {
 		journalWarned = false;
 
 		await loadProfile($);
+		viewTimer?.cancel();
+		viewTimer = $.clock.every(1000, () => {
+			void now($)
+				.then((at) => update($, viewTime, () => at))
+				.catch(() => {});
+		});
 
 		await $.command.register({
 			name: "bullpen",
 			description: "Open the Bullpen: a live view of your agent team",
-			argumentHint: "[demo|reload]",
+			argumentHint: "[demo|reload|focus floor|huddles|talk|all]",
 		});
 
 		$.clock.every(
@@ -379,6 +395,7 @@ export function register(on: On) {
 
 	// Write out what's still batched before the session goes.
 	on("session.end", async (_$, e, next) => {
+		viewTimer?.cancel();
 		pollTimer?.cancel();
 		pollGeneration++;
 		await producers.drain();
@@ -388,6 +405,19 @@ export function register(on: On) {
 	});
 
 	on("command.run", { command: "bullpen" }, async ($, e) => {
+		if (e.args.trim().startsWith("focus ")) {
+			const region = e.args.trim().slice(6);
+			if (
+				region !== "floor" &&
+				region !== "huddles" &&
+				region !== "talk" &&
+				region !== "all"
+			)
+				return { text: "Use /bullpen focus floor|huddles|talk|all" };
+			await focusRegion($, region === "all" ? "" : region);
+			await openPane($);
+			return { text: `Bullpen focus: ${region}.` };
+		}
 		if (e.args.trim() === "reload") {
 			await loadProfile($);
 			return { text: "Bullpen: reloaded .claude/bullpen.json." };
@@ -489,7 +519,7 @@ export function register(on: On) {
 	});
 
 	on("ui.render", { component: "Pane", requestId: PANE }, async ($, e) => {
-		const { Box, Text } = $.ui.resolve(e);
+		const { Box, Text, Button } = $.ui.resolve(e);
 		const all = await read($, members);
 		const list = Object.values(all);
 		const log = await read($, events);
@@ -500,17 +530,27 @@ export function register(on: On) {
 			present: Object.fromEntries(list.map((m) => [m.name, m.status])),
 		});
 		const columns = Math.max(20, Math.min(512, e.props.bodyColumns ?? 60));
-		const floorHeight = floorRows(columns);
-		const viewportRows = e.props.scroll.bodyRows;
-		const heading = header(model, source, columns, at);
-		const logRoom = Math.max(
-			0,
-			viewportRows - floorHeight - heading.length - 1,
-		);
+
+		await read($, viewTime);
+		const focused = await read($, focus);
+		const view = paneView(model, list, columns, e.props.scroll.bodyRows, at, {
+			github: source,
+			profile: config,
+			focus: focused || undefined,
+			seenAt: await read($, seenAt),
+		});
+		const floorHeight = view.floorRows;
+		const titles =
+			source.result?.status === "ok"
+				? Object.fromEntries(
+						source.result.issues.map((i) => [i.number, i.title]),
+					)
+				: {};
 
 		// Only the terminal draws a Raster; elsewhere the roster below stands alone.
 		let floor: RenderChildren = null;
-		if (e.surface === "terminal") {
+		floorSize = undefined;
+		if (e.surface === "terminal" && floorHeight > 0) {
 			const { Raster } = $.ui.resolve(e);
 			floorSize = { columns, rows: floorHeight };
 			const { cells } = drawFloor(
@@ -518,7 +558,7 @@ export function register(on: On) {
 				columns,
 				floorHeight,
 				frame,
-				{},
+				titles,
 				config,
 			);
 			floor = (
@@ -533,10 +573,44 @@ export function register(on: On) {
 
 		return (
 			<Box flexDirection="column">
-				{renderLines(Text, heading)}
+				{renderLines(Text, view.header)}
 				{floor}
-				{renderLines(Text, roster(list, log, config, columns, logRoom))}
-				{renderLines(Text, footer(source, columns))}
+				{renderLines(Text, view.regions)}
+				{renderLines(Text, view.footer.slice(0, -1))}
+				<Box>
+					<Button
+						key="floor-focus"
+						plain
+						hotkey="f"
+						onPress={() => void focusRegion($, "floor")}
+					>
+						floor{" "}
+					</Button>
+					<Button
+						key="huddles-focus"
+						plain
+						hotkey="h"
+						onPress={() => void focusRegion($, "huddles")}
+					>
+						huddles{" "}
+					</Button>
+					<Button
+						key="talk-focus"
+						plain
+						hotkey="t"
+						onPress={() => void focusRegion($, "talk")}
+					>
+						talk{" "}
+					</Button>
+					<Button
+						key="restore"
+						plain
+						hotkey="r"
+						onPress={() => void focusRegion($, "")}
+					>
+						restore
+					</Button>
+				</Box>
 			</Box>
 		);
 	});

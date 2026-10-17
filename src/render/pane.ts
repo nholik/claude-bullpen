@@ -1,8 +1,12 @@
-import type { Member } from "../../types";
-import { floorRows, PALETTE } from "../floor";
-import { type BullpenModel, isHallwayLive } from "../model";
-import { beside, fit, type Line, textLine } from "./lines";
+import type { GithubSource, Member, Profile } from "../../types";
+import { floorRows } from "../floor";
+import type { BullpenModel } from "../model";
+import { DEFAULT_PROFILE } from "../profile";
+import { band, footer, header } from "./header";
+import { beside, type Line, textLine } from "./lines";
+import { hallway, huddles } from "./regions";
 
+export type Focus = "floor" | "huddles" | "talk";
 export type PaneView = {
 	header: Line[];
 	floorRows: number;
@@ -10,66 +14,64 @@ export type PaneView = {
 	footer: Line[];
 	band: Line;
 };
-
-/** Engine-free baseline composition; each region owns its terminal-cell budget. */
+export type PaneOptions = {
+	github?: GithubSource;
+	profile?: Profile;
+	focus?: Focus;
+	seenAt?: number;
+};
 export function paneView(
 	model: BullpenModel,
-	members: Member[],
+	_members: Member[],
 	columns: number,
 	rows: number,
 	now: number,
+	options: PaneOptions = {},
 ): PaneView {
-	const active = members.filter((m) => m.status !== "gone");
-	const header = [
-		textLine(
-			`Bullpen · ${active.length} on the floor · ${model.morale.glyph}`,
-			columns,
-		),
-	];
-	const ask = model.asks.find((a) => a.open);
-	if (ask) header.push(textLine(`⚑ ${ask.from}: ${ask.text}`, columns));
-	const floorHeight = Math.min(
-		floorRows(columns),
-		Math.max(0, rows - header.length - 4),
+	const github = options.github ?? { filter: "", burndown: [], checkedAt: 0 };
+	const profile = options.profile ?? DEFAULT_PROFILE;
+	const heading = header(model, github, columns, now).slice(
+		0,
+		Math.max(0, rows - 3),
 	);
-	const room = Math.max(0, rows - header.length - floorHeight - 2);
-	const huddles = [
-		textLine("── Huddles ──", columns),
-		...model.huddles.map((h) =>
-			fit(
-				[
-					{ text: `#${h.issue} · ${h.members.length} · ` },
-					...h.members.map((name) => ({
-						text: `${name} `,
-						fg: PALETTE[(model.teammates[name]?.color ?? 0) % PALETTE.length],
-					})),
-				],
+	const bottom = [
+		...footer(github, columns),
+		textLine("f floor · h huddles · t talk · r restore", columns),
+	].slice(0, Math.max(0, rows - heading.length - 1));
+	const available = Math.max(0, rows - heading.length - bottom.length - 1);
+	const floorHeight =
+		options.focus === "huddles" || options.focus === "talk"
+			? 0
+			: options.focus === "floor"
+				? available
+				: Math.min(floorRows(columns), Math.max(1, available - 7));
+	const room = Math.max(0, available - floorHeight);
+	let regions: Line[] = [];
+	if (options.focus === "huddles")
+		regions = huddles(model, github, profile, columns, room, now);
+	else if (options.focus === "talk")
+		regions = hallway(model, profile, columns, room, now);
+	else if (options.focus !== "floor") {
+		if (columns >= 60) {
+			const left = Math.floor((columns - 3) * 0.6);
+			regions = beside(
+				huddles(model, github, profile, left, room, now),
+				hallway(model, profile, columns - left - 3, room, now),
 				columns,
-			),
-		),
-	];
-	if (huddles.length === 1)
-		huddles.push(textLine("No active huddles", columns));
-	const live = isHallwayLive(model.hallway, now);
-	const hallway = [
-		textLine(`── Hallway · ${live ? "live" : "quiet"} ──`, columns),
-	];
-	if (live)
-		for (const m of model.hallway.slice(-Math.max(0, room - 1)))
-			hallway.push(textLine(`${m.from} → ${m.to}: ${m.text}`, columns));
-	const regions = (
-		columns >= 110
-			? beside(huddles, hallway, columns)
-			: [...huddles, ...hallway]
-	).slice(0, room);
+			);
+		} else {
+			const talkRoom = Math.min(4, Math.max(1, Math.floor(room / 3)));
+			regions = [
+				...huddles(model, github, profile, columns, room - talkRoom, now),
+				...hallway(model, profile, columns, talkRoom, now),
+			];
+		}
+	}
 	return {
-		header,
-		floorRows: floorHeight,
-		regions,
-		footer: [textLine("burndown · no GitHub data", columns)],
-		band: textLine(
-			`☰ bullpen ${model.morale.glyph} · ${active.length} teammates · ✉${model.hallway.length}`,
-			columns,
-		),
+		header: heading,
+		floorRows: Math.max(0, floorHeight),
+		regions: regions.slice(0, room),
+		footer: bottom,
+		band: band(model, github, profile, columns, options.seenAt ?? -1),
 	};
 }
