@@ -5,6 +5,7 @@ import {
 	Batcher,
 	type CollectOp,
 	FLUSH_MS,
+	InFlight,
 	LEAD,
 	type MemberPatch,
 } from "../src/collect";
@@ -72,6 +73,7 @@ let team: string | undefined;
 /** The journal's current chunk as last written, so appends needn't re-read it. */
 let journal: { dir: string; current: Chunk } | undefined;
 
+const producers = new InFlight();
 let collector: Batcher<CollectOp> | undefined;
 let journalWriter: Batcher<BullpenEvent> | undefined;
 
@@ -286,7 +288,10 @@ async function playDemo($: $) {
 	let at = 0;
 	for (const step of DEMO_SCRIPT) {
 		at += step.wait;
-		$.clock.after(at, () => void playStep($, step).catch(() => {}));
+		$.clock.after(
+			at,
+			() => void producers.track(playStep($, step)).catch(() => {}),
+		);
 	}
 }
 
@@ -326,7 +331,10 @@ export function register(on: On) {
 			argumentHint: "[demo|reload]",
 		});
 
-		$.clock.every(4000, () => void reconcile($));
+		$.clock.every(
+			4000,
+			() => void producers.track(reconcile($)).catch(() => {}),
+		);
 
 		void pollGithub($).catch(() => {});
 		$.clock.every(POLL_MS, () => void pollGithub($).catch(() => {}));
@@ -352,6 +360,7 @@ export function register(on: On) {
 
 	// Write out what's still batched before the session goes.
 	on("session.end", async (_$, e, next) => {
+		await producers.drain();
 		await collector?.drain();
 		await journalWriter?.drain();
 		return next(e);
@@ -375,69 +384,86 @@ export function register(on: On) {
 	});
 
 	on("agent.spawn", async ($, e, next) => {
-		const spawned = await next(e);
-		team ??= teamOf(spawned.teammateId);
-		const { agentId } = spawned;
-		if (agentId) {
-			const brief = `${e.description} ${e.prompt}`;
-			void touch($, agentId, {
-				name: e.name ?? e.description,
-				status: "running",
-				issue: issueRefs(brief)[0],
-			})
-				.then(() =>
-					record(
+		const result = next(e);
+		void producers
+			.track(
+				result.then(async (spawned) => {
+					team ??= teamOf(spawned.teammateId);
+					const { agentId } = spawned;
+					if (!agentId) return;
+					const brief = `${e.description} ${e.prompt}`;
+					await touch($, agentId, {
+						name: e.name ?? e.description,
+						status: "running",
+						issue: issueRefs(brief)[0],
+					});
+					await record(
 						$,
 						"spawn",
 						e.parentAgentId,
 						`${e.isTeammate ? "teammate" : "subagent"} ${e.name ?? e.description} joined`,
 						{ target: e.name, text: brief, attribute: false },
-					),
-				)
-				.catch(() => {});
-		}
-		return spawned;
+					);
+				}),
+			)
+			.catch(() => {});
+		return result;
 	});
 
 	on("turn.start", async ($, e, next) => {
-		void touch($, e.agentId ?? LEAD, { status: "running" })
-			.then(() =>
-				record($, "turn-start", e.agentId, "started a turn", { text: e.text }),
+		void producers
+			.track(
+				touch($, e.agentId ?? LEAD, { status: "running" }).then(() =>
+					record($, "turn-start", e.agentId, "started a turn", {
+						text: e.text,
+					}),
+				),
 			)
 			.catch(() => {});
 		return next(e);
 	});
 
 	on("turn.complete", async ($, e, next) => {
-		const done = await next(e);
-		void touch($, e.agentId ?? LEAD, { status: "idle" })
-			.then(() =>
-				record(
-					$,
-					"turn-end",
-					e.agentId,
-					`finished a turn (${Math.round(e.durationMs / 1000)}s)`,
-				),
+		const result = next(e);
+		void producers
+			.track(
+				result.then(async () => {
+					await touch($, e.agentId ?? LEAD, { status: "idle" });
+					await record(
+						$,
+						"turn-end",
+						e.agentId,
+						`finished a turn (${Math.round(e.durationMs / 1000)}s)`,
+					);
+				}),
 			)
 			.catch(() => {});
-		return done;
+		return result;
 	});
 
 	on("tool.call", async ($, e, next) => {
 		const args = e as unknown as Record<string, unknown>;
 		// Observe only, and never hold up the call while recording it.
-		void record($, "tool", e.agentId, describeTool(String(e.tool), args), {
-			target: String(e.tool),
-			text: argText(args),
-		}).catch(() => {});
+		void producers
+			.track(
+				record($, "tool", e.agentId, describeTool(String(e.tool), args), {
+					target: String(e.tool),
+					text: argText(args),
+				}),
+			)
+			.catch(() => {});
 		return next(e);
 	});
 
 	on("session.send", async ($, e, next) => {
-		void record($, "message", e.agentId, oneLine(e.text, 80), {
-			target: e.to,
-			text: e.text,
-		}).catch(() => {});
+		void producers
+			.track(
+				record($, "message", e.agentId, oneLine(e.text, 80), {
+					target: e.to,
+					text: e.text,
+				}),
+			)
+			.catch(() => {});
 		return next(e);
 	});
 
