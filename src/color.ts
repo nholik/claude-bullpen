@@ -32,3 +32,21 @@ export function mix(from: number, to: number, t: number): number {
 	)(Math.min(1, Math.max(0, t)));
 	return Number.parseInt(formatHex(mixed).slice(1), 16);
 }
+
+/** Quiet floor/wall lighting, cool and dim at low morale, warm at high morale. */
+export function moraleLight(score: number): {
+	floor: number;
+	alternate: number;
+	wall: number;
+} {
+	const t = Number.isFinite(score) ? Math.max(0, Math.min(1, score)) : 0.7;
+	const floor =
+		t < 0.5
+			? mix(0x182330, 0x292929, t * 2)
+			: mix(0x292929, 0x413425, (t - 0.5) * 2);
+	return {
+		floor,
+		alternate: mix(floor, 0xffffff, 0.035),
+		wall: mix(floor, 0xffffff, 0.18),
+	};
+}

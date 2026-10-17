@@ -4,7 +4,7 @@
 // used so it draws the same in GNOME Terminal (VTE) and Windows Terminal.
 
 import type { Member } from "../types";
-import { mix } from "./color";
+import { mix, moraleLight } from "./color";
 import { oneLine } from "./events";
 import stringWidth from "./vendor/string-width.js";
 
@@ -15,24 +15,23 @@ import { colorFor, DEFAULT_PROFILE } from "./profile";
 
 const UPPER_HALF = 0x2580;
 const FLOOR = 0x2b2620;
-const FLOOR_ALT = 0x2f2a23;
-const WALL = 0x5d5346;
 const TABLE = 0x8d6e4f;
 const TABLE_EDGE = 0x6d543c;
 const LOBBY = 0x3a4048;
 
 type Pixels = { width: number; height: number; px: Uint32Array };
 
-function canvas(width: number, height: number): Pixels {
+function canvas(width: number, height: number, morale = 0.7): Pixels {
+	const light = moraleLight(morale);
 	const px = new Uint32Array(width * height);
 	for (let y = 0; y < height; y++) {
 		for (let x = 0; x < width; x++) {
 			const isWall = y === 0 || y === height - 1 || x === 0 || x === width - 1;
 			px[y * width + x] = isWall
-				? WALL
+				? light.wall
 				: (x >> 2) % 2 === (y >> 1) % 2
-					? FLOOR
-					: FLOOR_ALT;
+					? light.floor
+					: light.alternate;
 		}
 	}
 	return { width, height, px };
@@ -226,6 +225,7 @@ export function drawFloor(
 	titles: Record<number, string> = {},
 	profile: Profile = DEFAULT_PROFILE,
 	effects: FloorEffects = { closed: [], walkers: [], dots: [], tables: [] },
+	morale = 0.7,
 ): FloorFrame {
 	const active = members
 		.filter((m) => m.status !== "gone")
@@ -233,7 +233,7 @@ export function drawFloor(
 			effects.closed.includes(m.issue ?? -1) ? { ...m, issue: undefined } : m,
 		);
 	if (columns < 48 || rows < 6) return strip(active, columns, rows, profile);
-	const p = canvas(columns, rows * 2);
+	const p = canvas(columns, rows * 2, morale);
 	const plan = layout(
 		columns,
 		rows,

@@ -85,6 +85,7 @@ let scene:
 			list: Member[];
 			config: Profile;
 			titles: Record<number, string>;
+			morale: number;
 			motion: ReturnType<typeof createMotion>;
 	  }
 	| undefined;
@@ -113,6 +114,7 @@ async function tickAnimation($: $) {
 		current.titles,
 		current.config,
 		current.motion.sample(at),
+		current.morale,
 	);
 	await $.ui.blit({ requestId: PANE, key: FLOOR_KEY, cells });
 	if (
@@ -595,7 +597,7 @@ export function register(on: On) {
 			const motion = createMotion(
 				motionFor(log, list, columns, floorHeight, at, config),
 			);
-			scene = { list, config, titles, motion };
+			scene = { list, config, titles, motion, morale: model.morale.score };
 			const { cells } = drawFloor(
 				list,
 				columns,
@@ -604,6 +606,7 @@ export function register(on: On) {
 				titles,
 				config,
 				motion.sample(at),
+				model.morale.score,
 			);
 			if (
 				config.animations &&
