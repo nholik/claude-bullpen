@@ -4,11 +4,11 @@ import type { BullpenModel } from "../model";
 import { DEFAULT_PROFILE } from "../profile";
 import { band, footer, header } from "./header";
 import { beside, glyphLines, type Line, textLine } from "./lines";
-import { operationsView } from "./operations";
 import { hallway, huddles } from "./regions";
+import { shippingSection } from "./shipping";
 import { teamStudioView } from "./team-studio";
 
-export type Focus = "floor" | "huddles" | "talk";
+export type Focus = "floor" | "huddles" | "shipping" | "talk";
 export type PaneView = {
 	header: Line[];
 	floorRows: number;
@@ -25,6 +25,7 @@ export type PaneOptions = {
 	seenAt?: number;
 	/** False when this surface cannot draw a Raster. */
 	raster?: boolean;
+	mode?: "live" | "demo" | "replay";
 };
 export function paneView(
 	model: BullpenModel,
@@ -54,13 +55,20 @@ export function paneView(
 	const profile = options.profile ?? DEFAULT_PROFILE;
 	if (
 		options.focus !== "huddles" &&
+		options.focus !== "shipping" &&
 		options.focus !== "talk" &&
 		columns >= 60 &&
 		rows >= 16
 	) {
-		const render =
-			profile.style === "operations" ? operationsView : teamStudioView;
-		const view = render(model, github, profile, columns, rows - 3, now);
+		const view = teamStudioView(
+			model,
+			github,
+			profile,
+			columns,
+			rows - 3,
+			now,
+			options.mode,
+		);
 		return {
 			header: view.header,
 			floorRows: 0,
@@ -70,12 +78,7 @@ export function paneView(
 			footer: glyphLines(
 				[
 					...footer(github, columns),
-					textLine(
-						profile.style === "operations"
-							? "f topology · h workstreams · t events · r restore"
-							: "f team · h huddles · t talk · r restore",
-						columns,
-					),
+					textLine("a answer · s shipping · t talk (toggle)", columns),
 				],
 				profile.glyphs,
 			),
@@ -88,12 +91,7 @@ export function paneView(
 	);
 	const bottom = [
 		...footer(github, columns),
-		textLine(
-			profile.style === "operations"
-				? "f topology · h workstreams · t events · r restore"
-				: "f team · h huddles · t talk · r restore",
-			columns,
-		),
+		textLine("a answer · s shipping · t talk (toggle)", columns),
 	].slice(0, Math.max(0, rows - heading.length - 1));
 	const available = Math.max(0, rows - heading.length - bottom.length - 1);
 	const studio =
@@ -106,6 +104,7 @@ export function paneView(
 	const floorHeight =
 		options.raster === false ||
 		options.focus === "huddles" ||
+		options.focus === "shipping" ||
 		options.focus === "talk"
 			? 0
 			: profile.glyphs === "ascii"
@@ -132,6 +131,8 @@ export function paneView(
 		: [];
 	let regions: Line[] = [];
 	if (studio) regions = hallway(model, profile, columns, room, now);
+	else if (options.focus === "shipping")
+		regions = shippingSection(model, github, profile, columns, room, now);
 	else if (options.focus === "huddles")
 		regions = huddles(model, github, profile, columns, room, now);
 	else if (options.focus === "talk")

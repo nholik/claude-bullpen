@@ -25,7 +25,7 @@ export function storyFor(
 		const current =
 			event.kind === "spawn"
 				? (previous ?? event.issues[0])
-				: event.kind === "leave"
+				: event.kind === "leave" || event.kind === "answer"
 					? previous
 					: nextIssue(event.kind, previous, event.issues);
 		if (current !== undefined) assigned.set(name, current);

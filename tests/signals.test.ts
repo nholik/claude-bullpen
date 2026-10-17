@@ -1,0 +1,240 @@
+import { expect, test } from "claude-code/testing";
+import { toolOutcome } from "../src/collect";
+import { applyEvent, buildModel, modelOf, reduceEvents } from "../src/model";
+import { activeTime, backlogTrend, flowSummary } from "../src/model/signals";
+import { DEFAULT_PROFILE } from "../src/profile";
+import { width } from "../src/render/lines";
+import { teamStudioView } from "../src/render/team-studio";
+import { replayAt } from "../src/replay";
+import type { BullpenEvent } from "../types";
+
+const minute = 60_000;
+const event = (
+	kind: BullpenEvent["kind"],
+	at: number,
+	extra: Partial<BullpenEvent> = {},
+): BullpenEvent => ({
+	version: 1,
+	who: "builder",
+	agentId: "a",
+	kind,
+	at,
+	issues: [12],
+	detail: "work",
+	...extra,
+});
+
+test("each stuck rule has a visible reason, and success clears repeated command failure", () => {
+	const scenarios: [BullpenEvent[], number, string][] = [
+		[[event("tool", 0)], 10 * minute, "no tool progress 10m"],
+		[
+			[event("tool", 0), event("turn-end", minute)],
+			6 * minute,
+			"idle with open work 5m",
+		],
+		[
+			[0, 1, 2].map((at) =>
+				event("tool", at, {
+					target: "Bash",
+					detail: "npm test",
+					outcome: "error",
+				}),
+			),
+			3,
+			"same command failed 3 times",
+		],
+		[
+			[
+				event("message", 0, {
+					target: "lead",
+					detail: "#12 please review https://github.com/o/r/pull/22",
+				}),
+			],
+			15 * minute,
+			"review waiting 15m",
+		],
+		[
+			[
+				event("tool", 0),
+				event("message", 1, {
+					who: "gate",
+					target: "builder",
+					detail: "sending it back",
+				}),
+				event("message", 2, {
+					who: "gate",
+					target: "builder",
+					detail: "sending it back",
+				}),
+			],
+			3,
+			"sent back 2 times",
+		],
+	];
+	for (const [events, now, reason] of scenarios) {
+		const model = buildModel(events, now);
+		expect(model.stuck?.builder).toBe(reason);
+		expect(model.morale.factors.stalled).toContain(12);
+		const text = teamStudioView(
+			model,
+			{ filter: "", burndown: [], checkedAt: 0 },
+			DEFAULT_PROFILE,
+			72,
+			32,
+			now,
+		)
+			.regions.flat()
+			.map((s) => s.text)
+			.join("");
+		expect(text).toContain(reason);
+	}
+	const failures = [0, 1, 2].map((at) =>
+		event("tool", at, { target: "Bash", detail: "npm test", outcome: "error" }),
+	);
+	expect(
+		buildModel(
+			[
+				...failures,
+				event("tool", 3, { target: "Bash", detail: "npm test", outcome: "ok" }),
+			],
+			4,
+		).stuck,
+	).toEqual({});
+	expect(
+		buildModel(
+			[
+				event("tool", 0),
+				event("message", minute, {
+					who: "lead",
+					detail: "closed #12",
+					target: "builder",
+				}),
+			],
+			20 * minute,
+		).stuck,
+	).toEqual({});
+});
+
+test("asking a fresh question or finding one review problem does not darken the office", () => {
+	const base = [event("tool", 0)];
+	const healthy = buildModel(
+		[
+			...base,
+			event("message", 1, {
+				target: "lead",
+				detail: "Which approach should I use?",
+			}),
+			event("message", 2, {
+				who: "gate",
+				target: "builder",
+				detail: "sending it back",
+			}),
+		],
+		3,
+	);
+	expect(healthy.morale.score).toBe(buildModel(base, 3).morale.score);
+});
+
+test("turn counters survive display-history rollover, without counting idle time", () => {
+	let state = reduceEvents([
+		event("turn-start", 0),
+		event("turn-end", 2 * minute),
+	]);
+	for (let i = 0; i < 2100; i++)
+		state = applyEvent(
+			state,
+			event("message", 3 * minute + i, {
+				who: "other",
+				target: "lead",
+				issues: [],
+				detail: "progress",
+			}),
+		);
+	const t = modelOf(state, 10 * minute).teammates.builder;
+	expect(t?.turns).toBe(1);
+	expect(t && activeTime(t, 10 * minute)).toBe(2 * minute);
+});
+
+test("backlog growth and spare review capacity are explicit, never invented created counts", () => {
+	const series = [
+		{ at: 0, open: 5, closed: 2 },
+		{ at: 30 * minute, open: 9, closed: 3 },
+	];
+	expect(backlogTrend(series)).toEqual({ delta: 4, minutes: 30 });
+	expect(backlogTrend([series[0] as (typeof series)[number]])).toBeUndefined();
+	const model = buildModel(
+		[
+			event("message", 0, {
+				target: "lead",
+				detail: "#12 PR: https://github.com/o/r/pull/22",
+			}),
+			event("message", 1, {
+				target: "lead",
+				issues: [13],
+				detail: "#13 PR: https://github.com/o/r/pull/23",
+			}),
+			event("turn-end", 2, { who: "reviewer", issues: [] }),
+		],
+		3,
+	);
+	const flow = flowSummary(model, series, 3);
+	expect(flow.pressure).toBe(true);
+	expect(flow.text).toContain("backlog +4 / 30m");
+	expect(flow.text).toContain("consider review help");
+});
+
+test("replay follows recorded time, caps at its end and never exposes live ids", () => {
+	const log = [event("turn-start", 100), event("turn-end", 1000)];
+	expect(replayAt(log, 0).events).toHaveLength(1);
+	const end = replayAt(log, 5000);
+	expect(end.now).toBe(1000);
+	expect(end.members.builder?.status).toBe("idle");
+	expect(end.members.builder?.id).toStartWith("demo-");
+});
+
+test("away teammates fold, departed teammates linger, and every layout stays bounded", () => {
+	const log = [
+		event("turn-end", 0, { who: "away", issues: [] }),
+		event("leave", 31 * minute, { who: "gone", issues: [] }),
+		event("tool", 31 * minute),
+	];
+	for (const columns of [72, 110, 160]) {
+		const model = buildModel(log, 31 * minute);
+		const view = teamStudioView(
+			model,
+			{ filter: "", burndown: [], checkedAt: 0 },
+			DEFAULT_PROFILE,
+			columns,
+			40,
+			31 * minute,
+		);
+		const text = view.regions
+			.flat()
+			.map((s) => s.text)
+			.join("");
+		expect(text).toContain("out: away");
+		expect(text).toContain("clocked out");
+		for (const line of [...view.header, ...view.regions])
+			expect(width(line)).toBeLessThanOrEqual(columns);
+		const later = teamStudioView(
+			buildModel(log, 34 * minute),
+			{ filter: "", burndown: [], checkedAt: 0 },
+			DEFAULT_PROFILE,
+			columns,
+			40,
+			34 * minute,
+		);
+		expect(later.regions.flat().some((s) => s.text === "gone")).toBe(false);
+	}
+});
+
+test("denied, interrupted, and background commands never report a successful completion", () => {
+	for (const result of [
+		{ deny: "policy" },
+		{ result: { interrupted: true } },
+		{ result: { interrupted: false, backgroundTaskId: "t" } },
+	])
+		expect(toolOutcome(result)).toBeUndefined();
+	expect(toolOutcome({ isError: true, result: "failure" })).toBe("error");
+	expect(toolOutcome({ result: { interrupted: false } })).toBe("ok");
+});

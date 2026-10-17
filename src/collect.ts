@@ -13,6 +13,30 @@ export const LEAD = "lead";
 /** How long events wait before they are written to `$.state`. */
 export const FLUSH_MS = 250;
 
+/** Denials and background starts are not completed command results. */
+export function toolOutcome(value: unknown): "ok" | "error" | undefined {
+	if (
+		!value ||
+		typeof value !== "object" ||
+		("deny" in value && value.deny !== undefined)
+	)
+		return undefined;
+	if ("isError" in value && value.isError === true) return "error";
+	if (!("result" in value) || !value.result || typeof value.result !== "object")
+		return undefined;
+	const result = value.result as Record<string, unknown>;
+	if (
+		result.interrupted ||
+		result.backgroundTaskId ||
+		result.backgroundedByUser ||
+		result.backgroundedByTurnAbort ||
+		result.backgroundedToDeliverMessage ||
+		result.timedOutAfterMs
+	)
+		return undefined;
+	return result.interrupted === false ? "ok" : undefined;
+}
+
 export type MemberPatch = {
 	name?: string;
 	agentType?: string;
@@ -44,6 +68,8 @@ export type CollectOp =
 			/** Extra text scanned for issue refs alongside `detail`. */
 			text?: string;
 			confirmedCloses?: number[];
+			outcome?: "ok" | "error";
+			replyTo?: number;
 			/** On `spawn`: the agent type the target was spawned as. */
 			agentType?: string;
 			/** False to leave the member's issue as it is. */
@@ -72,6 +98,10 @@ function touched(
 		agentType: patch.agentType ?? prev?.agentType,
 		color: prev?.color ?? Object.keys(all).length,
 		lastActiveAt: at,
+		goneAt:
+			(patch.status ?? prev?.status) === "gone"
+				? (prev?.goneAt ?? at)
+				: undefined,
 	};
 }
 
@@ -99,7 +129,7 @@ function reconciled(
 		const isDemo = id.startsWith(DEMO_PREFIX);
 		if (id === LEAD || isDemo || listed.some((a) => a.id === id)) continue;
 		if (member.status !== "gone") left.push(member);
-		next[id] = { ...member, status: "gone" };
+		next[id] = { ...member, status: "gone", goneAt: member.goneAt ?? at };
 	}
 	return { members: next, left };
 }
@@ -141,7 +171,11 @@ export function applyBatch(
 				break;
 			case "event": {
 				const id = op.agentId ?? LEAD;
-				const issues = issueRefs(`${op.detail} ${op.text ?? ""}`);
+				const issues = issueRefs(
+					op.kind === "tool" && op.target === "Bash"
+						? (op.text ?? "")
+						: `${op.detail} ${op.text ?? ""}`,
+				);
 				events.push({
 					version: JOURNAL_VERSION,
 					at: op.at,
@@ -151,13 +185,15 @@ export function applyBatch(
 					target: op.target,
 					detail: op.detail,
 					issues,
+					outcome: op.outcome,
+					replyTo: op.replyTo,
 					...(op.agentType ? { agentType: op.agentType } : {}),
 					...(op.confirmedCloses
 						? { confirmedCloses: op.confirmedCloses }
 						: {}),
 				});
 				const issue =
-					op.attribute && op.kind !== "leave"
+					op.attribute && op.kind !== "leave" && op.kind !== "answer"
 						? nextIssue(op.kind, all[id]?.issue, issues)
 						: undefined;
 				const patch = issue === undefined ? {} : { issue };

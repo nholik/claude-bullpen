@@ -86,5 +86,5 @@ test("roleLabel defaults from the agent type", () => {
 	expect(roleLabel("x", "Explore", p)).toBe("researcher");
 	expect(roleLabel("x", "general-purpose", p)).toBe("general-purpose");
 	expect(roleLabel("lead", undefined, p)).toBe("lead");
-	expect(roleLabel("x", undefined, p)).toBe("teammate");
+	expect(roleLabel("x", undefined, p)).toBe("");
 });

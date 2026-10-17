@@ -1,5 +1,6 @@
 // Reading intent out of what teammates say and run: asks, kickbacks, closes.
 // Heuristics over short English text, so each errs toward not firing.
+import { shellSegments } from "../command";
 
 /** A message to the lead that wants an answer: a question or a block. */
 export function isAsk(text: string): boolean {
@@ -160,7 +161,11 @@ const ASSIGNED =
  * assigns none; those join huddles when they act on an issue.
  */
 export function briefIssue(brief: string): number | undefined {
-	const text = brief.replace(QUOTED, " ");
+	const text = brief
+		.replace(QUOTED, " ")
+		.split(/(?<=[.!?])\s+|[;\n]/)
+		.filter((clause) => !NEGATED.test(clause))
+		.join(". ");
 	const assigned = ASSIGNED.exec(text);
 	if (assigned?.[1]) return Number(assigned[1]);
 	const first = text.trim().split(/(?<=[.!?])\s+|\n/, 1)[0] ?? "";
@@ -179,7 +184,11 @@ const GH_TARGET =
 /** Numbers named by `gh issue <verb> <n>` (a PR number is not an issue) in a shell command. */
 export function ghTargets(command: string): number[] {
 	const found: number[] = [];
-	for (const m of command.matchAll(GH_TARGET)) {
+	for (const part of shellSegments(command)) {
+		if (!/^gh\s+issue\s/.test(part)) continue;
+		const m = GH_TARGET.exec(part);
+		GH_TARGET.lastIndex = 0;
+		if (!m) continue;
 		const n = Number(m[1]);
 		if (!found.includes(n)) found.push(n);
 	}

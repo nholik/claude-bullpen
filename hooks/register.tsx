@@ -18,6 +18,7 @@ import {
 	InFlight,
 	LEAD,
 	type MemberPatch,
+	toolOutcome,
 } from "../src/collect";
 import { hex } from "../src/color";
 import { DEMO_PREFIX, DEMO_SCRIPT, demoClock } from "../src/demo";
@@ -36,8 +37,10 @@ import {
 	parseBurndown,
 	parseRepo,
 	parseRepoHost,
+	prArgv,
 	REPO_ARGV,
 	readIssueList,
+	readPr,
 	runFailure,
 } from "../src/github";
 import {
@@ -50,11 +53,17 @@ import {
 	MAX_CHUNKS,
 	planAppend,
 	planRetention,
+	readChunks,
 	STATE_EVENTS,
-	teamOf,
 	toLine,
 } from "../src/journal";
-import { type BullpenModel, buildModel } from "../src/model";
+import {
+	applyEvent,
+	type BullpenModel,
+	buildModel,
+	modelOf,
+	reduceEvents,
+} from "../src/model";
 import { briefIssue, confirmedToolCloses } from "../src/model/detect";
 import { createMotion, motionFor } from "../src/motion";
 import {
@@ -63,14 +72,28 @@ import {
 	withMemberColors,
 } from "../src/profile";
 import { band } from "../src/render/header";
-import { fit, glyphLines, type Line } from "../src/render/lines";
+import { fit, glyphLines, type Line, wrapText } from "../src/render/lines";
 import { type Focus, paneView } from "../src/render/pane";
 import { storyFor, storyLines } from "../src/render/story";
+import { replayAt } from "../src/replay";
 import { join } from "../src/vendor/pathe.js";
 import type { BullpenEventKind, Member, Profile } from "../types";
 
 const PANE = "bullpen";
 const STORY = "bullpen-story";
+const ANSWER = "bullpen-answer";
+const replay = atom({ plugin: "bullpen", key: "replay" } as const, null);
+const decision = atom({ plugin: "bullpen", key: "decision" } as const, null);
+const decisionDraft = atom(
+	{ plugin: "bullpen", key: "decisionDraft" } as const,
+	"",
+);
+const decisionStatus = atom(
+	{ plugin: "bullpen", key: "decisionStatus" } as const,
+	"",
+);
+const sendingAnswers = new Set<string>();
+const deliveredAnswers = new Set<string>();
 const storyIssue = atom({ plugin: "bullpen", key: "storyIssue" } as const, 0);
 async function openStory($: $, issue: number) {
 	await update($, storyIssue, () => issue);
@@ -81,6 +104,7 @@ const FLOOR_KEY = "floor";
 const JOURNAL_FLUSH_MS = 1000;
 
 const events = atom({ plugin: "bullpen", key: "events" } as const, []);
+const teamModel = atom({ plugin: "bullpen", key: "teamModel" } as const, null);
 const members = atom({ plugin: "bullpen", key: "members" } as const, {});
 const profile = atom(
 	{ plugin: "bullpen", key: "profile" } as const,
@@ -101,6 +125,21 @@ let demoTimers: Timer[] = [];
 async function readScene($: $) {
 	await read($, viewTime);
 	const realNow = await now($);
+	const recorded = await read($, replay);
+	if (recorded) {
+		const scene = replayAt(recorded.events, realNow - recorded.startedAt);
+		return {
+			...scene,
+			github: {
+				filter: "replay",
+				workspace: "recorded session",
+				burndown: [],
+				checkedAt: 0,
+			},
+			offset: scene.now - realNow,
+			readOnly: true,
+		};
+	}
 	const start = await read($, demoStart);
 	if (start >= 0) {
 		const elapsed = realNow - start;
@@ -110,6 +149,7 @@ async function readScene($: $) {
 			github: demoGithubAt(elapsed),
 			now: demoClock(elapsed),
 			offset: demoClock(elapsed) - realNow,
+			readOnly: true,
 		};
 	}
 	return {
@@ -118,7 +158,140 @@ async function readScene($: $) {
 		github: await read($, github),
 		now: realNow,
 		offset: 0,
+		readOnly: false,
+		state: await read($, teamModel),
 	};
+}
+
+function sceneModel(
+	snapshot: Awaited<ReturnType<typeof readScene>>,
+	options: Parameters<typeof buildModel>[2] = {},
+) {
+	return "state" in snapshot && snapshot.state
+		? modelOf(snapshot.state, snapshot.now, options)
+		: buildModel(snapshot.events, snapshot.now, options);
+}
+
+async function openDecision($: $, from?: string, at?: number) {
+	const snapshot = await readScene($);
+	const ask = sceneModel(snapshot).asks.find(
+		(a) =>
+			a.open &&
+			(from === undefined || a.from === from) &&
+			(at === undefined || a.at === at),
+	);
+	if (!ask) {
+		$.ui.toast("No open decisions.");
+		return;
+	}
+	const member = Object.values(snapshot.members).find(
+		(m) => m.name === ask.from,
+	);
+	const previous = await read($, decision);
+	await update($, decision, () => ({
+		from: ask.from,
+		at: ask.at,
+		text: ask.text,
+		issues: ask.issues,
+		agentId: ask.agentId ?? member?.id,
+	}));
+	if (previous?.from !== ask.from || previous.at !== ask.at) {
+		await update($, decisionDraft, () => "");
+		await update($, decisionStatus, () => "");
+	}
+	return $.ui.open({
+		id: ANSWER,
+		title: `Answer ${ask.from}`,
+		columns: 72,
+		rows: 18,
+		focus: true,
+	});
+}
+
+async function submitDecision($: $, text: string) {
+	const selected = await read($, decision);
+	if (!selected) return;
+	const key = `${selected.from}:${selected.at}`;
+	if (sendingAnswers.has(key)) return;
+	sendingAnswers.add(key);
+	const status = async (message: string) => {
+		const current = await read($, decision);
+		if (current?.from === selected.from && current.at === selected.at)
+			await update($, decisionStatus, () => message);
+	};
+	try {
+		if (deliveredAnswers.has(key)) {
+			await status("This answer has already been sent.");
+			return;
+		}
+		const snapshot = await readScene($);
+		if (snapshot.readOnly) {
+			await status(
+				"Demo and replay are read-only. Return to /bullpen live to answer a real agent.",
+			);
+			return;
+		}
+		if (!text.trim()) {
+			await status("Enter an answer before sending.");
+			return;
+		}
+		await collector?.drain();
+		const current = await readScene($);
+		const ask = sceneModel(current).asks.find(
+			(a) => a.open && a.from === selected.from && a.at === selected.at,
+		);
+		if (!ask) {
+			await status(
+				"This decision has already been answered or is no longer available.",
+			);
+			return;
+		}
+		const recipient = Object.values(current.members).find(
+			(m) => m.name === selected.from && m.id === selected.agentId,
+		);
+		if (
+			!recipient ||
+			recipient.id === LEAD ||
+			recipient.id.startsWith(DEMO_PREFIX)
+		) {
+			await status(
+				"The original asking agent is unavailable. Open its transcript to follow up.",
+			);
+			return;
+		}
+		await status("Sending answer…");
+		const result = await $.session.send({
+			to: { agentId: recipient.id },
+			text: `Human answer to your request: ${selected.text}\n\n${text.trim()}`,
+		});
+		if (!result.isDelivered) {
+			await status(
+				`Not delivered: ${result.reason}. Your draft is kept; you can retry.`,
+			);
+			return;
+		}
+		deliveredAnswers.add(key);
+		collectorOf($).push({
+			op: "event",
+			at: await now($),
+			kind: "answer",
+			detail: text.trim(),
+			target: selected.from,
+			replyTo: selected.at,
+			text: selected.issues.map((n) => `#${n}`).join(" "),
+			attribute: false,
+		});
+		await collectorOf($).drain();
+		await status(
+			"Answer sent to the agent's inbox. Delivery does not confirm it has been read.",
+		);
+	} catch (error) {
+		await status(
+			`Not delivered: ${String(error)}. Your draft is kept; you can retry.`,
+		);
+	} finally {
+		sendingAnswers.delete(key);
+	}
 }
 let animationTimer: Timer | undefined;
 let lastBlit = -Infinity;
@@ -173,6 +346,7 @@ async function tickAnimation($: $) {
 }
 let pollLoop: PollLoop | undefined;
 let pollGeneration = 0;
+let prPollCursor = 0;
 let viewTimer: Timer | undefined;
 /** When state last gained events, and when viewTime last ticked. */
 let lastActivityAt = 0;
@@ -183,7 +357,17 @@ const IDLE_TICK_MS = 15_000;
  * fading, otherwise often enough for minute-step ages. */
 async function tick($: $) {
 	const at = await now($);
-	if (at - lastActivityAt >= PULSE_MS && at - lastTickAt < IDLE_TICK_MS) return;
+	const recorded = await read($, replay);
+	const playing =
+		recorded &&
+		at - recorded.startedAt <
+			(recorded.events.at(-1)?.at ?? 0) - (recorded.events[0]?.at ?? 0);
+	if (
+		!playing &&
+		at - lastActivityAt >= PULSE_MS &&
+		at - lastTickAt < IDLE_TICK_MS
+	)
+		return;
 	lastTickAt = at;
 	await update($, viewTime, () => at);
 }
@@ -221,6 +405,18 @@ function renderLines(
 						{seg.text}
 					</Text>
 				);
+				if (seg.ask) {
+					const ask = seg.ask;
+					return (
+						<Button
+							key={`ask-${ask.at}-${ask.from}`}
+							plain
+							onPress={() => void openDecision($, ask.from, ask.at)}
+						>
+							{text}
+						</Button>
+					);
+				}
 				if (seg.story !== undefined) {
 					const issue = seg.story;
 					return (
@@ -252,7 +448,6 @@ function renderLines(
 }
 
 /** The team name once a teammate's address shows it; until then the session id. */
-let team: string | undefined;
 /** The journal's current chunk as last written, so appends needn't re-read it. */
 let journal: { dir: string; current: Chunk } | undefined;
 
@@ -273,6 +468,11 @@ async function flushState($: $, ops: CollectOp[]) {
 		return out.members;
 	});
 	if (added.length === 0) return;
+	const prior =
+		(await read($, teamModel)) ?? reduceEvents(await read($, events));
+	await update($, teamModel, () =>
+		added.reduce((state, event) => applyEvent(state, event), prior),
+	);
 	lastActivityAt = await now($);
 	await update($, events, (list) =>
 		[...(list ?? []), ...added].slice(-STATE_EVENTS),
@@ -336,7 +536,7 @@ async function writeJournal($: $, added: BullpenEvent[]) {
 	const home = (await $.env.get("HOME")) ?? (await $.env.get("USERPROFILE"));
 	if (!home) return;
 	const writer = await $.session.id();
-	const dir = journalDir(home, team ?? writer);
+	const dir = journalDir(home, writer);
 	if (journal?.dir !== dir || journal.current.writer !== writer) {
 		const current = await loadChunk($, dir, writer);
 		if (!current) return;
@@ -381,6 +581,7 @@ async function record(
 		text?: string;
 		attribute?: boolean;
 		confirmedCloses?: number[];
+		outcome?: "ok" | "error";
 		agentType?: string;
 	} = {},
 ) {
@@ -393,6 +594,7 @@ async function record(
 		target: extra.target,
 		text: extra.text,
 		confirmedCloses: extra.confirmedCloses,
+		outcome: extra.outcome,
 		agentType: extra.agentType,
 		attribute: extra.attribute ?? true,
 	});
@@ -400,19 +602,18 @@ async function record(
 
 async function reconcile($: $) {
 	const listed = await $.agent.list();
-	team ??= listed.map((a) => teamOf(a.teammateId)).find((t) => t);
 	collectorOf($).push({ op: "reconcile", at: await now($), listed });
 }
 
 /** Polls `gh` for the issue list and adds a burndown point to `$.store`. */
 async function pollGithub($: $, generation = pollGeneration) {
-	if ((await read($, demoStart)) >= 0) return;
+	if ((await read($, demoStart)) >= 0 || (await read($, replay))) return;
 	const prev = await read($, github);
 	const at = await now($);
 	const result = await $.process
 		.run(issueListArgv(prev.filter))
 		.then(readIssueList, runFailure);
-	let { repo, host, burndown, workspace } = prev;
+	let { repo, host, burndown, workspace, prs } = prev;
 	if (!workspace)
 		workspace = (await $.session.cwd().catch(() => ""))
 			.split(/[\\/]/)
@@ -439,6 +640,39 @@ async function pollGithub($: $, generation = pollGeneration) {
 			burndown = addSnapshot(parseBurndown(await $.store.get(key)), point);
 			await $.store.set(key, burndown);
 		}
+		if (repo && host) {
+			const repoName = repo,
+				hostname = host;
+			const tracked = [
+				...new Set(
+					sceneModel(await readScene($)).ship.flatMap((p) =>
+						p.pr === undefined ? [] : [p.pr],
+					),
+				),
+			];
+			const batch = Array.from(
+				{ length: Math.min(4, tracked.length) },
+				(_, i) => tracked[(prPollCursor + i) % tracked.length],
+			).filter((pr): pr is number => pr !== undefined);
+			prPollCursor = tracked.length
+				? (prPollCursor + batch.length) % tracked.length
+				: 0;
+			const updated = new Map((prs ?? []).map((p) => [p.number, p]));
+			const results = await Promise.allSettled(
+				batch.map((pr) =>
+					$.process.run(prArgv(repoName, hostname, pr), { timeoutMs: 5000 }),
+				),
+			);
+			for (const [i, result] of results.entries()) {
+				const pr =
+					result.status === "fulfilled" ? readPr(result.value, at) : undefined;
+				if (pr && pr.number === batch[i]) {
+					updated.delete(pr.number);
+					updated.set(pr.number, pr);
+				}
+			}
+			prs = [...updated.values()].slice(-40);
+		}
 	}
 	if (generation !== pollGeneration) return;
 	await update($, github, (cur) => ({
@@ -449,12 +683,14 @@ async function pollGithub($: $, generation = pollGeneration) {
 		workspace,
 		burndown,
 		checkedAt: at,
+		prs,
 	}));
 	return result.status === "ok";
 }
 
 /** Demo is a read-only projection; live observers keep recording normally. */
 async function playDemo($: $) {
+	await update($, replay, () => null);
 	for (const timer of demoTimers) timer.cancel();
 	demoTimers = [];
 	const start = await now($);
@@ -532,10 +768,10 @@ export function register(on: On) {
 	});
 	on("session.start", async ($, e, next) => {
 		// A new session in the same process starts its own journal.
-		team = undefined;
 		journal = undefined;
 		journalWarned = false;
 		await update($, demoStart, () => -1);
+		await update($, replay, () => null);
 
 		await loadProfile($);
 		viewTimer?.cancel();
@@ -546,7 +782,8 @@ export function register(on: On) {
 		await $.command.register({
 			name: "bullpen",
 			description: "Open the Bullpen: a live view of your agent team",
-			argumentHint: "[demo|live|reload|story #N|focus floor|huddles|talk|all]",
+			argumentHint:
+				"[demo|live|replay PATH|answer|reload|story #N|focus shipping|talk|all]",
 		});
 
 		$.clock.every(
@@ -578,10 +815,56 @@ export function register(on: On) {
 			for (const timer of demoTimers) timer.cancel();
 			demoTimers = [];
 			await update($, demoStart, () => -1);
+			await update($, replay, () => null);
 			void pollGithub($)
 				.then((ok) => ok && pollLoop?.recover())
 				.catch(() => {});
 			return { text: "Bullpen: showing the live team." };
+		}
+		if (e.args.trim() === "answer") {
+			await openDecision($);
+			return { text: "Bullpen: opening the oldest pending decision." };
+		}
+		if (e.args.trim().startsWith("replay")) {
+			const path = e.args
+				.trim()
+				.slice(6)
+				.trim()
+				.replace(/^(["'])(.*)\1$/, "$2");
+			if (!path)
+				return { text: "Use /bullpen replay PATH (a journal directory)." };
+			try {
+				const home =
+					(await $.env.get("HOME")) ?? (await $.env.get("USERPROFILE"));
+				const dir =
+					path.startsWith("~/") && home ? join(home, path.slice(2)) : path;
+				const files = (await $.fs.list(dir)).filter((f) =>
+					/^events-.*\.jsonl$/.test(f.name),
+				);
+				const parsed = readChunks(
+					await Promise.all(files.map((f) => $.fs.read(join(dir, f.name)))),
+				);
+				if (!parsed.events.length)
+					return {
+						text: "Bullpen: no readable journal events in that directory.",
+					};
+				for (const timer of demoTimers) timer.cancel();
+				demoTimers = [];
+				await update($, demoStart, () => -1);
+				await update($, replay, () => ({
+					events: parsed.events,
+					startedAt: 0,
+					path: dir,
+				}));
+				const start = await now($);
+				await update($, replay, (r) => (r ? { ...r, startedAt: start } : r));
+				await openPane($);
+				return {
+					text: `Bullpen: replaying ${parsed.events.length} recorded events${parsed.skipped ? ` (${parsed.skipped} unreadable lines skipped)` : ""}. /bullpen live returns to your team.`,
+				};
+			} catch (error) {
+				return { text: `Bullpen: can't read that journal (${String(error)}).` };
+			}
 		}
 		if (e.args.trim().startsWith("story")) {
 			const match = /^story\s+#?([1-9]\d{0,6})$/.exec(e.args.trim());
@@ -591,14 +874,15 @@ export function register(on: On) {
 			return { text: `Bullpen story #${issue} opened.` };
 		}
 		if (e.args.trim().startsWith("focus ")) {
-			const region = e.args.trim().slice(6);
-			if (
-				region !== "floor" &&
-				region !== "huddles" &&
-				region !== "talk" &&
-				region !== "all"
-			)
-				return { text: "Use /bullpen focus floor|huddles|talk|all" };
+			const requested = e.args.trim().slice(6);
+			const region =
+				requested === "huddles"
+					? "shipping"
+					: requested === "floor"
+						? "all"
+						: requested;
+			if (region !== "shipping" && region !== "talk" && region !== "all")
+				return { text: "Use /bullpen focus shipping|talk|all" };
 			await focusRegion($, region === "all" ? "" : region);
 			await openPane($);
 			return { text: `Bullpen focus: ${region}.` };
@@ -624,7 +908,6 @@ export function register(on: On) {
 		void producers
 			.track(
 				result.then(async (spawned) => {
-					team ??= teamOf(spawned.teammateId);
 					const { agentId } = spawned;
 					if (!agentId) return;
 					const brief = `${e.description} ${e.prompt}`;
@@ -697,6 +980,17 @@ export function register(on: On) {
 			.catch(() => {});
 		const result = await next(e);
 		try {
+			const outcome = e.tool === "Bash" ? toolOutcome(result) : undefined;
+			if (outcome)
+				void producers
+					.track(
+						record($, "tool", e.agentId, describeTool(String(e.tool), args), {
+							target: String(e.tool),
+							text: toolText(args),
+							outcome,
+						}),
+					)
+					.catch(() => {});
 			const closed =
 				e.tool === "Bash"
 					? confirmedToolCloses(String(args.command ?? ""), result)
@@ -707,6 +1001,7 @@ export function register(on: On) {
 						record($, "tool", e.agentId, `closed #${closed[0]}`, {
 							target: "Bash",
 							confirmedCloses: closed,
+							text: closed.map((n) => `#${n}`).join(" "),
 							attribute: false,
 						}),
 					)
@@ -718,15 +1013,23 @@ export function register(on: On) {
 	});
 
 	on("session.send", async ($, e, next) => {
+		const result = next(e);
+		// Human replies are recorded once, with their exact ask, after delivery.
+		if (e.origin.kind === "plugin" && e.origin.name === "bullpen")
+			return result;
 		void producers
 			.track(
-				record($, "message", e.agentId, oneLine(e.text, 80), {
-					target: e.to,
-					text: e.text,
-				}),
+				result.then((sent) =>
+					sent.isDelivered
+						? record($, "message", e.agentId, oneLine(e.text, 2000), {
+								target: e.to,
+								text: e.text,
+							})
+						: undefined,
+				),
 			)
 			.catch(() => {});
-		return next(e);
+		return result;
 	});
 
 	on("ui.render", { component: "Pane", requestId: PANE }, async ($, e) => {
@@ -740,7 +1043,8 @@ export function register(on: On) {
 				? demoProfile(await read($, profile))
 				: withMemberColors(await read($, profile), list);
 		const at = snapshot.now;
-		const model = buildModel(log, at, {
+		const model = sceneModel(snapshot, {
+			github: source,
 			present: Object.fromEntries(list.map((m) => [m.name, m.status])),
 			agentTypes: Object.fromEntries(
 				list.flatMap((m) => (m.agentType ? [[m.name, m.agentType]] : [])),
@@ -751,6 +1055,11 @@ export function register(on: On) {
 		await read($, viewTime);
 		const focused = await read($, focus);
 		const view = paneView(model, list, columns, e.props.scroll.bodyRows, at, {
+			mode: (await read($, replay))
+				? "replay"
+				: snapshot.readOnly
+					? "demo"
+					: "live",
 			github: source,
 			profile: config,
 			focus: focused || undefined,
@@ -833,20 +1142,20 @@ export function register(on: On) {
 				{renderLines(Text, view.footer.slice(0, -1), { Box, Button }, $)}
 				<Box>
 					<Button
-						key="floor-focus"
+						key="answer"
 						plain
-						hotkey="f"
-						onPress={() => void focusRegion($, "floor")}
+						hotkey="a"
+						onPress={() => void openDecision($)}
 					>
-						{config.style === "operations" ? "topology" : "team"}{" "}
+						a answer ·{" "}
 					</Button>
 					<Button
-						key="huddles-focus"
+						key="shipping-focus"
 						plain
-						hotkey="h"
-						onPress={() => void focusRegion($, "huddles")}
+						hotkey="s"
+						onPress={() => void focusRegion($, "shipping")}
 					>
-						{config.style === "operations" ? "workstreams" : "huddles"}{" "}
+						s shipping ·{" "}
 					</Button>
 					<Button
 						key="talk-focus"
@@ -854,17 +1163,75 @@ export function register(on: On) {
 						hotkey="t"
 						onPress={() => void focusRegion($, "talk")}
 					>
-						{config.style === "operations" ? "events" : "talk"}{" "}
-					</Button>
-					<Button
-						key="restore"
-						plain
-						hotkey="r"
-						onPress={() => void focusRegion($, "")}
-					>
-						restore
+						t talk (toggle)
 					</Button>
 				</Box>
+			</Box>
+		);
+	});
+
+	on("ui.render", { component: "Pane", requestId: ANSWER }, async ($, e) => {
+		if (e.surface === "mobile") {
+			const { Text } = $.ui.resolve(e);
+			return (
+				<Text>
+					Answer this decision in the terminal or desktop Bullpen pane.
+				</Text>
+			);
+		}
+		const { Box, Text, Button, Input } = $.ui.resolve(e);
+		const selected = await read($, decision);
+		if (!selected) return <Text>No decision selected.</Text>;
+		const draft = await read($, decisionDraft);
+		const status = await read($, decisionStatus);
+		const config = await read($, profile);
+		const columns = Math.max(20, e.props.bodyColumns);
+		const safe = (s: string) =>
+			glyphLines([[{ text: s }]], config.glyphs)[0]?.[0]?.text ?? "";
+		return (
+			<Box flexDirection="column">
+				<Text bold>
+					{safe(
+						`${selected.from} needs your input${selected.issues.length ? ` · ${selected.issues.map((n) => `#${n}`).join(" ")}` : ""}`,
+					)}
+				</Text>
+				{renderLines(
+					Text,
+					wrapText(selected.text, columns),
+					{ Box, Button },
+					$,
+				)}
+				<Input
+					key="human-answer"
+					label="Your answer"
+					placeholder="Give the agent your decision or direction"
+					rows={3}
+					value={draft}
+					autoFocus
+					onInput={(value) => {
+						void update($, decisionDraft, () => value);
+					}}
+					onSubmit={async (value) => {
+						await update($, decisionDraft, () => value);
+						await submitDecision($, value);
+					}}
+				/>
+				<Button
+					key="send-answer"
+					onPress={async () => {
+						await submitDecision($, await read($, decisionDraft));
+					}}
+				>
+					Send answer
+				</Button>
+				{renderLines(Text, wrapText(safe(status), columns), { Box, Button }, $)}
+				<Button
+					key="answer-back"
+					plain
+					onPress={() => void $.ui.close({ id: ANSWER })}
+				>
+					Back to Bullpen
+				</Button>
 			</Box>
 		);
 	});
@@ -932,8 +1299,12 @@ export function register(on: On) {
 		);
 		if (e.props.hasSurvey || list.length === 0) return next(e);
 		const { Box, Text, Button } = $.ui.resolve(e);
-		const at = snapshot.now;
-		const model = buildModel(snapshot.events, at);
+		const model = sceneModel(snapshot, {
+			github: snapshot.github,
+			present: Object.fromEntries(
+				Object.values(snapshot.members).map((m) => [m.name, m.status]),
+			),
+		});
 		const line = band(
 			model,
 			snapshot.github,

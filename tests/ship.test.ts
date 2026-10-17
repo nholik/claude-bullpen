@@ -17,6 +17,7 @@ const bash = (who: string, detail: string): BullpenEvent => ({
 	version: 1,
 	at: ++clock,
 	kind: "tool",
+	outcome: "ok",
 	who,
 	target: "Bash",
 	detail,

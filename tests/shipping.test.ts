@@ -81,9 +81,9 @@ test("merges and closes count once toward shipped", () => {
 	expect(buildModel(events, clock).shipped).toBe(2);
 });
 
-test("needs-you is one calm line, or the first open ask in at most two", () => {
+test("needs-you collapses when empty and exposes separate, clickable decisions", () => {
 	const quiet = buildModel([], 0);
-	expect(needsYou(quiet, 72).map(flat)).toEqual([" ✓ nothing needs you"]);
+	expect(needsYou(quiet, 72)).toEqual([]);
 	const model = buildModel(
 		[
 			msg(
@@ -97,7 +97,9 @@ test("needs-you is one calm line, or the first open ask in at most two", () => {
 	);
 	const lines = needsYou(model, 60);
 	expect(lines.length).toBeLessThanOrEqual(2);
-	expect(flat(lines[0] ?? [])).toContain("NEEDS YOU (+1 more) · gate");
+	expect(flat(lines[0] ?? [])).toContain("NEEDS YOU · gate");
+	expect(lines[0]?.[0]?.ask?.from).toBe("gate");
+	expect(lines[1]?.[0]?.ask?.from).toBe("kit");
 	for (const line of lines) expect(width(line)).toBeLessThanOrEqual(60);
 });
 

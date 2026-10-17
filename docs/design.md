@@ -16,8 +16,10 @@ A glance answers these, in this order:
 2. **Who is stuck?** A teammate who is spinning, failing, idle with work open, or waiting too long.
 3. **What is shipping?** Where each issue is on the way to done: issue, PR, review, merge.
 
-Everything else (conversation, morale, burndown) is texture. It may be on screen, but
-it never competes with the three answers.
+The visual pulse matters too: recent communication highlights both participants,
+completed turns briefly brighten, and a flow row shows review pressure, idle
+capacity, and net backlog growth. Conversation and the office atmosphere make
+coordination visible without treating useful questions or reviews as failures.
 
 ## Principles
 
@@ -30,8 +32,10 @@ it never competes with the three answers.
 - **Cheap to leave open.** Nothing animates while nothing changes. Redraws stay at 10 Hz or less and buffers are capped.
 - **Portable.** GNOME Terminal (VTE) and Windows Terminal. Width-1 glyphs only, no
   emoji, 24-bit color, box drawing. `glyphs: "ascii"` must still read well.
-- **Glass, not controls.** Bullpen observes. Acting on something (answering an ask,
-  opening a transcript) hands off to Claude Code's own UI.
+- **Observe, with a human reply path.** Bullpen observes the team and reuses Claude's
+  transcript UI. A blocker opens a small reply form; submitting sends the human's
+  direction to the original asking agent through `session.send`. Failed delivery
+  preserves the draft. Demo and replay never send messages.
 
 ## Information hierarchy
 
@@ -61,7 +65,11 @@ If two things fight for a row, the one higher in this table wins.
    failing, stuck, running, idle, gone.
 5. **Hallway.** Recent teammate-to-teammate messages. At 110 and up it's a sidebar; below
    that it takes whatever rows are left.
-6. **Footer.** Burndown sparkline and key hints, one row. Say "no GitHub data" once
+6. **Out of office.** After 30 minutes, idle teammates without an open ask or a
+   stalled assignment fold into a colored, transcript-linked `out:` line. New
+   activity brings the card back. Departed teammates linger as clocked out for
+   two minutes before disappearing.
+7. **Footer.** Burndown sparkline and key hints, one row. Say "no GitHub data" once
    per screen, not once per region.
 
 ### Needs-you queue
@@ -71,7 +79,9 @@ If two things fight for a row, the one higher in this table wins.
  ! ada  → you  #208 can I change the login redirect contract?    1m  [t]
 ```
 
-An ask is open until the lead answers it, or a later message resolves it. The age
+An ask is open until the lead answers it or a human reply is successfully queued.
+The human form resolves only the selected request. Other questions from the same
+agent stay open. Delivery is not an acknowledgement; the UI says so explicitly. The age
 turns from amber to coral at 10 minutes. The pulse runs for 10 s when an ask arrives,
 then holds steady: a pulse that never stops is just noise.
 
@@ -138,7 +148,7 @@ appears with its word: color and face are never the only signal.
 | running | `(o.o)` | heads-down | text | normal | none |
 | merged | `(^_^)b` | merged | mint | normal | one-shot, ≤2 s |
 | idle | `(-_-)` | snoozing | muted | dimmed | z's drift |
-| away | `(-_-)` | away | muted | dimmed | z's drift |
+| away | `(-_-)` | out of office | muted | folded into the out line | none |
 | gone | `(u_u)` | clocked out | edge | dimmed | none |
 
 Every state has its own face except idle/away (same face, different word). Precedence runs
@@ -280,7 +290,7 @@ The layers stay, so the mod can be reshaped later:
 1. **Collector** (`src/collect.ts`). Hooks normalize engine events into journal events.
    Observers never block, deny or rewrite. They always `return next(e)`.
 2. **Journal** (`src/journal.ts`). A ring buffer in `$.state`, appended under
-   `~/.claude/bullpen/<session>/` for replay, tests and the demo.
+   `~/.claude/bullpen/<session-id>/` for replay, tests and the demo.
 3. **Model** (`src/model/*.ts`). Pure reducers: teammates, huddles, hallway, asks, ship
    path, morale. All of them unit-tested.
 4. **Sources** (`src/github.ts`). Read-only `gh` polling for issue state and burndown.

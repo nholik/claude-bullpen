@@ -1,6 +1,6 @@
 // Pure helpers that turn raw engine event fields into journal-friendly pieces.
 
-import { withoutCd } from "./command";
+import { shellSegments, withoutCd } from "./command";
 import { ghTargets } from "./model/detect";
 import { cells } from "./width";
 
@@ -85,7 +85,13 @@ export function argText(args: Record<string, unknown>): string {
 export function toolText(args: Record<string, unknown>): string {
 	const command = typeof args.command === "string" ? args.command : "";
 	const targets = ghTargets(command).map((n) => `#${n}`);
-	return [argText(args), ...targets].join(" ");
+	const scanned = command
+		? shellSegments(command)
+				.filter((part) => !/^(?:echo|printf)\b/.test(part))
+				.map((part) => part.replace(/^(gh\s+pr\s+\w+\s+)#(\d+)/, "$1$2"))
+				.join(" ")
+		: argText(args);
+	return [scanned, ...targets].join(" ");
 }
 
 /**

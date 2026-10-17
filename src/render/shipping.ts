@@ -4,8 +4,8 @@
 import type { GithubSource, Profile } from "../../types";
 import type { BullpenModel, ShipPath } from "../model";
 import { colorFor, colorIndex } from "../profile";
-import { fit, type Line, textLine, width, wrapText } from "./lines";
-import { section, text } from "./operations";
+import { fit, type Line, textLine, width } from "./lines";
+import { age, section, text } from "./operations";
 import { STUDIO } from "./studio";
 
 /** A merged issue stays in the list this long, then only the count keeps it. */
@@ -50,7 +50,12 @@ export function shippingRows(model: BullpenModel, now: number): ShipRow[] {
 		});
 	}
 	for (const huddle of model.huddles) {
-		if (rows.has(huddle.issue) || model.closed.includes(huddle.issue)) continue;
+		if (
+			rows.has(huddle.issue) ||
+			model.closed.includes(huddle.issue) ||
+			model.ship.some((p) => p.issue === huddle.issue && done(p.stage))
+		)
+			continue;
 		rows.set(huddle.issue, {
 			issue: huddle.issue,
 			stage: "working",
@@ -184,14 +189,28 @@ export function shippingSection(
 }
 
 /** The lead's open asks, first under the header: at most two lines, or one calm one. */
-export function needsYou(model: BullpenModel, columns: number): Line[] {
-	const asks = model.asks.filter((a) => a.open);
-	const ask = asks[0];
-	if (!ask) return [text(" ✓ nothing needs you", STUDIO.muted)];
-	const more = asks.length > 1 ? ` (+${asks.length - 1} more)` : "";
-	return wrapText(` NEEDS YOU${more} · ${ask.from}: "${ask.text}"`, columns)
-		.slice(0, 2)
-		.map((line) =>
-			line.map((seg) => ({ ...seg, fg: STUDIO.amber, bg: STUDIO.panel })),
+export function needsYou(
+	model: BullpenModel,
+	columns: number,
+	now = 0,
+): Line[] {
+	const asks = model.asks.filter((a) => a.open).sort((a, b) => a.at - b.at);
+	const lines: Line[] = asks.slice(0, 3).map((ask) =>
+		fit(
+			[
+				{
+					text: ` ! NEEDS YOU · ${ask.from} · ${age(now, ask.at)} · ${ask.text}  [answer]`,
+					fg: now - ask.at >= 600_000 ? STUDIO.coral : STUDIO.amber,
+					bg: STUDIO.panel,
+					ask: { from: ask.from, at: ask.at },
+				},
+			],
+			columns,
+		),
+	);
+	if (asks.length > 3)
+		lines.push(
+			textLine(` +${asks.length - 3} more decisions · a answers`, columns),
 		);
+	return lines;
 }

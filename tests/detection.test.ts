@@ -127,6 +127,8 @@ test("a spawn brief assigns one issue, ignoring quoted examples and round lists"
 		['Quote only: "Can confirm #12 is closed"', undefined],
 		["Issue #12 (see #12) is yours", 12],
 		["No refs at all", undefined],
+		["Do not work on #12", undefined],
+		["Do not work on #12. Work on #14.", 14],
 	] as const)
 		expect(briefIssue(brief)).toBe(expected);
 });
@@ -140,7 +142,12 @@ test("gh issue and pr commands name the issue they act on", () => {
 		["gh pr review 62 && gh issue close 46", [46]],
 		["gh issue list --limit 5", []],
 		["echo gh issue view 7x", []],
+		['echo "gh issue view 7"', []],
+		['echo "example; gh issue close 8"', []],
 	] as const)
 		expect(ghTargets(command)).toEqual(expected);
 	expect(issueRefs(toolText({ command: "gh issue view 59" }))).toEqual([59]);
+	expect(
+		issueRefs(toolText({ command: "gh pr comment #62 --body hi" })),
+	).toEqual([]);
 });

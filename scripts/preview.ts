@@ -37,6 +37,7 @@ const { drawFloor } = await import("../src/floor");
 const { storyFor, storyLines } = await import("../src/render/story");
 const { paneView } = await import("../src/render/pane");
 const { readJournal, STATE_EVENTS } = await import("../src/journal");
+const { replayAt } = await import("../src/replay");
 
 // A render hang must not pin a CPU: a worker thread watches the frame start
 // time and kills the process if one frame runs past the limit.
@@ -141,15 +142,9 @@ function readTeam(dir: string): Replay {
 	events.sort((a, b) => a.at - b.at);
 	const kept = events.slice(-STATE_EVENTS);
 	const last = kept.at(-1)?.at ?? 0;
-	const lastSeen = new Map<string, number>();
-	for (const e of kept) lastSeen.set(e.who, e.at);
-	const members = [...lastSeen].map(([name, active], color) => ({
-		id: kept.find((e) => e.who === name)?.agentId ?? name,
-		name,
-		status: last - active < 60_000 ? ("running" as const) : ("idle" as const),
-		color,
-		lastActiveAt: active,
-	}));
+	const members = Object.values(
+		replayAt(kept, last - (kept[0]?.at ?? last)).members,
+	);
 	return { events: kept, members };
 }
 const team = journalDir ? readTeam(resolve(journalDir)) : undefined;
@@ -160,7 +155,12 @@ function frameAt(elapsed: number): Frame {
 		return {
 			now,
 			replay: team,
-			source: { repo: "", filter: "", burndown: [], checkedAt: now },
+			source: {
+				workspace: "recorded session",
+				filter: "",
+				burndown: [],
+				checkedAt: now,
+			},
 		};
 	}
 	const replay = demoAt(elapsed);
@@ -175,16 +175,14 @@ for (let frame = 0; frame < frames; frame++) {
 	Atomics.store(frameClock, 0, Date.now() & 0x7fffffff);
 	const { now, replay, source } = frameAt(at + frame * 100);
 	const members = replay.members;
-	const model = buildModel(
-		replay.events,
-		now,
-		team
-			? { present: Object.fromEntries(members.map((m) => [m.name, m.status])) }
-			: undefined,
-	);
+	const model = buildModel(replay.events, now, {
+		present: Object.fromEntries(members.map((m) => [m.name, m.status])),
+		github: source,
+	});
 	const view = paneView(model, members, columns, rows, now, {
 		github: source,
 		profile: profile,
+		mode: team ? "replay" : "demo",
 	});
 	if (options.has("--story")) {
 		const issue = number("--story", 204, 1, 9999999);

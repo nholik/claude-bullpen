@@ -1,6 +1,7 @@
 import type { BurndownPoint, GithubSource, Profile } from "../../types";
 import { exactCounts, headerText } from "../github";
 import type { BullpenModel } from "../model";
+import { backlogTrend } from "../model/signals";
 import { colorFor, colorIndex, DEFAULT_PROFILE } from "../profile";
 import { fit, glyphLines, type Line, textLine, width, wrapText } from "./lines";
 import { moraleHint } from "./morale";
@@ -138,16 +139,17 @@ export function footer(github: GithubSource, columns: number): Line[] {
 		!first ||
 		!last ||
 		(first.open === last.open && first.closed === last.closed);
+	const trend = backlogTrend(series);
 	return [
 		fit(
 			[
 				{ text: "burndown ", fg: STUDIO.muted },
 				{
 					text: sparkline(series, Math.max(1, Math.min(24, columns - 45))),
-					fg: STUDIO.mint,
+					fg: trend && trend.delta > 0 ? STUDIO.amber : STUDIO.mint,
 				},
 				{
-					text: ` · ${last?.open ?? "—"} open · ${flat ? "no change yet" : pace(series)}`,
+					text: ` · ${last?.open ?? "—"} open · ${trend && trend.delta > 0 ? `backlog +${trend.delta} / ${trend.minutes}m` : flat ? "no change yet" : pace(series)}`,
 					fg: STUDIO.muted,
 				},
 			],
@@ -167,6 +169,10 @@ export function band(
 		{ text: "☰ bullpen" },
 		{ text: ` ${model.morale.glyph} ` },
 	];
+	const asks = model.asks.filter((a) => a.open).length;
+	if (asks) segments.push({ text: ` !${asks} `, fg: STUDIO.amber, bold: true });
+	const stuck = Object.keys(model.stuck ?? {}).length;
+	if (stuck) segments.push({ text: ` ${stuck} stalled `, fg: STUDIO.coral });
 	for (const h of model.huddles) {
 		const name = h.members[0] ?? "";
 		const running = h.members.some(
