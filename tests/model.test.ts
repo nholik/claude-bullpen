@@ -80,6 +80,10 @@ test("isKickback: saying so, or a reviewer reporting failure", async () => {
 	expect(isKickback("ran it: none of the tests fail", true)).toBe(false);
 	// A negation in another clause doesn't excuse a failure.
 	expect(isKickback("no lint errors, 3 tests failed", true)).toBe(true);
+	// Each failure is judged in its own clause.
+	expect(isKickback("0 failed, 2 failing", true)).toBe(true);
+	expect(isKickback("no failures in unit, e2e failed", true)).toBe(true);
+	expect(isKickback("not failing, nothing failed", true)).toBe(false);
 	expect(isKickback("#12 passes, approved", true)).toBe(false);
 	// An explicit pass outweighs the failures it mentions.
 	expect(isKickback("PASS: the previously failing test now passes", true)).toBe(
