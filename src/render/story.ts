@@ -108,14 +108,23 @@ function storyLinesImpl(
 				),
 			);
 		}
+	// Reserve a marker only when the complete story actually overflows.
+	if (
+		groups.length === story.events.length &&
+		groups.reduce((total, group) => total + group.length, 0) <= room
+	) {
+		lines.push(...groups.flat());
+		return lines.slice(0, Math.max(0, rows));
+	}
+	const eventRoom = Math.max(0, room - (story.events.length > 1 ? 1 : 0));
 	const selected: Line[][] = [];
 	let used = 0;
 	for (let i = groups.length - 1; i >= 0; i--) {
 		const group = groups[i] ?? [];
-		if (used + group.length > Math.max(0, room - 1)) {
-			if (selected.length === 0 && room > 1) {
+		if (used + group.length > eventRoom) {
+			if (selected.length === 0 && eventRoom > 0) {
 				selected.unshift([
-					...group.slice(0, Math.max(0, room - 2)),
+					...group.slice(0, eventRoom - 1),
 					textLine("... more lines", columns),
 				]);
 			}
