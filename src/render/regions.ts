@@ -1,4 +1,6 @@
 import type { GithubSource, Profile } from "../../types";
+import { glow } from "../anim";
+import { mix } from "../color";
 import { type BullpenModel, isHallwayLive } from "../model";
 import { colorFor, colorIndex } from "../profile";
 import { fit, type Line, textLine, width } from "./lines";
@@ -45,6 +47,9 @@ export function huddles(
 				{
 					text: `╭ #${h.issue}${title ? ` ${title}` : ""} · ${h.members.length} · ${age}m${h.kickbacks ? ` ↺${h.kickbacks}` : ""} ${activity}${stalled ? " stalled" : ""}`,
 					dim: stalled,
+					fg: profile.animations
+						? mix(0x555555, 0xd8e9ff, glow(now, h.lastActiveAt))
+						: 0x777777,
 				},
 			],
 			Math.max(0, columns - 1),
@@ -54,6 +59,9 @@ export function huddles(
 			{
 				text: `${"─".repeat(Math.max(0, columns - width(heading) - 1))}╮`,
 				dim: stalled,
+				fg: profile.animations
+					? mix(0x555555, 0xd8e9ff, glow(now, h.lastActiveAt))
+					: 0x777777,
 			},
 		]);
 		const members: Line = [{ text: "│ " }];

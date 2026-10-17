@@ -50,11 +50,12 @@ import {
 	toLine,
 } from "../src/journal";
 import { buildModel } from "../src/model";
+import { createMotion, motionFor } from "../src/motion";
 import { DEFAULT_PROFILE, parseProfile } from "../src/profile";
 import { band } from "../src/render/header";
 import type { Line } from "../src/render/lines";
 import { type Focus, paneView } from "../src/render/pane";
-import type { BullpenEventKind } from "../types";
+import type { BullpenEventKind, Member, Profile } from "../types";
 
 const PANE = "bullpen";
 const FLOOR_KEY = "floor";
@@ -77,7 +78,51 @@ type $ = EngineInterface;
 
 /** The size the floor Raster was last drawn at, so blits match it. */
 let floorSize: { columns: number; rows: number } | undefined;
-let frame = 0;
+let animationTimer: Timer | undefined;
+let lastBlit = -Infinity;
+let scene:
+	| {
+			list: Member[];
+			config: Profile;
+			titles: Record<number, string>;
+			motion: ReturnType<typeof createMotion>;
+	  }
+	| undefined;
+function startAnimation($: $) {
+	if (animationTimer || !scene?.config.animations || !floorSize) return;
+	animationTimer = $.clock.every(66, () => {
+		void tickAnimation($).catch(() => {});
+	});
+}
+async function tickAnimation($: $) {
+	const at = await now($);
+	if (at - lastBlit < 100) return;
+	const current = scene,
+		size = floorSize;
+	if (!current || !size || !current.config.animations) {
+		animationTimer?.cancel();
+		animationTimer = undefined;
+		return;
+	}
+	lastBlit = at;
+	const { cells } = drawFloor(
+		current.list,
+		size.columns,
+		size.rows,
+		Math.floor(at / 250),
+		current.titles,
+		current.config,
+		current.motion.sample(at),
+	);
+	await $.ui.blit({ requestId: PANE, key: FLOOR_KEY, cells });
+	if (
+		!current.motion.active(at) &&
+		!current.list.some((m) => m.status === "running")
+	) {
+		animationTimer?.cancel();
+		animationTimer = undefined;
+	}
+}
 let pollTimer: Timer | undefined;
 let pollGeneration = 0;
 let viewTimer: Timer | undefined;
@@ -346,6 +391,15 @@ async function openPane($: $) {
 }
 
 export function register(on: On) {
+	on("ui.close", async (_$, e, next) => {
+		if (e.id === PANE) {
+			animationTimer?.cancel();
+			animationTimer = undefined;
+			floorSize = undefined;
+			scene = undefined;
+		}
+		return next(e);
+	});
 	on("session.start", async ($, e, next) => {
 		// A new session in the same process starts its own journal.
 		team = undefined;
@@ -371,30 +425,14 @@ export function register(on: On) {
 			() => void producers.track(reconcile($)).catch(() => {}),
 		);
 
-		// Animate only while someone is working; an idle office draws nothing new.
-		$.clock.every(250, async () => {
-			if (!floorSize) return;
-			const config = await read($, profile);
-			if (!config.animations) return;
-			const list = Object.values(await read($, members));
-			if (!list.some((m) => m.status === "running")) return;
-			frame++;
-			const { cells } = drawFloor(
-				list,
-				floorSize.columns,
-				floorSize.rows,
-				frame,
-				{},
-				config,
-			);
-			await $.ui.blit({ requestId: PANE, key: FLOOR_KEY, cells });
-		});
-
 		return next(e);
 	});
 
 	// Write out what's still batched before the session goes.
 	on("session.end", async (_$, e, next) => {
+		animationTimer?.cancel();
+		animationTimer = undefined;
+		scene = undefined;
 		viewTimer?.cancel();
 		pollTimer?.cancel();
 		pollGeneration++;
@@ -550,17 +588,28 @@ export function register(on: On) {
 		// Only the terminal draws a Raster; elsewhere the roster below stands alone.
 		let floor: RenderChildren = null;
 		floorSize = undefined;
+		scene = undefined;
 		if (e.surface === "terminal" && floorHeight > 0) {
 			const { Raster } = $.ui.resolve(e);
 			floorSize = { columns, rows: floorHeight };
+			const motion = createMotion(
+				motionFor(log, list, columns, floorHeight, at, config),
+			);
+			scene = { list, config, titles, motion };
 			const { cells } = drawFloor(
 				list,
 				columns,
 				floorHeight,
-				frame,
+				config.animations ? Math.floor(at / 250) : 0,
 				titles,
 				config,
+				motion.sample(at),
 			);
+			if (
+				config.animations &&
+				(motion.active(at) || list.some((m) => m.status === "running"))
+			)
+				startAnimation($);
 			floor = (
 				<Raster
 					key={FLOOR_KEY}
