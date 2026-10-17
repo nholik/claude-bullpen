@@ -22,7 +22,7 @@ import {
 import { hex } from "../src/color";
 import { DEMO_PREFIX, DEMO_SCRIPT, demoClock } from "../src/demo";
 import { demoAt, demoGithubAt, demoProfile } from "../src/demo-replay";
-import { argText, describeTool, issueRefs, oneLine } from "../src/events";
+import { describeTool, oneLine, toolText } from "../src/events";
 import { drawFloor } from "../src/floor";
 import {
 	addSnapshot,
@@ -55,7 +55,7 @@ import {
 	toLine,
 } from "../src/journal";
 import { type BullpenModel, buildModel } from "../src/model";
-import { confirmedToolCloses } from "../src/model/detect";
+import { briefIssue, confirmedToolCloses } from "../src/model/detect";
 import { createMotion, motionFor } from "../src/motion";
 import { DEFAULT_PROFILE, parseProfile } from "../src/profile";
 import { band } from "../src/render/header";
@@ -611,17 +611,22 @@ export function register(on: On) {
 					const { agentId } = spawned;
 					if (!agentId) return;
 					const brief = `${e.description} ${e.prompt}`;
+					const assigned = briefIssue(brief);
 					await touch($, agentId, {
 						name: e.name ?? e.description,
 						status: "running",
-						issue: issueRefs(brief)[0],
+						issue: assigned,
 					});
 					await record(
 						$,
 						"spawn",
 						e.parentAgentId,
 						`${e.isTeammate ? "teammate" : "subagent"} ${e.name ?? e.description} joined`,
-						{ target: e.name, text: brief, attribute: false },
+						{
+							target: e.name,
+							text: assigned === undefined ? "" : `#${assigned}`,
+							attribute: false,
+						},
 					);
 				}),
 			)
@@ -667,7 +672,7 @@ export function register(on: On) {
 			.track(
 				record($, "tool", e.agentId, describeTool(String(e.tool), args), {
 					target: String(e.tool),
-					text: argText(args),
+					text: toolText(args),
 				}),
 			)
 			.catch(() => {});

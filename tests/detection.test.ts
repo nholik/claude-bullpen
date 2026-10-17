@@ -1,9 +1,12 @@
 import { expect, test } from "claude-code/testing";
+import { issueRefs, toolText } from "../src/events";
 import { readJournal, toLine } from "../src/journal";
 import { buildModel } from "../src/model";
 import {
+	briefIssue,
 	closedIssues,
 	confirmedToolCloses,
+	ghTargets,
 	isKickback,
 } from "../src/model/detect";
 import type { BullpenEvent } from "../types";
@@ -107,4 +110,30 @@ test("send-back negation covers only the phrase it modifies", () => {
 		["Not green yet \u2014 kicking this back", true],
 	] as const)
 		expect(isKickback(text, false)).toBe(expected);
+});
+
+test("a spawn brief assigns one issue, ignoring quoted examples and round lists", () => {
+	for (const [brief, expected] of [
+		["You are given one issue. Your issue is #46.", 46],
+		["Implement #12 end to end. Also see #13.", 12],
+		['Own #47. Example: "Can confirm #12 is closed" must count.', 47],
+		["Heuristics. Say `closed #9` when done. Work on issue #64", 64],
+		["Review the round: #59, #44, #45, #46 and #47", undefined],
+		['Quote only: "Can confirm #12 is closed"', undefined],
+		["No refs at all", undefined],
+	] as const)
+		expect(briefIssue(brief)).toBe(expected);
+});
+
+test("gh issue and pr commands name the issue they act on", () => {
+	for (const [command, expected] of [
+		["gh issue view 59", [59]],
+		["gh issue view 59 --json title", [59]],
+		["gh pr comment #62 --body hi", [62]],
+		["gh pr review 62 && gh issue close 46", [62, 46]],
+		["gh issue list --limit 5", []],
+		["echo gh issue view 7x", []],
+	] as const)
+		expect(ghTargets(command)).toEqual(expected);
+	expect(issueRefs(toolText({ command: "gh issue view 59" }))).toEqual([59]);
 });

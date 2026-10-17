@@ -145,3 +145,37 @@ export function confirmedToolCloses(
 	const issue = Number(match[1]);
 	return issue > 0 ? [issue] : [];
 }
+
+// Quoted examples in a brief ("Can confirm #12 is closed") are not assignments.
+const QUOTED = /"[^"\n]*"|“[^”\n]*”|`[^`\n]*`|(?<!\w)'[^'\n]*'(?!\w)/g;
+const ASSIGNED =
+	/\b(?:(?:your|the|this|assigned|owned?)\s+(?:issue|task|ticket)|(?:issue|task|ticket)\s+(?:is|:)|(?:work(?:ing)?\s+on|own|owns|take|taking|fix|implement))\s*(?:is\s+)?(?:issue\s+)?#(\d{1,7})\b/i;
+
+/**
+ * The one issue a spawn brief assigns: an explicit "issue is #N" style
+ * phrase, else the only ref in its first sentence. Quoted examples are
+ * ignored, and a brief naming several issues (a reviewer's whole round)
+ * assigns none; those join huddles when they act on an issue.
+ */
+export function briefIssue(brief: string): number | undefined {
+	const text = brief.replace(QUOTED, " ");
+	const assigned = ASSIGNED.exec(text);
+	if (assigned?.[1]) return Number(assigned[1]);
+	const first = text.trim().split(/(?<=[.!?])\s+|\n/, 1)[0] ?? "";
+	const refs = [...new Set([...first.matchAll(/(?:^|[^\w&])#(\d{1,7})\b/g)])];
+	const only = refs.length === 1 ? refs[0]?.[1] : undefined;
+	return only === undefined ? undefined : Number(only);
+}
+
+const GH_TARGET =
+	/\bgh\s+(?:issue|pr)\s+(?:view|comment|edit|close|reopen|review|checkout|diff|checks|ready|merge)\s+#?(\d{1,7})\b/g;
+
+/** Numbers named by `gh issue|pr <verb> <n>` in a shell command. */
+export function ghTargets(command: string): number[] {
+	const found: number[] = [];
+	for (const m of command.matchAll(GH_TARGET)) {
+		const n = Number(m[1]);
+		if (!found.includes(n)) found.push(n);
+	}
+	return found;
+}

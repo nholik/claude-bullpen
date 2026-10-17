@@ -1,5 +1,6 @@
 // Pure helpers that turn raw engine event fields into journal-friendly pieces.
 
+import { ghTargets } from "./model/detect";
 import { cells } from "./width";
 
 const ISSUE_REF = /(?:^|[^\w&])#(\d{1,7})\b/g;
@@ -77,6 +78,13 @@ export function argText(args: Record<string, unknown>): string {
 	return Object.values(args)
 		.filter((v): v is string => typeof v === "string")
 		.join(" ");
+}
+
+/** Text scanned for issue refs: the arguments, plus `gh issue|pr <n>` targets. */
+export function toolText(args: Record<string, unknown>): string {
+	const command = typeof args.command === "string" ? args.command : "";
+	const targets = ghTargets(command).map((n) => `#${n}`);
+	return [argText(args), ...targets].join(" ");
 }
 
 /**
