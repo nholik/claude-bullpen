@@ -20,8 +20,8 @@ import {
 	type MemberPatch,
 } from "../src/collect";
 import { hex } from "../src/color";
-import { DEMO_PREFIX, DEMO_SCRIPT, type DemoStep } from "../src/demo";
-import { demoOps } from "../src/demo-replay";
+import { DEMO_PREFIX, DEMO_SCRIPT, demoClock } from "../src/demo";
+import { demoAt, demoGithubAt, demoProfile } from "../src/demo-replay";
 import { argText, describeTool, issueRefs, oneLine } from "../src/events";
 import { drawFloor } from "../src/floor";
 import {
@@ -87,6 +87,30 @@ type $ = EngineInterface;
 
 /** The size the floor Raster was last drawn at, so blits match it. */
 let floorSize: { columns: number; rows: number } | undefined;
+const demoStart = atom({ plugin: "bullpen", key: "demoStart" } as const, -1);
+let demoTimers: Timer[] = [];
+async function readScene($: $) {
+	await read($, viewTime);
+	const realNow = await now($);
+	const start = await read($, demoStart);
+	if (start >= 0) {
+		const elapsed = realNow - start;
+		const replay = demoAt(elapsed);
+		return {
+			...replay,
+			github: demoGithubAt(elapsed),
+			now: demoClock(elapsed),
+			offset: demoClock(elapsed) - realNow,
+		};
+	}
+	return {
+		members: await read($, members),
+		events: await read($, events),
+		github: await read($, github),
+		now: realNow,
+		offset: 0,
+	};
+}
 let animationTimer: Timer | undefined;
 let lastBlit = -Infinity;
 let scene:
@@ -95,6 +119,7 @@ let scene:
 			config: Profile;
 			titles: Record<number, string>;
 			morale: number;
+			offset: number;
 			motion: ReturnType<typeof createMotion>;
 	  }
 	| undefined;
@@ -115,19 +140,20 @@ async function tickAnimation($: $) {
 		return;
 	}
 	lastBlit = at;
+	const sampledAt = at + current.offset;
 	const { cells } = drawFloor(
 		current.list,
 		size.columns,
 		size.rows,
-		Math.floor(at / 250),
+		Math.floor(sampledAt / 250),
 		current.titles,
 		current.config,
-		current.motion.sample(at),
+		current.motion.sample(sampledAt),
 		current.morale,
 	);
 	await $.ui.blit({ requestId: PANE, key: FLOOR_KEY, cells });
 	if (
-		!current.motion.active(at) &&
+		!current.motion.active(sampledAt) &&
 		!current.list.some((m) => m.status === "running")
 	) {
 		animationTimer?.cancel();
@@ -346,6 +372,7 @@ async function reconcile($: $) {
 
 /** Polls `gh` for the issue list and adds a burndown point to `$.store`. */
 async function pollGithub($: $, generation = pollGeneration) {
+	if ((await read($, demoStart)) >= 0) return;
 	const prev = await read($, github);
 	const at = await now($);
 	const result = await $.process
@@ -381,22 +408,25 @@ async function pollGithub($: $, generation = pollGeneration) {
 	}));
 }
 
-/** Plays one step of the demo script through the same path real events take. */
-async function playStep($: $, step: DemoStep) {
-	for (const op of demoOps(step, await now($))) collectorOf($).push(op);
-}
-
-/** Clears earlier demo members and plays the script on the session clock. */
+/** Demo is a read-only projection; live observers keep recording normally. */
 async function playDemo($: $) {
-	collectorOf($).push({ op: "clear-demo" });
-	let at = 0;
+	for (const timer of demoTimers) timer.cancel();
+	demoTimers = [];
+	const start = await now($);
+	await update($, demoStart, () => start);
+	await update($, seenAt, () => -1);
+	let elapsed = 0;
+	const times = new Set<number>();
 	for (const step of DEMO_SCRIPT) {
-		at += step.wait;
-		$.clock.after(
-			at,
-			() => void producers.track(playStep($, step)).catch(() => {}),
-		);
+		elapsed += step.wait;
+		times.add(elapsed);
 	}
+	for (const at of times)
+		demoTimers.push(
+			$.clock.after(at, () => {
+				void update($, viewTime, () => start + at).catch(() => {});
+			}),
+		);
 }
 
 /** Reads `.claude/bullpen.json` from the project; a bad file warns once and never blocks. */
@@ -432,7 +462,7 @@ async function loadProfile($: $) {
 }
 
 async function openPane($: $) {
-	const at = await now($);
+	const at = (await readScene($)).now;
 	await update($, seenAt, () => at);
 	return $.ui.open({ id: PANE, title: "Bullpen" });
 }
@@ -452,6 +482,7 @@ export function register(on: On) {
 		team = undefined;
 		journal = undefined;
 		journalWarned = false;
+		await update($, demoStart, () => -1);
 
 		await loadProfile($);
 		viewTimer?.cancel();
@@ -464,7 +495,7 @@ export function register(on: On) {
 		await $.command.register({
 			name: "bullpen",
 			description: "Open the Bullpen: a live view of your agent team",
-			argumentHint: "[demo|reload|story #N|focus floor|huddles|talk|all]",
+			argumentHint: "[demo|live|reload|story #N|focus floor|huddles|talk|all]",
 		});
 
 		$.clock.every(
@@ -477,6 +508,8 @@ export function register(on: On) {
 
 	// Write out what's still batched before the session goes.
 	on("session.end", async (_$, e, next) => {
+		for (const timer of demoTimers) timer.cancel();
+		demoTimers = [];
 		animationTimer?.cancel();
 		animationTimer = undefined;
 		scene = undefined;
@@ -490,6 +523,13 @@ export function register(on: On) {
 	});
 
 	on("command.run", { command: "bullpen" }, async ($, e) => {
+		if (e.args.trim() === "live") {
+			for (const timer of demoTimers) timer.cancel();
+			demoTimers = [];
+			await update($, demoStart, () => -1);
+			void pollGithub($).catch(() => {});
+			return { text: "Bullpen: showing the live team." };
+		}
 		if (e.args.trim().startsWith("story")) {
 			const match = /^story\s+#?([1-9]\d{0,6})$/.exec(e.args.trim());
 			if (!match?.[1]) return { text: "Use /bullpen story #123" };
@@ -612,12 +652,15 @@ export function register(on: On) {
 
 	on("ui.render", { component: "Pane", requestId: PANE }, async ($, e) => {
 		const { Box, Text, Button } = $.ui.resolve(e);
-		const all = await read($, members);
-		const list = Object.values(all);
-		const log = await read($, events);
-		const source = await read($, github);
-		const config = await read($, profile);
-		const at = await now($);
+		const snapshot = await readScene($);
+		const list = Object.values(snapshot.members);
+		const log = snapshot.events;
+		const source = snapshot.github;
+		const config =
+			(await read($, demoStart)) >= 0
+				? demoProfile(await read($, profile))
+				: await read($, profile);
+		const at = snapshot.now;
 		const model = buildModel(log, at, {
 			present: Object.fromEntries(list.map((m) => [m.name, m.status])),
 		});
@@ -649,7 +692,14 @@ export function register(on: On) {
 			const motion = createMotion(
 				motionFor(log, list, columns, floorHeight, at, config),
 			);
-			scene = { list, config, titles, motion, morale: model.morale.score };
+			scene = {
+				list,
+				config,
+				titles,
+				motion,
+				morale: model.morale.score,
+				offset: snapshot.offset,
+			};
 			const { cells } = drawFloor(
 				list,
 				columns,
@@ -722,12 +772,17 @@ export function register(on: On) {
 	on("ui.render", { component: "Pane", requestId: STORY }, async ($, e) => {
 		const { Box, Text, Button } = $.ui.resolve(e);
 		const issue = await read($, storyIssue);
-		const story = storyFor(issue, await read($, events), await read($, github));
-		const config = await read($, profile);
+		const snapshot = await readScene($);
+		const story = storyFor(issue, snapshot.events, snapshot.github);
+		const config =
+			(await read($, demoStart)) >= 0
+				? demoProfile(await read($, profile))
+				: await read($, profile);
 		const columns = e.props.bodyColumns;
 		const names = new Set(story.events.map((ev) => ev.who));
-		const team = Object.values(await read($, members)).filter(
-			(m) => names.has(m.name) && m.id !== LEAD,
+		const team = Object.values(snapshot.members).filter(
+			(m) =>
+				names.has(m.name) && m.id !== LEAD && !m.id.startsWith(DEMO_PREFIX),
 		);
 		const links: Line = team.map((m) => ({
 			text: `${m.name} `,
@@ -763,17 +818,20 @@ export function register(on: On) {
 	});
 
 	on("ui.render", { component: "AbovePrompt" }, async ($, e, next) => {
-		const list = Object.values(await read($, members)).filter(
+		const snapshot = await readScene($);
+		const list = Object.values(snapshot.members).filter(
 			(m) => m.id !== LEAD && m.status !== "gone",
 		);
 		if (e.props.hasSurvey || list.length === 0) return next(e);
 		const { Box, Text, Button } = $.ui.resolve(e);
-		const at = await now($);
-		const model = buildModel(await read($, events), at);
+		const at = snapshot.now;
+		const model = buildModel(snapshot.events, at);
 		const line = band(
 			model,
-			await read($, github),
-			await read($, profile),
+			snapshot.github,
+			(await read($, demoStart)) >= 0
+				? demoProfile(await read($, profile))
+				: await read($, profile),
 			e.props.bodyColumns,
 			await read($, seenAt),
 		);

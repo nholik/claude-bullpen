@@ -118,6 +118,7 @@ declare module "claude-code" {
 			focus: "" | "floor" | "huddles" | "talk";
 			viewTime: number;
 			storyIssue: number;
+			demoStart: number;
 		};
 	}
 }

@@ -53,18 +53,21 @@ only what's used, add a `.d.ts` re-export beside the output, run `npm run vendor
 
 ## Looking at the UI
 
-Engine-free preview (Node 24):
+Engine-free previews (Node 24), using the same demo replay and view-models as the pane:
 
 ```sh
-node --experimental-strip-types scripts/preview.ts --cols 160 --rows 48 --at 12 --out .scratch/preview/demo.ansi
-python3 scripts/ansi2png.py .scratch/preview/demo.ansi .scratch/preview/demo.png
-node --experimental-strip-types scripts/preview.ts --at 7 --frames 12 --out .scratch/preview/walk.ansi
-npx tsc -p scripts/tsconfig.json
+node --experimental-strip-types scripts/preview.ts --cols 72 --rows 32 --at 16 --out .scratch/preview/pane.ansi
+python3 scripts/ansi2png.py .scratch/preview/pane.ansi .scratch/preview/pane.png
+node --experimental-strip-types scripts/preview.ts --cols 72 --at 55 --frames 24 --out .scratch/preview/close.ansi
+node --experimental-strip-types scripts/preview.ts --cols 72 --at 80 --story 204 --out .scratch/preview/story.ansi
 ```
 
-Omit `--out` for ANSI on stdout. Frames advance by 100 ms and get numbered filenames.
-Check 160, 110 and 80 columns. Playback and preview share `demoOps`; the preview uses
-the pure model and region view-models. It is a layout preview, not engine input validation.
+Omit `--out` for stdout. Frames advance by 100 ms and use numbered filenames.
+Sizes are **pane body** columns: check 60, 72, 80, 100, 110 and 160. The full floor
+starts at 48 columns, and regions sit side by side from 60. `npm run typecheck`
+checks both engine source and the Node preview tool. The 80-second demo explicitly
+advances its simulated clock by 21 minutes at T=25s to demonstrate hallway quiet,
+stalls and morale without making the viewer wait; `/bullpen live` restores live data.
 
 
 Look at the real UI whenever drawing code changes: run `scripts/snap.sh` (or

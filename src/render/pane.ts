@@ -35,7 +35,11 @@ export function paneView(
 				name,
 				{
 					...t,
-					agentId: members.find((m) => m.name === name)?.id ?? t.agentId,
+					agentId: (
+						members.find((m) => m.name === name)?.id ?? t.agentId
+					)?.startsWith("demo-")
+						? undefined
+						: (members.find((m) => m.name === name)?.id ?? t.agentId),
 				},
 			]),
 		),
