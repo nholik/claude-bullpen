@@ -201,3 +201,21 @@ export class Batcher<T> {
 		return this.#chain;
 	}
 }
+
+/** Tracks whole producer chains before shutdown drains their destination batchers. */
+export class InFlight {
+	readonly #pending = new Set<Promise<unknown>>();
+
+	track<T>(work: Promise<T>): Promise<T> {
+		this.#pending.add(work);
+		const settled = () => this.#pending.delete(work);
+		// Handle both outcomes without creating an unhandled rejecting cleanup chain.
+		void work.then(settled, settled);
+		return work;
+	}
+
+	/** Includes work registered while an earlier producer is settling. */
+	async drain(): Promise<void> {
+		while (this.#pending.size > 0) await Promise.allSettled([...this.#pending]);
+	}
+}
