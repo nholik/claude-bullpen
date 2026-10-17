@@ -112,6 +112,8 @@ export type GithubSource = {
 	result?: GhResult;
 	/** `owner/name`, once known. */
 	repo?: string;
+	/** Directory name of the session's cwd: the header label when no repo resolves. */
+	workspace?: string;
 	/** Host resolved by gh repo view; part of stored burndown identity. */
 	host?: string;
 	filter: string;

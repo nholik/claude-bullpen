@@ -67,7 +67,7 @@ export function header(
 	const prefix = fit(
 		[
 			{
-				text: `${profile.style === "operations" ? "Bullpen / OPERATIONS" : "Bullpen"} · ${github.filter || "all issues"} · ${github.result ? headerText(github.result) : "no GitHub data"} `,
+				text: `${profile.style === "operations" ? "Bullpen / OPERATIONS" : "Bullpen"} · ${github.filter || "all issues"}${github.result ? ` · ${headerText(github.result)}` : ""} `,
 				bold: true,
 				fg: STUDIO.text,
 			},
@@ -180,7 +180,7 @@ export function band(
 	}
 	const unread = model.hallway.filter((m) => m.at > seenAt).length;
 	segments.push({
-		text: ` ✉${unread} ${github.result ? headerText(github.result) : "no GitHub data"} ${sparkline(github.burndown, 5)}`,
+		text: ` ✉${unread}${github.result ? ` ${headerText(github.result)}` : ""} ${sparkline(github.burndown, 5)}`,
 	});
 	return glyphLines([fit(segments, columns)], profile.glyphs)[0] ?? [];
 }

@@ -78,6 +78,16 @@ function isKnown(kind: string): kind is BullpenEventKind {
 	return KINDS.includes(kind);
 }
 
+/** Drops a leading `Lead:` style label that only repeats the sender. */
+export function stripSender(text: string, who: string, lead: boolean): string {
+	const label = /^\s*([\w .-]{1,32}?)\s*:\s+(?=\S)/
+		.exec(text)?.[1]
+		?.toLowerCase();
+	if (!label) return text;
+	const names = [who.toLowerCase(), ...(lead ? ["lead", "team-lead"] : [])];
+	return names.includes(label) ? text.replace(/^[^:]*:\s+/, "") : text;
+}
+
 function isLead(name: string, options: ModelOptions): boolean {
 	return (options.leads ?? DEFAULT_LEADS).includes(name);
 }
@@ -174,7 +184,7 @@ export function applyEvent(
 		const message: HallwayMessage = {
 			from: e.who,
 			to: e.target,
-			text: e.detail,
+			text: stripSender(e.detail, e.who, isLead(e.who, options)),
 			at: e.at,
 			issues: refs,
 		};

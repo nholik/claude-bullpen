@@ -16,6 +16,7 @@ import {
 	isKickback,
 	isReviewer,
 } from "../src/model/detect";
+import { stripSender } from "../src/model/team";
 import type { BullpenEvent } from "../types";
 import demoJournal from "./fixtures/demo";
 import roughJournal from "./fixtures/rough-day";
@@ -518,4 +519,12 @@ test("member agent types survive events falling out of the window and color card
 	);
 	expect(model.teammates.worker?.agentType).toBe("builder");
 	expect(model.teammates).not.toHaveProperty("ghost");
+});
+
+test("stripSender drops a label that repeats the sender only", () => {
+	expect(stripSender("Lead: ship it", "lead", true)).toBe("ship it");
+	expect(stripSender("team-lead: ship it", "x", true)).toBe("ship it");
+	expect(stripSender("ada: ship it", "ada", false)).toBe("ship it");
+	expect(stripSender("Note: ship it", "ada", false)).toBe("Note: ship it");
+	expect(stripSender("#9: ship it", "ada", false)).toBe("#9: ship it");
 });

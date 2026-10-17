@@ -3,7 +3,7 @@ import { printable } from "./width";
 
 export type GlyphMode = "unicode" | "ascii";
 /** Portable UI repertoire, deliberately excluding emoji and combining marks. */
-export const SAFE_SYMBOLS = "●○◐◑✓✗↺⇄→←↑↓⚑☀☁☂☇✉☰·";
+export const SAFE_SYMBOLS = "●○◐◑✓✗↺⇄→←↑↓⚑☀☁☂☇✉☰·…";
 const substitutes: Record<string, string> = {
 	"…": ".",
 	"—": "-",
