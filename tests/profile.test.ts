@@ -7,6 +7,7 @@ import {
 	mergeProfiles,
 	parsePartial,
 	parseProfile,
+	withMemberColors,
 } from "../src/profile";
 
 test("missing or empty text gives the defaults and no warnings", async () => {
@@ -125,4 +126,22 @@ test("colorFor falls back to the agent type's profile color", async () => {
 	const { profile } = parseProfile('{"roles":{"builder":{"color":"#ff0000"}}}');
 	expect(colorFor("smith", profile, 0, "builder")).toBe(0xff0000);
 	expect(colorFor("smith", profile, 0)).not.toBe(0xff0000);
+});
+
+test("withMemberColors gives members distinct join-order colors unless the profile chose", async () => {
+	const { profile } = parseProfile('{"roles":{"gate":{"color":"#ff0000"}}}');
+	const members = [
+		{ name: "lead", color: 0 },
+		{ name: "vale", color: 1 },
+		{ name: "gate", color: 2 },
+		{ name: "kit", color: 3, agentType: "gate" },
+	];
+	const out = withMemberColors(profile, members);
+	const color = (n: string, i: number, t?: string) => colorFor(n, out, i, t);
+	expect(new Set([color("lead", 0), color("vale", 1)]).size).toBe(2);
+	expect(color("lead", 0)).toBe(PALETTE[0]);
+	expect(color("gate", 2)).toBe(0xff0000);
+	expect(color("kit", 3, "gate")).toBe(0xff0000);
+	// Name-only lookups (hallway, huddles, header) agree with the card.
+	expect(colorFor("kit", out, 3)).toBe(0xff0000);
 });

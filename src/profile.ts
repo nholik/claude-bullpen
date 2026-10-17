@@ -293,3 +293,24 @@ export function colorIndex(name: string): number {
 	for (const ch of name) hash = (hash * 31 + (ch.codePointAt(0) ?? 0)) >>> 0;
 	return hash;
 }
+
+/**
+ * The profile with each member's join-order color filled in for those the
+ * profile doesn't color (by name or agent type), so every view agrees and
+ * neighbours differ.
+ */
+export function withMemberColors(
+	profile: Profile,
+	members: readonly { name: string; color: number; agentType?: string }[],
+): Profile {
+	let roles = profile.roles;
+	for (const m of members) {
+		const own = roleFor(m.name, profile);
+		if (own?.color !== undefined) continue;
+		// A type's color is written under the name too, so name-only lookups agree.
+		const typed = m.agentType ? roleFor(m.agentType, profile) : undefined;
+		if (roles === profile.roles) roles = { ...roles };
+		roles[m.name] = { ...own, color: typed?.color ?? m.color };
+	}
+	return roles === profile.roles ? profile : { ...profile, roles };
+}
