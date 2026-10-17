@@ -61,9 +61,8 @@ export function commandVerdict(command: string): ShipVerdict | undefined {
 	if (!/\bgh\s+pr\s+review\b/.test(command)) return undefined;
 	if (/--request-changes\b/.test(command)) return "changes";
 	if (/--approve\b/.test(command)) return "pass";
-	const body = /--body\s+\\?"?\s*Gate(?:\s+re-review)?:\s*(PASS|CHANGES)\b/i.exec(
-		command,
-	);
+	const body =
+		/--body\s+\\?"?\s*Gate(?:\s+re-review)?:\s*(PASS|CHANGES)\b/i.exec(command);
 	if (!body?.[1]) return undefined;
 	return body[1].toUpperCase() === "PASS" ? "pass" : "changes";
 }

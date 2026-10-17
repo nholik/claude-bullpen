@@ -29,8 +29,14 @@ test("a PR announced, reviewed with CHANGES, resubmitted, then passed", () => {
 	const events = [
 		msg("ada", `#44 PR: ${pr}/61 (SSO phrase matching; …`),
 		msg("ada", `#44 please review PR ${pr}/61`),
-		bash("lead", 'for p in 61 62; do gh pr comment $p --body "@codex review";…'),
-		bash("gate", 'gh pr review 61 --request-changes --body "Gate: CHANGES (P0…'),
+		bash(
+			"lead",
+			'for p in 61 62; do gh pr comment $p --body "@codex review";…',
+		),
+		bash(
+			"gate",
+			'gh pr review 61 --request-changes --body "Gate: CHANGES (P0…',
+		),
 	];
 	expect(shipPaths(events)[44]).toMatchObject({
 		stage: "changes",
@@ -47,28 +53,45 @@ test("a PR announced, reviewed with CHANGES, resubmitted, then passed", () => {
 	expect(paths[45]).toMatchObject({ stage: "approved", pr: 68 });
 });
 
+const closing: BullpenEvent = {
+	...bash("lead", "gh issue close 46"),
+	confirmedCloses: [46],
+};
+
 test("table: single events and the stage they produce", () => {
 	for (const [events, issue, stage] of [
 		[[msg("kit", `#46 PR: ${pr}/62 (table-driven tests ad…`)], 46, "pr-open"],
 		[[msg("smith", `#59 PR open: ${pr}/70. Studio header no…`)], 59, "pr-open"],
 		[[msg("kit", `#47 please review ${pr}/67`)], 47, "in-review"],
-		[[msg("gate", "PR #61 (#44) CHANGES: the PR's commit 02a59c5 c…")], 44, "changes"],
-		[[msg("gate", "PR #62 (#46): PASS. Two optional P3 notes are on…")], 46, "approved"],
-		[[msg("gate", "Gate round 2: #61 (#44) PASS now (correct content")], 44, "approved"],
-		[[bash("kit", 'gh pr create --fill --body "Closes #46 ...')], 46, "pr-open"],
 		[
-			[msg("kit", `#46 PR: ${pr}/62 (x)`), bash("lead", "gh pr merge 62 --squash")],
+			[msg("gate", "PR #61 (#44) CHANGES: the PR's commit 02a59c5 c…")],
+			44,
+			"changes",
+		],
+		[
+			[msg("gate", "PR #62 (#46): PASS. Two optional P3 notes are on…")],
 			46,
-			"merged",
+			"approved",
+		],
+		[
+			[msg("gate", "Gate round 2: #61 (#44) PASS now (correct content")],
+			44,
+			"approved",
+		],
+		[
+			[bash("kit", 'gh pr create --fill --body "Closes #46 ...')],
+			46,
+			"pr-open",
 		],
 		[
 			[
 				msg("kit", `#46 PR: ${pr}/62 (x)`),
-				{ ...bash("lead", "gh issue close 46"), confirmedCloses: [46] },
+				bash("lead", "gh pr merge 62 --squash"),
 			],
 			46,
-			"shipped",
+			"merged",
 		],
+		[[msg("kit", `#46 PR: ${pr}/62 (x)`), closing], 46, "shipped"],
 	] as const)
 		expect(shipPaths(events)[issue]?.stage).toBe(stage);
 });
