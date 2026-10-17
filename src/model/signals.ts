@@ -26,11 +26,7 @@ export function stuckReasons(
 			? Math.max(0, Math.floor((now - ship.at) / MINUTE))
 			: 0;
 		const kickbacks = model.kickbacks.filter(
-			(k) =>
-				t.issue !== undefined &&
-				k.issue === t.issue &&
-				k.at <= now &&
-				now - k.at <= 60 * MINUTE,
+			(k) => t.issue !== undefined && k.issue === t.issue && k.at <= now,
 		);
 		const reason =
 			(t.failureCount ?? 0) >= 3

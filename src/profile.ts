@@ -38,7 +38,6 @@ const ProfileSchema = looseObject({
 	roles: optional(record(string(), RoleSchema)),
 	animations: optional(boolean()),
 	glyphs: optional(picklist(["unicode", "ascii"])),
-	style: optional(picklist(["studio", "operations"])),
 	palette: optional(array(string())),
 });
 
@@ -50,7 +49,6 @@ export const DEFAULT_PROFILE: Profile = {
 	roles: {},
 	animations: true,
 	glyphs: "unicode",
-	style: "studio",
 	palette: [...PALETTE],
 };
 
@@ -111,12 +109,6 @@ export function parsePartial(text: string | undefined): {
 		return { set, warnings: ["bullpen.json must be a JSON object"] };
 
 	const fields = ProfileSchema.entries;
-	if (json.style !== undefined) {
-		const parsed = safeParse(fields.style, json.style);
-		if (parsed.success && parsed.output) set.style = parsed.output;
-		else
-			warnings.push("style: expected studio or operations; using the default");
-	}
 	if (json.glyphs !== undefined) {
 		const parsed = safeParse(fields.glyphs, json.glyphs);
 		if (parsed.success && parsed.output) set.glyphs = parsed.output;
@@ -224,7 +216,6 @@ export function mergeProfiles(
 		out.issues = { ...out.issues, ...layer.issues };
 		out.animations = layer.animations ?? out.animations;
 		out.glyphs = layer.glyphs ?? out.glyphs;
-		out.style = layer.style ?? out.style;
 		out.palette = layer.palette?.length ? layer.palette : out.palette;
 		out.roles = { ...out.roles, ...layer.roles };
 	}

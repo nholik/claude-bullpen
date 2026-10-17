@@ -3,9 +3,9 @@ import type { BullpenModel, Teammate } from "../model";
 import { activeTime, flowSummary } from "../model/signals";
 import { colorFor, colorIndex, roleLabel } from "../profile";
 import { activityPhrase } from "./activity";
+import { age, align, clock, edge, inside, section, text } from "./layout";
 import { fit, glyphLines, type Line, textLine, width, wrapText } from "./lines";
 import { moodFor, snoozeFrame } from "./mood";
-import { age, align, clock, edge, inside, section, text } from "./operations";
 import { needsYou, shippingRows, shippingSection } from "./shipping";
 import { STUDIO } from "./studio";
 

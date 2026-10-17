@@ -2,7 +2,7 @@ import type { BurndownPoint, GithubSource, Profile } from "../../types";
 import { exactCounts, headerText } from "../github";
 import type { BullpenModel } from "../model";
 import { backlogTrend } from "../model/signals";
-import { colorFor, colorIndex, DEFAULT_PROFILE } from "../profile";
+import { colorFor, colorIndex } from "../profile";
 import { fit, glyphLines, type Line, textLine, width, wrapText } from "./lines";
 import { moraleHint } from "./morale";
 import { STUDIO } from "./studio";
@@ -49,7 +49,6 @@ export function header(
 	github: GithubSource,
 	columns: number,
 	now: number,
-	profile: Profile = DEFAULT_PROFILE,
 ): Line[] {
 	const counts =
 		github.result?.status === "ok" ? exactCounts(github.result) : undefined;
@@ -68,7 +67,7 @@ export function header(
 	const prefix = fit(
 		[
 			{
-				text: `${profile.style === "operations" ? "Bullpen / OPERATIONS" : "Bullpen"} · ${github.filter || "all issues"}${github.result ? ` · ${headerText(github.result)}` : ""} `,
+				text: `Bullpen · ${github.filter || "all issues"}${github.result ? ` · ${headerText(github.result)}` : ""} `,
 				bold: true,
 				fg: STUDIO.text,
 			},
@@ -106,7 +105,7 @@ export function header(
 			fit(
 				[
 					{
-						text: ` ${model.closed.length ? `✓ ${model.closed.length} shipped` : profile.style === "operations" ? "OPERATIONS" : "STUDIO"}`,
+						text: ` ${model.closed.length ? `✓ ${model.closed.length} shipped` : "STUDIO"}`,
 						fg: STUDIO.mint,
 						bold: true,
 					},

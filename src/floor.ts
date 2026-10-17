@@ -274,7 +274,6 @@ export function drawFloor(
 	const labels: TextCell[] = [];
 	const seats = new Map<string, Seat>();
 	const detailed = rows >= 18;
-	const operations = profile.style === "operations";
 	const overflowMembers: string[] = [];
 	const label = (
 		col: number,
@@ -286,18 +285,12 @@ export function drawFloor(
 	// A quiet studio: dotted circulation lane, lobby bench, and plant.
 	for (let x = 3; x < plan.lobbyCol - 1; x += 4)
 		rect(p, x, rows * 2 - 3, 1, 1, TABLE_EDGE);
-	label(2, 0, operations ? " TOPOLOGY" : " FLOOR", STUDIO.muted);
+	label(2, 0, " FLOOR", STUDIO.muted);
 	// Quiet lobby with a bottom door gap.
 	rect(p, plan.lobbyCol, 1, columns - plan.lobbyCol - 1, rows * 2 - 2, LOBBY);
 	rect(p, plan.lobbyCol + 5, rows * 2 - 1, 6, 1, LOBBY);
-	label(
-		plan.lobbyCol + 2,
-		0,
-		operations ? "UNASSIGNED" : "LOUNGE",
-		STUDIO.muted,
-		LOBBY,
-	);
-	if (rows >= 10 && !operations) {
+	label(plan.lobbyCol + 2, 0, "LOUNGE", STUDIO.muted, LOBBY);
+	if (rows >= 10) {
 		rect(p, plan.lobbyCol + 2, rows * 2 - 8, 11, 1, TABLE_EDGE);
 		rect(p, plan.lobbyCol + 2, rows * 2 - 7, 11, 3, 0x29404e);
 		rect(p, plan.lobbyCol + 3, rows * 2 - 4, 1, 1, TABLE_EDGE);
@@ -326,11 +319,11 @@ export function drawFloor(
 			1,
 			state?.color ?? TABLE_EDGE,
 		);
-		if (detailed && !operations) {
+		if (detailed) {
 			rect(p, at.col + 1, at.row * 2 + 5, 1, 2, TABLE_EDGE);
 			rect(p, at.col + at.width - 2, at.row * 2 + 5, 1, 2, TABLE_EDGE);
 		}
-		if (detailed && !operations) {
+		if (detailed) {
 			rect(p, at.col + at.width + 1, at.row * 2 + 1, 2, 1, 0x73a78a);
 			rect(p, at.col + at.width + 2, at.row * 2, 1, 3, 0x73a78a);
 			rect(p, at.col + at.width + 1, at.row * 2 + 3, 2, 1, TABLE_EDGE);
@@ -376,8 +369,7 @@ export function drawFloor(
 					memberColor(m, profile),
 				);
 				// Each place has a small laptop on the desk.
-				if (!operations)
-					rect(p, col + 1, at.row * 2 + (upper ? -1 : 4), 3, 1, STUDIO.muted);
+				rect(p, col + 1, at.row * 2 + (upper ? -1 : 4), 3, 1, STUDIO.muted);
 			}
 		});
 		if (detailed) {
@@ -448,46 +440,14 @@ export function drawFloor(
 			);
 		const bob = m.status === "running" && (frame + m.color) % 4 < 2 ? 1 : 0;
 		const moving = effects.walkers.find((w) => w.id === m.id);
-		if (operations) {
-			const x = Math.round(moving?.x ?? seat.col);
-			const y = Math.round(moving?.y ?? seat.pixel);
-			const size = detailed ? 5 : 2;
-			if (detailed && !moving && m.issue !== undefined) {
-				const hub = plan.tables.get(m.issue);
-				if (hub)
-					for (
-						let y0 = Math.min(y + 2, hub.row * 2);
-						y0 < Math.max(y + 2, hub.row * 2);
-						y0 += 2
-					)
-						rect(p, x + 2, y0, 1, 1, TABLE_EDGE);
-			}
-			rect(p, x, y, size, detailed ? 5 : 3, TABLE_EDGE);
-			rect(
-				p,
-				x + (detailed ? 1 : 0),
-				y + 1,
-				detailed ? 3 : 2,
-				1,
-				memberColor(m, profile),
-			);
-			if (detailed)
-				label(
-					x,
-					Math.floor(y / 2) + 1,
-					m.status === "running" ? " RUN " : " IDLE",
-					memberColor(m, profile),
-					STUDIO.panel,
-				);
-		} else
-			person(
-				p,
-				Math.round(moving?.x ?? seat.col),
-				Math.round(moving?.y ?? seat.pixel) - (detailed ? 0 : bob),
-				memberColor(m, profile),
-				detailed,
-				bob,
-			);
+		person(
+			p,
+			Math.round(moving?.x ?? seat.col),
+			Math.round(moving?.y ?? seat.pixel) - (detailed ? 0 : bob),
+			memberColor(m, profile),
+			detailed,
+			bob,
+		);
 	}
 	const overflow = plan.overflow.filter(
 		(issue) => !effects.closed.includes(issue),
@@ -515,21 +475,18 @@ export function drawFloor(
 			p,
 			Math.round(dot.x),
 			Math.round(dot.y),
-			dot.spark && !operations ? 3 : 1,
+			dot.spark ? 3 : 1,
 			1,
 			dot.color,
 		);
-		if (dot.spark && !operations)
+		if (dot.spark)
 			rect(p, Math.round(dot.x) + 1, Math.round(dot.y) - 1, 1, 3, dot.color);
 	}
 	if (effects.closed.length)
 		label(
 			plan.lobbyCol + 1,
 			rows - 1,
-			cellText(
-				`${operations ? "CLOSED" : "DONE"} ${effects.closed.length}`,
-				14,
-			),
+			cellText(`DONE ${effects.closed.length}`, 14),
 			0x81c784,
 			LOBBY,
 		);

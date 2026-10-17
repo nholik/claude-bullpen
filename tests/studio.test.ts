@@ -9,22 +9,19 @@ import { width } from "../src/render/lines";
 import { paneView } from "../src/render/pane";
 import { issueStatus } from "../src/render/studio";
 
-test("style preferences validate and layer without losing the chosen terminal fallback", () => {
-	expect(parseProfile('{"style":"operations"}').profile.style).toBe(
-		"operations",
-	);
-	const invalid = parseProfile('{"style":"unknown"}');
-	expect(invalid.profile.style).toBe("studio");
-	expect(invalid.warnings.length).toBe(1);
-	expect(
-		mergeProfiles(
-			{ style: "studio" },
-			{ style: "operations", glyphs: "ascii" },
-		),
-	).toMatchObject({ style: "studio", glyphs: "ascii" });
+test("legacy style settings are ignored without losing terminal preferences", () => {
+	for (const style of ["studio", "operations", "unknown"]) {
+		const parsed = parseProfile(JSON.stringify({ style, glyphs: "ascii" }));
+		expect(parsed.warnings).toEqual([]);
+		expect(parsed.profile).toEqual({ ...DEFAULT_PROFILE, glyphs: "ascii" });
+		expect(parsed.set).not.toHaveProperty("style");
+	}
+	expect(mergeProfiles({ glyphs: "ascii" }, {})).toMatchObject({
+		glyphs: "ascii",
+	});
 });
 
-test("both themes preserve cell budgets, portable glyphs, and explicit overflow across terminal sizes", () => {
+test("Studio and legacy profiles preserve cell budgets, portable glyphs, and overflow across terminal sizes", () => {
 	const replay = demoAt(16000);
 	const now = demoClock(16000);
 	const members = Object.values(replay.members);
@@ -35,7 +32,9 @@ test("both themes preserve cell budgets, portable glyphs, and explicit overflow 
 				20, 47, 48, 60, 72, 80, 100, 109, 110, 119, 120, 160,
 			])
 				for (const rows of [8, 16, 17, 27, 28, 29, 40, 48]) {
-					const profile = { ...DEFAULT_PROFILE, style, glyphs };
+					const profile = parseProfile(
+						JSON.stringify({ style, glyphs }),
+					).profile;
 					const view = paneView(model, members, columns, rows, now, {
 						profile,
 						github: demoGithubAt(16000),
@@ -138,13 +137,16 @@ test("issue states distinguish active review, open decisions, stalls and complet
 });
 
 for (const style of ["studio", "operations"] as const)
-	test(`${style} pane mounts its sidebar and preserves story navigation`, async ($, on) => {
+	test(`legacy ${style} profile mounts Studio and preserves story navigation`, async ($, on) => {
 		mock.clock(on, { now: 16000 });
 		on("state.get", { plugin: "bullpen", key: "demoStart" }, () => ({
 			value: { value: 0, version: 1 },
 		}));
 		on("state.get", { plugin: "bullpen", key: "profile" }, () => ({
-			value: { value: { ...DEFAULT_PROFILE, style }, version: 1 },
+			value: {
+				value: parseProfile(JSON.stringify({ style })).profile,
+				version: 1,
+			},
 		}));
 		let opened = "";
 		on("ui.open", (_$, e) => {

@@ -135,6 +135,96 @@ test("asking a fresh question or finding one review problem does not darken the 
 	expect(healthy.morale.score).toBe(buildModel(base, 3).morale.score);
 });
 
+test("an unresolved review loop does not expire with morale's recent-event window", () => {
+	const log = [
+		event("tool", 0),
+		...[1, 2].map((at) =>
+			event("message", at * minute, {
+				who: "gate",
+				target: "builder",
+				detail: "PR #22 (#12) CHANGES: sending it back",
+			}),
+		),
+		event("tool", 70 * minute),
+		// Keep the reviewer active too, isolating review-loop clearance from
+		// the separate no-tool-progress rule on another member of this issue.
+		event("tool", 70 * minute, { who: "gate" }),
+	];
+	const waiting = buildModel(log, 70 * minute);
+	expect(waiting.stuck?.builder).toBe("sent back 2 times");
+	expect(waiting.morale.factors.stalled).toContain(12);
+	expect(waiting.morale.factors.kickbacks).toBe(0);
+	const approved = buildModel(
+		[
+			...log,
+			event("message", 70 * minute + 1, {
+				who: "gate",
+				target: "builder",
+				detail: "PR #22 (#12) PASS",
+			}),
+		],
+		70 * minute + 1,
+	);
+	expect(approved.stuck?.builder).toBeUndefined();
+	expect(approved.morale.factors.stalled).not.toContain(12);
+	for (const detail of ["PR #22 merged", "closed #12"])
+		expect(
+			buildModel(
+				[
+					...log,
+					event("message", 70 * minute + 1, {
+						who: "lead",
+						target: "builder",
+						detail,
+					}),
+				],
+				70 * minute + 1,
+			).stuck?.builder,
+		).toBeUndefined();
+	const reassigned = buildModel(
+		[...log, event("tool", 70 * minute + 1, { issues: [13] })],
+		70 * minute + 1,
+	);
+	expect(reassigned.teammates.builder?.issue).toBe(13);
+	expect(reassigned.stuck?.builder).toBeUndefined();
+});
+
+test("stall timers honor their thresholds and messages do not count as tool progress", () => {
+	const running = [
+		event("tool", 0),
+		event("message", 9 * minute, {
+			target: "lead",
+			detail: "still investigating",
+		}),
+	];
+	expect(buildModel(running, 10 * minute - 1).stuck?.builder).toBeUndefined();
+	expect(buildModel(running, 10 * minute).stuck?.builder).toBe(
+		"no tool progress 10m",
+	);
+	const idle = [event("tool", 0), event("turn-end", minute)];
+	expect(buildModel(idle, 6 * minute - 1).stuck?.builder).toBeUndefined();
+	expect(buildModel(idle, 6 * minute).stuck?.builder).toBe(
+		"idle with open work 5m",
+	);
+	const review = [
+		event("message", 0, {
+			target: "lead",
+			detail: "#12 please review https://github.com/o/r/pull/22",
+		}),
+		event("tool", 14 * minute),
+	];
+	expect(buildModel(review, 15 * minute - 1).stuck?.builder).toBeUndefined();
+	expect(buildModel(review, 15 * minute).stuck?.builder).toBe(
+		"review waiting 15m",
+	);
+	expect(
+		buildModel([event("turn-end", 0, { issues: [] })], 20 * minute).stuck,
+	).toEqual({});
+	expect(
+		buildModel([event("tool", 0), event("leave", minute)], 20 * minute).stuck,
+	).toEqual({});
+});
+
 test("turn counters survive display-history rollover, without counting idle time", () => {
 	let state = reduceEvents([
 		event("turn-start", 0),

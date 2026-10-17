@@ -1,4 +1,4 @@
-import { expect, test } from "claude-code/testing";
+import { expect, mock, test } from "claude-code/testing";
 import { prArgv, readPr } from "../src/github";
 import { buildModel } from "../src/model";
 import { SHIP_LINGER_MS, shippingRows } from "../src/render/shipping";
@@ -100,6 +100,109 @@ test("a requested or failed merge never counts as shipped before confirmation", 
 		expect(buildModel([announced, command], 300).shipped).toBe(0);
 	}
 });
+
+test("later review recaps cannot undo a GitHub-confirmed merge, while a replacement PR stays in flight", () => {
+	const github: GithubSource = {
+		...source,
+		prs: [{ number: 22, state: "MERGED", checkedAt: 1000, mergedAt: 900 }],
+	};
+	const recap = {
+		...announced,
+		at: 2000,
+		detail: "PR #22 (#12): PASS",
+	};
+	const merged = buildModel([announced, recap], 2001, { github });
+	expect(merged.ship[0]?.stage).toBe("merged");
+	expect(merged.ship[0]?.at).toBe(900);
+	expect(merged.shipped).toBe(1);
+	const replacement = {
+		...announced,
+		at: 3000,
+		detail: "#12 PR: https://ghe.example.com/o/r/pull/24",
+	};
+	const reopened = buildModel([announced, recap, replacement], 3001, {
+		github,
+	});
+	expect(reopened.ship[0]?.stage).toBe("pr-open");
+	expect(reopened.ship[0]?.pr).toBe(24);
+	expect(reopened.shipped).toBe(0);
+});
+
+for (const state of ["MERGED", "CLOSED"] as const) {
+	test(`live poll reconciles an externally ${state.toLowerCase()} PR and retains evidence when another PR lookup fails`, async ($, on) => {
+		mock.clock(on, { now: 2000 });
+		on("store.get", () => ({ value: undefined }));
+		on("store.set", () => ({ value: undefined }));
+		const previous: GithubSource = {
+			...source,
+			prs: [{ number: 23, state: "OPEN", checkedAt: 500 }],
+		};
+		const events = [
+			announced,
+			{
+				...announced,
+				detail: "#13 PR: https://ghe.example.com/o/r/pull/23",
+				issues: [13],
+			},
+		];
+		on("state.get", { plugin: "bullpen", key: "events" }, () => ({
+			value: { value: events, version: 1 },
+		}));
+		on("state.get", { plugin: "bullpen", key: "github" }, () => ({
+			value: { value: previous, version: 1 },
+		}));
+		const requested: string[][] = [];
+		on("process.run", (_$, e) => {
+			requested.push([...e.argv]);
+			const failed = e.argv[2] === "repos/o/r/pulls/23";
+			const stdout =
+				e.argv[1] === "issue"
+					? "[]"
+					: e.argv[2] === "search/issues"
+						? "0"
+						: JSON.stringify({
+								number: 22,
+								state: "closed",
+								merged_at: state === "MERGED" ? "1970-01-01T00:00:01Z" : null,
+							});
+			return {
+				value: {
+					exitCode: failed ? 1 : 0,
+					stdout: failed ? "" : stdout,
+					stderr: failed ? "network unavailable" : "",
+					isStdoutTruncated: false,
+					isStderrTruncated: false,
+				},
+			};
+		});
+		let finish: (value: GithubSource) => void = () => {};
+		const finished = new Promise<GithubSource>((resolve) => {
+			finish = resolve;
+		});
+		on("state.set", { plugin: "bullpen", key: "github" }, (_$, e) => {
+			finish(e.value);
+			return { value: { isSet: true, version: 2 } };
+		});
+		await $.command.run({
+			command: "bullpen",
+			args: "live",
+			origin: { kind: "composer" },
+			presentation: { isFullscreen: false, columns: 80 },
+		});
+		const github = await finished;
+		expect(requested).toContainEqual(prArgv("o/r", "ghe.example.com", 22));
+		expect(requested).toContainEqual(prArgv("o/r", "ghe.example.com", 23));
+		expect(github.prs?.find((pr) => pr.number === 23)).toEqual(
+			previous.prs?.[0],
+		);
+		const model = buildModel(events, 2000, { github });
+		expect(model.ship.find((path) => path.issue === 12)?.stage).toBe(
+			state === "MERGED" ? "merged" : "working",
+		);
+		expect(model.shipped).toBe(state === "MERGED" ? 1 : 0);
+		expect(model.ship.find((path) => path.issue === 13)?.stage).toBe("pr-open");
+	});
+}
 
 test("a tracked issue closed on GitHub completes its rail without counting unrelated closed issues", () => {
 	const github: GithubSource = {

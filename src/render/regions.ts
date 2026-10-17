@@ -16,12 +16,7 @@ function huddlesImpl(
 	now: number,
 ): Line[] {
 	if (rows < 1) return [];
-	const lines = [
-		textLine(
-			profile.style === "operations" ? "── Workstreams ──" : "── Huddles ──",
-			columns,
-		),
-	];
+	const lines = [textLine("── Huddles ──", columns)];
 	const sorted = [...model.huddles].sort(
 		(a, b) => b.lastActiveAt - a.lastActiveAt || a.issue - b.issue,
 	);
@@ -151,14 +146,7 @@ function hallwayImpl(
 				columns,
 			),
 		];
-	const lines = [
-		textLine(
-			profile.style === "operations"
-				? "── Recent events ▾ live ──"
-				: "── Hallway ▾ live ──",
-			columns,
-		),
-	];
+	const lines = [textLine("── Hallway ▾ live ──", columns)];
 	if (rows > 1)
 		for (const m of model.hallway.slice(-(rows - 1))) {
 			const date = new Date(m.at);

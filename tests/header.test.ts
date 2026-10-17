@@ -50,6 +50,26 @@ test("pace needs elapsed time and completions; sparkline is bounded", () => {
 	expect(sparkline(github.burndown, 1).length).toBe(1);
 	expect(sparkline([], 10)).toBe("");
 });
+
+test("a flat burndown reports the open count without a meaningless pace estimate", () => {
+	const flat: GithubSource = {
+		...github,
+		burndown: [
+			{ at: 0, open: 5, closed: 7 },
+			{ at: 60000, open: 5, closed: 7 },
+		],
+	};
+	for (const columns of [48, 72, 110, 160]) {
+		const lines = footer(flat, columns);
+		const label = lines
+			.flat()
+			.map((seg) => seg.text)
+			.join("");
+		expect(label).toContain("5 open · no change yet");
+		expect(label).not.toContain("pace");
+		for (const line of lines) expect(width(line)).toBeLessThanOrEqual(columns);
+	}
+});
 test("state qualifiers never constrain both-state issue queries", () => {
 	const input = 'label:bug is:open state:closed -is:closed "is:open phrase"';
 	expect(allStatesFilter(input)).toBe('label:bug "is:open phrase"');
