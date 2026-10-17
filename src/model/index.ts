@@ -8,6 +8,7 @@ import {
 	type ModelOptions,
 	reduceEvents,
 	type TeamState,
+	withPresence,
 } from "./team";
 import type { BullpenModel, HallwayMessage } from "./types";
 
@@ -19,6 +20,7 @@ export {
 	type ModelOptions,
 	reduceEvents,
 	type TeamState,
+	withPresence,
 } from "./team";
 export type * from "./types";
 
@@ -39,15 +41,16 @@ export function modelOf(
 	now: number,
 	options: ModelOptions = {},
 ): BullpenModel {
-	const huddles = huddlesOf(state);
+	const live = withPresence(state, options.present);
+	const huddles = huddlesOf(live);
 	return {
-		teammates: state.teammates,
+		teammates: live.teammates,
 		huddles,
 		hallway: state.hallway,
 		asks: state.asks,
 		kickbacks: state.kickbacks,
 		closed: state.closes.map((c) => c.issue),
-		morale: moraleOf(state, huddles, now, options.leads ?? DEFAULT_LEADS),
+		morale: moraleOf(live, huddles, now, options.leads ?? DEFAULT_LEADS),
 	};
 }
 

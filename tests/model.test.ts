@@ -57,6 +57,8 @@ test("isAsk: questions and blocks, not reports", async () => {
 	expect(isAsk("need a decision on the color map")).toBe(true);
 	expect(isAsk("#199 looks good, filed a spacing nit as #217")).toBe(false);
 	expect(isAsk("unblocked now, carrying on")).toBe(false);
+	expect(isAsk("not blocked, just slow; #3 lands today")).toBe(false);
+	expect(isAsk("no longer blocked on #3")).toBe(false);
 });
 
 test("isKickback: saying so, or a reviewer reporting failure", async () => {
@@ -72,6 +74,21 @@ test("isKickback: saying so, or a reviewer reporting failure", async () => {
 	);
 	expect(isKickback("all green, no failures", true)).toBe(false);
 	expect(isKickback("#12 passes, approved", true)).toBe(false);
+	// An explicit pass outweighs the failures it mentions.
+	expect(isKickback("PASS: the previously failing test now passes", true)).toBe(
+		false,
+	);
+	expect(isKickback("fixed the failures you flagged, all green", true)).toBe(
+		false,
+	);
+	expect(isKickback("re-ran the failing suite, LGTM", true)).toBe(false);
+	expect(isKickback("Looks good now, the failure was flaky", true)).toBe(false);
+	// A test summary's lowercase "passed" is not a verdict.
+	expect(isKickback("2 failed, 5 passed", true)).toBe(true);
+	// Saying it goes back still counts, pass words or not.
+	expect(isKickback("lint passes but sending it back for tests", true)).toBe(
+		true,
+	);
 });
 
 test("isReviewer: gate and ux by role, else by name", async () => {
@@ -86,10 +103,13 @@ test("closedIssues: closes said or run, not promised", async () => {
 	expect(closedIssues("gh issue close 12")).toEqual([12]);
 	expect(closedIssues("gh issue close #12 --comment done")).toEqual([12]);
 	expect(closedIssues("#12 ✓ merged")).toEqual([12]);
-	expect(closedIssues("✓ #199, closed #200, #201 is merged")).toEqual([
+	expect(closedIssues("✓ #199, closed #200, #201 is shipped")).toEqual([
 		199, 200, 201,
 	]);
 	expect(closedIssues("PR up, closes #12")).toEqual([]);
+	// "merged #13" usually names a PR, not an issue.
+	expect(closedIssues("merged #13")).toEqual([]);
+	expect(closedIssues("#13 merged")).toEqual([]);
 	expect(closedIssues("gh issue view 12")).toEqual([]);
 });
 
@@ -341,18 +361,32 @@ test("a kickback with no issue ref falls back to the sender's issue", async () =
 	expect(state.kickbacks[0]?.issue).toBe(7);
 });
 
-test("gone teammates leave their huddle", async () => {
-	const state = reduceEvents([
+test("live presence: gone teammates leave huddles and stop idling", async () => {
+	const events = [
 		ev(0, "ada", "tool", "edit", { issues: [4] }),
-		ev(1, "smith", "tool", "edit", { issues: [4] }),
-	]);
-	const ada = state.teammates.ada;
-	if (!ada) throw new Error("ada missing");
-	const gone = {
-		...state,
-		teammates: { ...state.teammates, ada: { ...ada, status: "gone" as const } },
-	};
-	expect(modelOf(gone, T).huddles.map((h) => h.members)).toEqual([["smith"]]);
+		ev(1, "ada", "turn-end", "finished a turn"),
+		ev(2, "smith", "tool", "edit", { issues: [4] }),
+	];
+	const now = T + 10 * MINUTE;
+	// From events alone, ada is still at #4 and idling while work is open.
+	const stale = buildModel(events, now);
+	expect(stale.huddles.map((h) => h.members)).toEqual([["ada", "smith"]]);
+	expect(stale.morale.factors.idle).toEqual(["ada"]);
+
+	const live = buildModel(events, now, {
+		present: { ada: "gone", smith: "running", nobody: "idle" },
+	});
+	expect(live.teammates.ada?.status).toBe("gone");
+	expect(live.huddles.map((h) => h.members)).toEqual([["smith"]]);
+	expect(live.morale.factors.idle).toEqual([]);
+	expect(live.morale.score).toBeGreaterThan(stale.morale.score);
+	// Names presence doesn't know about aren't invented.
+	expect(live.teammates).not.toHaveProperty("nobody");
+	// Presence also wakes up a teammate the journal last saw idle.
+	const awake = modelOf(reduceEvents(events), now, {
+		present: { ada: "running" },
+	});
+	expect(awake.morale.factors.idle).toEqual([]);
 });
 
 test("the hallway keeps only the last 50 messages", async () => {

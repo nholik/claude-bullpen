@@ -2,7 +2,7 @@
 // need. Pure and incremental: `applyEvent` per new event, `huddlesOf` and
 // `moraleOf` when drawing.
 
-import type { BullpenEvent, BullpenEventKind } from "../../types";
+import type { BullpenEvent, BullpenEventKind, MemberStatus } from "../../types";
 import { nextIssue } from "../events";
 import { closedIssues, isAsk, isKickback, isReviewer } from "./detect";
 import type { Ask, HallwayMessage, Huddle, Kickback, Teammate } from "./types";
@@ -12,6 +12,12 @@ export type ModelOptions = {
 	leads?: readonly string[];
 	/** Team name → role (`gate`, `ux`, `builder`); unlisted names are their own role. */
 	roles?: Readonly<Record<string, string>>;
+	/**
+	 * Live status by team name (from `$.agent.list()` via the members atom),
+	 * which the journal can't know: it overrides what events implied, so
+	 * departed teammates (`gone`) leave their huddles and stop counting as idle.
+	 */
+	present?: Readonly<Record<string, MemberStatus>>;
 };
 
 export const DEFAULT_LEADS: readonly string[] = ["lead", "team-lead", "main"];
@@ -190,6 +196,20 @@ export function reduceEvents(
 	let state = EMPTY_TEAM;
 	for (const e of events) state = applyEvent(state, e, options);
 	return state;
+}
+
+/** The state with live presence laid over what the events implied. */
+export function withPresence(
+	state: TeamState,
+	present: ModelOptions["present"],
+): TeamState {
+	if (!present) return state;
+	const teammates = { ...state.teammates };
+	for (const [name, status] of Object.entries(present)) {
+		const t = teammates[name];
+		if (t && t.status !== status) teammates[name] = { ...t, status };
+	}
+	return { ...state, teammates };
 }
 
 /** Open issues with someone (not gone) on them: biggest, then liveliest, first. */
