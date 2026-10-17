@@ -5,8 +5,14 @@ export type BullpenEventKind =
 	| "tool"
 	| "message";
 
-/** One normalized thing that happened on the team, as the journal keeps it. */
+/**
+ * One normalized thing that happened on the team, as the journal keeps it.
+ * Mirrors `BullpenEventSchema` in `src/journal.ts`, which fails to compile if
+ * the two drift apart.
+ */
 export type BullpenEvent = {
+	/** Schema version (`JOURNAL_VERSION`). */
+	version: 1;
 	/** Milliseconds since the epoch, from `$.clock.now()`. */
 	at: number;
 	kind: BullpenEventKind;
