@@ -60,7 +60,7 @@ const GH_PR = /\bgh\s+pr\s+(create|review|merge|comment)\b/;
 
 /** Numbers in `gh pr <verb> 61` or a `for p in 61 62; do gh pr ...` loop. */
 function prNumbers(command: string): number[] {
-	const loop = /\bfor\s+\w+\s+in\s+((?:\d+\s*)+);/.exec(command);
+	const loop = /\bfor\s+\w+\s+in\s+([\d\s]+);/.exec(command);
 	if (loop?.[1]) return loop[1].trim().split(/\s+/).map(Number);
 	const direct = /\bgh\s+pr\s+\w+\s+#?(\d{1,7})\b/.exec(command);
 	return direct?.[1] ? [Number(direct[1])] : [];
