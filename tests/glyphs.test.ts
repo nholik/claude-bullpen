@@ -19,9 +19,9 @@ test("profile accepts ASCII glyphs and rejects unknown modes", () => {
 		if (!safeGlyph(c)) throw new Error(`unsafe ${JSON.stringify(c)}`);
 });
 
-test("every demo view and Raster uses portable single-cell glyphs at all pane widths", () => {
-	for (const glyphs of ["unicode", "ascii"] as const)
-		for (const columns of [48, 60, 72, 100, 160])
+for (const glyphs of ["unicode", "ascii"] as const)
+	for (const columns of [48, 60, 72, 100, 160])
+		test(`every demo view and Raster uses portable single-cell glyphs (${glyphs}, ${columns} columns)`, () => {
 			for (const elapsed of [0, 16000, 40000, 80000]) {
 				const demo = demoAt(elapsed);
 				const github = demoGithubAt(elapsed);
@@ -51,7 +51,8 @@ test("every demo view and Raster uses portable single-cell glyphs at all pane wi
 						);
 					for (const c of line.map((s) => s.text).join("")) {
 						if (!safeGlyph(c)) throw new Error(`unsafe ${JSON.stringify(c)}`);
-						expect(stringWidth(c)).toBe(1);
+						if (stringWidth(c) !== 1)
+							throw new Error(`width ${JSON.stringify(c)}`);
 						if (glyphs === "ascii")
 							if ((c.codePointAt(0) ?? 0) > 126)
 								throw new Error(`text ascii ${c}`);
@@ -70,12 +71,13 @@ test("every demo view and Raster uses portable single-cell glyphs at all pane wi
 				);
 				for (let i = 0; i < words.length; i += 3) {
 					const cp = words[i] ?? 0;
-					expect(safeGlyph(String.fromCodePoint(cp))).toBe(true);
+					if (!safeGlyph(String.fromCodePoint(cp)))
+						throw new Error(`raster unsafe ${cp}`);
 					if (glyphs === "ascii")
 						if (cp > 126) throw new Error(`raster ascii ${cp}`);
 				}
 			}
-});
+		});
 
 test("paths normalize Windows separators while retaining drive and UNC roots", () => {
 	expect(join("C:\\work\\repo", ".claude", "bullpen.json")).toBe(
