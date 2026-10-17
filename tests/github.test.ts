@@ -5,6 +5,7 @@ import {
 	burndownKey,
 	classifyFailure,
 	countArgv,
+	createPollLoop,
 	exactCounts,
 	fetchCounts,
 	GH_MISSING,
@@ -382,4 +383,38 @@ test("a repository with 1205 open issues uses search totals and a bounded list",
 	);
 	expect(list.issues.length).toBe(200);
 	expect(headerText({ ...list, counts })).toBe("95/1300 closed");
+});
+
+test("a manual success resets the backed-off poll loop to the base cadence", async () => {
+	const timers: { ms: number; fn: () => void; cancelled: boolean }[] = [];
+	const results = [false, false, false];
+	const loop = createPollLoop({
+		baseMs: 60000,
+		poll: async () => results.shift(),
+		current: () => true,
+		after: (ms, fn) => {
+			const t = { ms, fn, cancelled: false };
+			timers.push(t);
+			return {
+				cancel: () => {
+					t.cancelled = true;
+				},
+			};
+		},
+	});
+	const settle = async () => {
+		for (let i = 0; i < 10; i++) await Promise.resolve();
+	};
+	loop.start();
+	await settle();
+	timers.at(-1)?.fn();
+	await settle();
+	expect(timers.map((t) => t.ms)).toEqual([120000, 240000]);
+	loop.recover();
+	expect(timers[1]?.cancelled).toBe(true);
+	expect(timers.at(-1)?.ms).toBe(60000);
+	// The next automatic failure starts from one failure, not three.
+	timers.at(-1)?.fn();
+	await settle();
+	expect(timers.at(-1)?.ms).toBe(120000);
 });

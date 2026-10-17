@@ -310,3 +310,53 @@ export function pollDelay(baseMs: number, failures: number): number {
 		Math.min(600_000, baseMs * 2 ** Math.min(10, Math.max(0, failures))),
 	);
 }
+
+/** The automatic poll loop: backs off on failure and can be reset by a manual success. */
+export type PollLoop = {
+	start(): void;
+	/** A manual poll succeeded: clear the failure count and re-time a backed-off timer. */
+	recover(): void;
+	cancel(): void;
+};
+
+export function createPollLoop(options: {
+	baseMs: number;
+	/** True for success, false for failure, undefined when the poll was skipped. */
+	poll: () => Promise<boolean | undefined>;
+	/** False once a newer loop replaces this one. */
+	current: () => boolean;
+	after: (ms: number, fn: () => void) => { cancel(): void };
+}): PollLoop {
+	let failures = 0;
+	let running = false;
+	let timer: { cancel(): void } | undefined;
+	const schedule = () => {
+		if (!options.current()) return;
+		timer = options.after(
+			pollDelay(options.baseMs, failures),
+			() => void run(),
+		);
+	};
+	const run = async () => {
+		timer = undefined;
+		running = true;
+		const success = await options.poll().catch(() => false);
+		running = false;
+		if (success !== undefined) failures = success ? 0 : failures + 1;
+		schedule();
+	};
+	return {
+		start: () => void run(),
+		cancel() {
+			timer?.cancel();
+			timer = undefined;
+		},
+		recover() {
+			if (failures === 0) return;
+			failures = 0;
+			if (running || !timer) return;
+			timer.cancel();
+			schedule();
+		},
+	};
+}
