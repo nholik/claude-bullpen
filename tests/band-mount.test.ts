@@ -6,8 +6,10 @@ test("the demo band mounts and its button opens the pane", async ($, on) => {
 		value: { value: 0, version: 1 },
 	}));
 	let opened = "";
+	let requestedColumns = 0;
 	on("ui.open", (_$, e) => {
 		opened = e.id;
+		requestedColumns = e.columns ?? 0;
 		return { value: { isPlaced: true } };
 	});
 	for (const bodyColumns of [48, 72, 110, 160]) {
@@ -28,6 +30,7 @@ test("the demo band mounts and its button opens the pane", async ($, on) => {
 		expect(await ui.find({ type: "Text", text: /#204/ })).toBeDefined();
 		await ui.press({ key: "open" });
 		expect(opened).toBe("bullpen");
+		expect(requestedColumns).toBe(160);
 		await ui.unmount();
 	}
 });

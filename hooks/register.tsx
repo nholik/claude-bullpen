@@ -485,7 +485,7 @@ async function loadProfile($: $) {
 async function openPane($: $) {
 	const at = (await readScene($)).now;
 	await update($, seenAt, () => at);
-	return $.ui.open({ id: PANE, title: "Bullpen" });
+	return $.ui.open({ id: PANE, title: "Bullpen", columns: 160, rows: 40 });
 }
 
 export function register(on: On) {

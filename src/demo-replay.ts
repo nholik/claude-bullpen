@@ -121,7 +121,22 @@ export function demoGithubAt(elapsed: number): GithubSource {
 export function demoProfile(profile: Profile): Profile {
 	const roles = Object.fromEntries(
 		["smith", "ada", "gate", "iris", "scout", "lead", "luna"].map(
-			(name, color) => [name, { color }],
+			(name, color) => [
+				name,
+				{
+					color,
+					role:
+						name === "gate"
+							? "reviewer"
+							: name === "lead"
+								? "lead"
+								: name === "scout"
+									? "researcher"
+									: name === "iris"
+										? "designer"
+										: "engineer",
+				},
+			],
 		),
 	);
 	return { ...profile, roles: { ...roles, ...profile.roles } };

@@ -57,7 +57,9 @@ test("both themes preserve cell budgets, portable glyphs, and explicit overflow 
 					for (const line of view.sidebar)
 						expect(width(line) + view.floorColumns + 3 <= columns).toBe(true);
 					if (glyphs === "ascii") {
-						expect(view.floorRows).toBe(1);
+						expect(view.floorRows).toBe(
+							style === "operations" && columns >= 60 && rows >= 16 ? 0 : 1,
+						);
 						expect(view.sidebar.length).toBe(0);
 					}
 					if (!view.floorRows) continue;
@@ -155,11 +157,16 @@ for (const style of ["studio", "operations"] as const)
 				view: {},
 			},
 		});
-		expect(await ui.find({ key: "floor" })).toBeDefined();
+		if (style === "studio")
+			expect(await ui.find({ key: "floor" })).toBeDefined();
+		else
+			expect(
+				await ui.find({ type: "Text", text: /WORKSTREAMS \/ live assignment/ }),
+			).toBeDefined();
 		expect((await ui.find({ key: "floor-focus" }))?.text).toContain(
 			style === "operations" ? "topology" : "floor",
 		);
-		await ui.press({ key: "story-1-1" });
+		await ui.press({ key: style === "operations" ? "story-2-1" : "story-1-1" });
 		expect(opened).toBe("bullpen-story");
 		await ui.unmount();
 	});

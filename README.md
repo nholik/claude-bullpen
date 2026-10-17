@@ -115,15 +115,18 @@ and [#53](https://github.com/nholik/claude-bullpen/issues/53) for an unnecessary
 
 The default `"style":"studio"` draws teammates at desks, recent messages on the
 work surfaces, a quiet lounge, and completion effects. For an abstract work
-console, use `"style":"operations"`: agent nodes, issue hubs, workstream cards,
-and an event trace replace the office imagery. Set either in project
+console, use `"style":"operations"`: sharp text workstreams, agent nodes, a live
+agent register, a decision queue, and a timestamped event trace. This view uses
+only terminal glyphs, with an ASCII fallback; it does not require image support. Set either in project
 `.claude/bullpen.json` or the user profile, then `/bullpen reload`:
 
 ```json
 { "style": "operations", "glyphs": "unicode", "animations": true }
 ```
 
-![Operations theme at 160 pane columns](docs/img/operations-160.png)
+![Operations console in the actual terminal](docs/img/operations-glyphs-terminal.png)
+
+[80-column layout](docs/img/operations-glyphs-80.png) · [ASCII fallback](docs/img/operations-glyphs-ascii.png)
 
 The side-by-side studio/topology layout starts at **110 pane-body columns and
 28 rows**. Aim for **160 columns and 40 rows in the pane** for more space; Claude's
