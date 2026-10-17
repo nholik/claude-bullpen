@@ -1,6 +1,7 @@
 // The team model: what the views draw, derived from the journal's events.
 
 import type { BullpenEventKind, MemberStatus } from "../../types";
+import type { ShipPath } from "./ship";
 
 /** One recent thing a teammate did, for the desk card's trail. */
 export type TrailStep = {
@@ -97,5 +98,9 @@ export type BullpenModel = {
 	kickbacks: Kickback[];
 	/** Issues seen closed, in order. */
 	closed: number[];
+	/** Each issue's path to shipping, from PR to merge. */
+	ship: ShipPath[];
+	/** Issues merged or closed, counted once. */
+	shipped: number;
 	morale: Morale;
 };

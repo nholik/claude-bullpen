@@ -5,6 +5,7 @@
 import type { BullpenEvent, BullpenEventKind, MemberStatus } from "../../types";
 import { nextIssue } from "../events";
 import { closedIssues, isAsk, isKickback, isReviewer } from "./detect";
+import { applyShip, EMPTY_SHIP, type ShipState } from "./ship";
 import type { Ask, HallwayMessage, Huddle, Kickback, Teammate } from "./types";
 
 export type ModelOptions = {
@@ -46,6 +47,8 @@ export type TeamState = {
 	kickbacks: Kickback[];
 	/** Each close seen, in order; an issue appears once. */
 	closes: { issue: number; at: number }[];
+	/** Each issue's path from PR to merge, from `applyShip`. */
+	ship: ShipState;
 };
 
 export const EMPTY_TEAM: TeamState = {
@@ -56,6 +59,7 @@ export const EMPTY_TEAM: TeamState = {
 	asks: [],
 	kickbacks: [],
 	closes: [],
+	ship: EMPTY_SHIP,
 };
 
 function keepLast<T>(list: T[], item: T, max: number): T[] {
@@ -205,6 +209,7 @@ export function applyEvent(
 		asks,
 		kickbacks,
 		closes,
+		ship: applyShip(state.ship, e),
 	};
 }
 

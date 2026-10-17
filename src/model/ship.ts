@@ -24,6 +24,8 @@ export type ShipPath = {
 	pr?: number;
 	/** The latest review verdict; kept after a resubmission for context. */
 	verdict?: ShipVerdict;
+	/** A review has ever asked for changes, even if a later one passed. */
+	bounced: boolean;
 	/** An @codex review was requested on the PR. */
 	codex: boolean;
 	/** When the stage last changed. */
@@ -77,6 +79,7 @@ function move(
 		issue,
 		stage: "working" as const,
 		codex: false,
+		bounced: false,
 		at,
 	};
 	// Merged and shipped are terminal: a recap or stale ask must not undo them.
@@ -87,6 +90,7 @@ function move(
 			patch.stage !== undefined &&
 			patch.stage !== "shipped");
 	const next = { ...prev, ...patch };
+	if (patch.verdict === "changes") next.bounced = true;
 	if (locked) next.stage = prev.stage;
 	if (next.stage !== prev.stage) next.at = at;
 	const prIssue =
@@ -155,4 +159,16 @@ export function shipPaths(
 			stage: "shipped",
 		});
 	return state.paths;
+}
+
+/** Issues that count as shipped: merged or closed, from the ship paths and the close log. */
+export function shippedIssues(
+	paths: Readonly<Record<number, ShipPath>>,
+	closed: readonly number[],
+): number[] {
+	const out = new Set(closed);
+	for (const path of Object.values(paths))
+		if (path.stage === "merged" || path.stage === "shipped")
+			out.add(path.issue);
+	return [...out];
 }
