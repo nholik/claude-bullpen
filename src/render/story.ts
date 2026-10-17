@@ -2,7 +2,7 @@ import type { BullpenEvent, GithubSource, Profile } from "../../types";
 import { nextIssue } from "../events";
 import { isKickback, isReviewer } from "../model/detect";
 import { colorFor, colorIndex, roleFor } from "../profile";
-import { fit, glyphLines, type Line, textLine } from "./lines";
+import { fit, glyphLines, type Line, textLine, wrapText } from "./lines";
 
 export type Story = {
 	issue: number;
@@ -49,7 +49,7 @@ function storyLinesImpl(
 	rows: number,
 ): Line[] {
 	const lines = [
-		textLine(
+		...wrapText(
 			`#${story.issue}${story.title ? ` ${story.title}` : ""} · ${story.state}`,
 			columns,
 		),
@@ -65,15 +65,9 @@ function storyLinesImpl(
 	if (!story.events.length)
 		lines.push(textLine("No journal events for this issue yet.", columns));
 	const room = Math.max(0, rows - lines.length);
-	const count = Math.max(0, room - (story.events.length > room ? 1 : 0));
-	const shown = count > 0 ? story.events.slice(-count) : [];
-	if (story.events.length > room)
-		lines.push(
-			textLine(
-				`… ${story.events.length - shown.length} earlier events`,
-				columns,
-			),
-		);
+	const groups: Line[][] = [];
+	// At most one viewport of events can be shown, even before wrapping.
+	const shown = room > 0 ? story.events.slice(-room) : [];
 	if (room > 0)
 		for (const e of shown) {
 			const date = new Date(e.at);
@@ -95,21 +89,45 @@ function storyLinesImpl(
 									? "verdict"
 									: "message"
 							: e.kind;
-			lines.push(
-				fit(
-					[
-						{
-							text: `${clock} ${e.who} `,
-							fg: colorFor(e.who, profile, colorIndex(e.who)),
-						},
-						{
-							text: `${kind}${e.kind === "message" ? ` → ${e.target}` : ""}: ${e.detail}`,
-						},
-					],
-					columns,
+			const prefix = `${clock} ${e.who} `;
+			const wrapped = wrapText(
+				`${prefix}${kind}${e.kind === "message" ? ` → ${e.target}` : ""}: ${e.detail}`,
+				columns,
+			);
+			groups.push(
+				wrapped.map((line, index) =>
+					index === 0
+						? [
+								{
+									...line[0],
+									text: line[0]?.text ?? "",
+									fg: colorFor(e.who, profile, colorIndex(e.who)),
+								},
+							]
+						: line,
 				),
 			);
 		}
+	const selected: Line[][] = [];
+	let used = 0;
+	for (let i = groups.length - 1; i >= 0; i--) {
+		const group = groups[i] ?? [];
+		if (used + group.length > Math.max(0, room - 1)) {
+			if (selected.length === 0 && room > 1) {
+				selected.unshift([
+					...group.slice(0, Math.max(0, room - 2)),
+					textLine("... more lines", columns),
+				]);
+			}
+			break;
+		}
+		selected.unshift(group);
+		used += group.length;
+	}
+	const hidden = story.events.length - selected.length;
+	if (hidden > 0 && room > 0)
+		lines.push(textLine(`... ${hidden} earlier events`, columns));
+	lines.push(...selected.flat());
 	return lines.slice(0, Math.max(0, rows));
 }
 
