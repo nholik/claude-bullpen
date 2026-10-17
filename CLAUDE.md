@@ -1,8 +1,8 @@
 # CLAUDE.md — claude-bullpen
 
 Bullpen is a Claude Code **mod** (function-hooks plugin): a live TUI view of an agent team,
-showing who is huddled on which GitHub issue, what they are saying, the burndown, and morale. Design,
-mockups and build phases are in `docs/design.md`; read it before feature work.
+answering at a glance what needs you, who is stuck and what is shipping. The design brief
+(the three questions, layout, moods and motion rules) is `docs/design.md`; read it before feature work.
 
 ## Commands
 
