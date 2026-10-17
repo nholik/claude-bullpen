@@ -386,11 +386,14 @@ function pack(
 	for (const label of labels) {
 		label.text = glyphText(label.text, mode);
 		if (label.row < 0 || label.row >= rows || label.col < 0) continue;
-		for (let k = 0; k < label.text.length && label.col + k < columns; k++) {
+		let k = 0;
+		for (const ch of label.text) {
+			if (label.col + k >= columns) break;
 			const i = (label.row * columns + label.col + k) * 3;
-			words[i] = label.text.charCodeAt(k);
+			words[i] = ch.codePointAt(0) ?? 32;
 			words[i + 1] = label.fg;
 			words[i + 2] = label.bg;
+			k++;
 		}
 	}
 	return base64(new Uint8Array(words.buffer));

@@ -60,3 +60,19 @@ test("every region and focus mode stays inside pane dimensions", () => {
 		view.regions.some((line) => line.some((seg) => seg.text.includes("│"))),
 	).toBe(true);
 });
+
+test("surfaces without Raster give floor space back to the regions", () => {
+	const model = buildModel(events, 2000);
+	for (const columns of [48, 72, 110, 160]) {
+		const terminal = paneView(model, [], columns, 24, 2000);
+		const other = paneView(model, [], columns, 24, 2000, { raster: false });
+		expect(other.floorRows).toBe(0);
+		expect(other.regions.length > terminal.regions.length).toBe(true);
+		const focused = paneView(model, [], columns, 24, 2000, {
+			raster: false,
+			focus: "floor",
+		});
+		expect(focused.floorRows).toBe(0);
+		expect(focused.regions.length > 0).toBe(true);
+	}
+});

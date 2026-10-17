@@ -19,6 +19,8 @@ export type PaneOptions = {
 	profile?: Profile;
 	focus?: Focus;
 	seenAt?: number;
+	/** False when this surface cannot draw a Raster. */
+	raster?: boolean;
 };
 export function paneView(
 	model: BullpenModel,
@@ -56,7 +58,9 @@ export function paneView(
 	].slice(0, Math.max(0, rows - heading.length - 1));
 	const available = Math.max(0, rows - heading.length - bottom.length - 1);
 	const floorHeight =
-		options.focus === "huddles" || options.focus === "talk"
+		options.raster === false ||
+		options.focus === "huddles" ||
+		options.focus === "talk"
 			? 0
 			: options.focus === "floor"
 				? available
@@ -67,7 +71,7 @@ export function paneView(
 		regions = huddles(model, github, profile, columns, room, now);
 	else if (options.focus === "talk")
 		regions = hallway(model, profile, columns, room, now);
-	else if (options.focus !== "floor") {
+	else if (options.focus !== "floor" || options.raster === false) {
 		if (columns >= 60) {
 			const left = Math.floor((columns - 3) * 0.6);
 			regions = beside(
