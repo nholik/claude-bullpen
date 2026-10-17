@@ -80,6 +80,8 @@ export type GhStatus =
 	| "ok"
 	| "missing"
 	| "signed-out"
+	| "sso-required"
+	| "network"
 	| "not-github"
 	| "rate-limited"
 	| "error";
