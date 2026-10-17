@@ -11,6 +11,7 @@ import {
 } from "../src/collect";
 import { hex } from "../src/color";
 import { DEMO_PREFIX, DEMO_SCRIPT, type DemoStep } from "../src/demo";
+import { demoOps } from "../src/demo-replay";
 import { argText, describeTool, issueRefs, oneLine } from "../src/events";
 import { drawFloor, floorRows, PALETTE } from "../src/floor";
 import {
@@ -249,36 +250,7 @@ async function pollGithub($: $) {
 
 /** Plays one step of the demo script through the same path real events take. */
 async function playStep($: $, step: DemoStep) {
-	const id = `${DEMO_PREFIX}${step.who}`;
-	const act = step.do;
-	switch (act.kind) {
-		case "join":
-			await touch($, id, {
-				name: step.who,
-				status: "running",
-				issue: act.issue,
-			});
-			await record($, "spawn", id, `${step.who} joined`, { attribute: false });
-			return;
-		case "work":
-			await touch($, id, { status: "running", issue: act.issue });
-			await record($, "tool", id, act.detail);
-			return;
-		case "rest":
-			await touch($, id, { status: "idle" });
-			await record($, "turn-end", id, "finished a turn");
-			return;
-		case "say":
-			await record($, "message", id, act.text, {
-				target: act.to,
-				text: act.text,
-			});
-			return;
-		case "leave":
-			await touch($, id, { status: "gone" });
-			await record($, "leave", id, `${step.who} left`, { attribute: false });
-			return;
-	}
+	for (const op of demoOps(step, await now($))) collectorOf($).push(op);
 }
 
 /** Clears earlier demo members and plays the script on the session clock. */
