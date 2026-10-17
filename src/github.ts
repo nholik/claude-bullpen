@@ -27,10 +27,19 @@ export const BURNDOWN_CAP = 500;
 
 export const ISSUE_LIMIT = 200;
 
+/** Counts and snapshots always cover both states; preserve quoted search text. */
+export function allStatesFilter(filter: string): string {
+	const tokens = filter.match(/(?:[^\s"]+|"[^"]*")+/g) ?? [];
+	return tokens
+		.filter((token) => !/^-?(?:is|state):(?:open|closed|all)$/i.test(token))
+		.join(" ");
+}
+
 export function issueListArgv(filter: string, limit = ISSUE_LIMIT): string[] {
 	const argv = ["gh", "issue", "list", "--json", ISSUE_FIELDS];
 	argv.push("--state", "all", "--limit", String(limit));
-	if (filter.trim()) argv.push("--search", filter.trim());
+	const search = allStatesFilter(filter);
+	if (search) argv.push("--search", search);
 	return argv;
 }
 
@@ -205,7 +214,7 @@ export function countArgv(
 		"-X",
 		"GET",
 		"-f",
-		`q=repo:${repo} is:issue ${filter.trim()} state:${state}`,
+		`q=repo:${repo} is:issue ${allStatesFilter(filter)} state:${state}`,
 		"--jq",
 		"if .incomplete_results then empty else .total_count end",
 	];

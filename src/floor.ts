@@ -8,11 +8,10 @@ import { mix } from "./color";
 import { oneLine } from "./events";
 import stringWidth from "./vendor/string-width.js";
 
-/** Member colors, 0xRRGGBB, chosen to stay distinct on dark and light themes. */
-export const PALETTE = [
-	0x4fc3f7, 0xffb74d, 0x81c784, 0xf06292, 0xba68c8, 0xfff176, 0x4db6ac,
-	0xe57373,
-];
+export { PALETTE } from "./palette";
+
+import type { Profile } from "../types";
+import { colorFor, DEFAULT_PROFILE } from "./profile";
 
 const UPPER_HALF = 0x2580;
 const FLOOR = 0x2b2620;
@@ -138,13 +137,18 @@ function cellText(text: string, width: number): string {
 	return oneLine(safe, Math.max(1, width));
 }
 
-function memberColor(m: Member): number {
-	const color = PALETTE[m.color % PALETTE.length] ?? WHITE;
+function memberColor(m: Member, profile: Profile): number {
+	const color = colorFor(m.name, profile, m.color);
 	return m.status === "idle" ? dim(color) : color;
 }
 
 /** Compact grouped blocks, with overflow kept visible even on tiny terminals. */
-function strip(members: Member[], columns: number, rows: number): FloorFrame {
+function strip(
+	members: Member[],
+	columns: number,
+	rows: number,
+	profile: Profile,
+): FloorFrame {
 	const p = canvas(columns, rows * 2);
 	rect(p, 0, 0, columns, rows * 2, FLOOR);
 	const labels: TextCell[] = [];
@@ -178,7 +182,13 @@ function strip(members: Member[], columns: number, rows: number): FloorFrame {
 		col += text.length + 1;
 		for (const m of group) {
 			if (col + 2 > limit) break;
-			labels.push({ col, row: 0, text: "█", fg: memberColor(m), bg: FLOOR });
+			labels.push({
+				col,
+				row: 0,
+				text: "█",
+				fg: memberColor(m, profile),
+				bg: FLOOR,
+			});
 			seats.set(m.id, { col, pixel: 0 });
 			col += 2;
 		}
@@ -207,9 +217,10 @@ export function drawFloor(
 	rows: number,
 	frame: number,
 	titles: Record<number, string> = {},
+	profile: Profile = DEFAULT_PROFILE,
 ): FloorFrame {
 	const active = members.filter((m) => m.status !== "gone");
-	if (columns < 110 || rows < 6) return strip(active, columns, rows);
+	if (columns < 110 || rows < 6) return strip(active, columns, rows, profile);
 	const p = canvas(columns, rows * 2);
 	const plan = layout(
 		columns,
@@ -280,7 +291,7 @@ export function drawFloor(
 		const seat = seats.get(m.id);
 		if (!seat) continue;
 		const bob = m.status === "running" && (frame + m.color) % 4 < 2 ? 1 : 0;
-		person(p, seat.col, seat.pixel - bob, memberColor(m));
+		person(p, seat.col, seat.pixel - bob, memberColor(m, profile));
 	}
 	if (plan.overflow.length > 0)
 		label(2, rows - 1, `+${plan.overflow.length} more issues`);
