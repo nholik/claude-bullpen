@@ -24,7 +24,7 @@ test("the demo band mounts and its button opens the pane", async ($, on) => {
 				view: {},
 			},
 		});
-		expect((await ui.find({ key: "open" }))?.text).toBe("☰ bullpen");
+		expect((await ui.find({ key: "open" }))?.text).toBe("# bullpen");
 		expect(await ui.find({ type: "Text", text: /#204/ })).toBeDefined();
 		await ui.press({ key: "open" });
 		expect(opened).toBe("bullpen");

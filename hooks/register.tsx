@@ -61,6 +61,7 @@ import { band } from "../src/render/header";
 import { fit, type Line } from "../src/render/lines";
 import { type Focus, paneView } from "../src/render/pane";
 import { storyFor, storyLines } from "../src/render/story";
+import { join } from "../src/vendor/pathe.js";
 import type { BullpenEventKind, Member, Profile } from "../types";
 
 const PANE = "bullpen";
@@ -288,7 +289,7 @@ async function loadChunk(
 		return undefined;
 	}
 	const index = Math.max(1, lastChunk(entries, writer));
-	const path = `${dir}/${chunkName(writer, index)}`;
+	const path = join(dir, chunkName(writer, index));
 	if (!(await $.fs.exists(path))) return { writer, index, lines: [] };
 	try {
 		return { writer, index, lines: chunkLines(await $.fs.read(path)) };
@@ -303,7 +304,7 @@ async function pruneJournal($: $, dir: string, writer: string) {
 	try {
 		const entries = await $.fs.list(dir);
 		for (const name of planRetention(entries, await $.clock.now(), writer))
-			await $.fs.write(`${dir}/${name}`, "");
+			await $.fs.write(join(dir, name), "");
 	} catch (error) {
 		warnJournal($, `can't prune ${dir} (${error})`);
 	}
@@ -322,7 +323,7 @@ async function writeJournal($: $, added: BullpenEvent[]) {
 	}
 	const plan = planAppend(journal.current, added.map(toLine));
 	for (const { name, text } of plan.writes)
-		await $.fs.write(`${dir}/${name}`, text);
+		await $.fs.write(join(dir, name), text);
 	journal = { dir, current: plan.current };
 }
 
@@ -448,7 +449,7 @@ async function playDemo($: $) {
 async function loadProfile($: $) {
 	let text: string | undefined;
 	try {
-		const path = `${await $.session.root()}/.claude/bullpen.json`;
+		const path = join(await $.session.root(), ".claude", "bullpen.json");
 		if (await $.fs.exists(path)) text = await $.fs.read(path);
 	} catch (error) {
 		$.ui.log(`bullpen: can't read bullpen.json (${error})`, { to: "debug" });

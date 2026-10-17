@@ -169,16 +169,16 @@ test("gone members have no tables; titles use single-cell characters; idle frame
 	).toBe(false);
 });
 
-test("supplementary-plane width-one labels pack complete code points", () => {
+test("supplementary-plane labels normalize to portable glyphs without surrogate halves", () => {
 	const columns = 110;
 	const floor = drawFloor(team(1), columns, 13, 0, { 1: "𝐀x" });
-	const label = floor.labels.find((l) => l.text.includes("𝐀"));
+	const label = floor.labels.find((l) => l.text.includes("Ax"));
 	if (!label) throw new Error("supplementary label missing");
 	const bytes = Uint8Array.from(atob(floor.cells), (c) => c.charCodeAt(0));
 	const words = new Uint32Array(bytes.buffer);
-	const offset = Array.from(label.text).indexOf("𝐀");
+	const offset = Array.from(label.text).indexOf("A");
 	const index = (label.row * columns + label.col + offset) * 3;
-	expect(words[index]).toBe(0x1d400);
+	expect(words[index]).toBe(65);
 	expect(words[index + 3]).toBe("x".codePointAt(0));
 	for (let i = 0; i < words.length; i += 3)
 		expect((words[i] ?? 0) >= 0xd800 && (words[i] ?? 0) <= 0xdfff).toBe(false);

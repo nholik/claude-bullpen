@@ -2,7 +2,7 @@ import type { BullpenEvent, GithubSource, Profile } from "../../types";
 import { nextIssue } from "../events";
 import { isKickback, isReviewer } from "../model/detect";
 import { colorFor, colorIndex, roleFor } from "../profile";
-import { fit, type Line, textLine } from "./lines";
+import { fit, glyphLines, type Line, textLine } from "./lines";
 
 export type Story = {
 	issue: number;
@@ -42,7 +42,7 @@ export function storyFor(
 		events: selected,
 	};
 }
-export function storyLines(
+function storyLinesImpl(
 	story: Story,
 	profile: Profile,
 	columns: number,
@@ -111,4 +111,8 @@ export function storyLines(
 			);
 		}
 	return lines.slice(0, Math.max(0, rows));
+}
+
+export function storyLines(...args: Parameters<typeof storyLinesImpl>): Line[] {
+	return glyphLines(storyLinesImpl(...args), args[1].glyphs);
 }

@@ -64,6 +64,7 @@ export type Profile = {
 	/** Teammate name or agent type to role and color. */
 	roles: Record<string, ProfileRole>;
 	animations: boolean;
+	glyphs: "unicode" | "ascii";
 	/** Member colors as 0xRRGGBB, in assignment order. */
 	palette: number[];
 };

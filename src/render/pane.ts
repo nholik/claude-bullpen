@@ -3,7 +3,7 @@ import { floorRows } from "../floor";
 import type { BullpenModel } from "../model";
 import { DEFAULT_PROFILE } from "../profile";
 import { band, footer, header } from "./header";
-import { beside, type Line, textLine } from "./lines";
+import { beside, glyphLines, type Line, textLine } from "./lines";
 import { hallway, huddles } from "./regions";
 
 export type Focus = "floor" | "huddles" | "talk";
@@ -88,10 +88,10 @@ export function paneView(
 		}
 	}
 	return {
-		header: heading,
+		header: glyphLines(heading, profile.glyphs),
 		floorRows: Math.max(0, floorHeight),
-		regions: regions.slice(0, room),
-		footer: bottom,
+		regions: glyphLines(regions.slice(0, room), profile.glyphs),
+		footer: glyphLines(bottom, profile.glyphs),
 		band: band(model, github, profile, columns, options.seenAt ?? -1),
 	};
 }
