@@ -17,9 +17,25 @@ test("questions, intentions and commands are not explicit close confirmations", 
 		"Can you mark #12 closed",
 		"gh issue close #12",
 		"not closed #12",
+		"Can you confirm #12 is closed",
+		"Have you closed #12",
+		"Has #12 closed",
+		"Could we mark #12 closed",
+		"Can confirm #12 is not closed",
 	])
 		expect(closedIssues(text)).toEqual([]);
-	for (const text of ["closed #12", "#12 is closed", "#12 ✓"])
+	for (const text of [
+		"closed #12",
+		"#12 is closed",
+		"#12 ✓",
+		"Can confirm #12 is closed",
+		"Can confirm: closed #12",
+		"Could confirm #12 shipped",
+		"Have closed #12",
+		"Have confirmed #12 is closed",
+		"Has closed #12",
+		"Can now confirm #12 closed",
+	])
 		expect(closedIssues(text)).toEqual([12]);
 });
 
