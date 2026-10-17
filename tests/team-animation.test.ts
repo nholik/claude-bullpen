@@ -54,22 +54,17 @@ function render(
 test("Studio highlights both message participants and completed turns, then expires without moving cards", () => {
 	const first = render(10000);
 	const second = render(11000);
-	const labels = first.regions.flat();
-	expect(labels.find((s) => s.text.includes("→ TO smith"))?.bold).toBe(true);
-	expect(labels.find((s) => s.text.includes("← FROM ada"))?.bold).toBe(true);
-	expect(labels.find((s) => s.text.includes("✓ TURN DONE"))?.bold).toBe(true);
-	expect(
-		second.regions.flat().find((s) => s.text.includes("→ TO smith"))?.bold,
-	).toBe(false);
-	for (const now of [9000, 14000]) {
-		const text = render(now)
-			.regions.flat()
-			.map((s) => s.text)
-			.join("");
-		expect(text.includes("TO smith")).toBe(false);
-		expect(text.includes("FROM ada")).toBe(false);
-		expect(text.includes("TURN DONE")).toBe(false);
-	}
+	// Pulses recolor the face (no extra row): lavender for messages, mint for a finished turn.
+	const face = (view: typeof first, name: string) =>
+		view.regions
+			.flat()
+			.find((s, i, all) => all[i + 1]?.text === name && s.text.startsWith("("));
+	expect(face(first, "ada")?.fg).toBe(STUDIO.lavender);
+	expect(face(first, "smith")?.fg).toBe(STUDIO.lavender);
+	expect(face(first, "scout")?.fg).toBe(STUDIO.mint);
+	expect(face(first, "ada")?.bold).toBe(true);
+	expect(face(second, "ada")?.bold).toBe(false);
+	expect(face(second, "ada")?.fg).not.toBe(STUDIO.lavender);
 	for (const columns of [60, 80, 120, 160]) {
 		const frames = [10000, 11000, 12000, 14000].map((at) =>
 			render(at, true, columns),
@@ -98,20 +93,12 @@ test("Studio animation fallback keeps status and activity without transient effe
 			.regions.flat()
 			.map((s) => s.text)
 			.join("");
-		expect(text).toContain("● RUNNING");
+		expect(text).toContain("(o.o) ada");
 		expect(text).toContain("Please review #1");
-		expect(text.includes("○ RUNNING")).toBe(false);
 		expect(text.includes("TO smith")).toBe(false);
 		expect(text.includes("TURN DONE")).toBe(false);
 	}
-	// The running dot holds steady: a blink would redraw the pane every second.
-	expect(
-		render(11000)
-			.regions.flat()
-			.some((s) => s.text.includes("○ RUNNING")),
-	).toBe(false);
 	const ascii = render(10000, true, 80, "ascii").regions.flat();
-	expect(ascii.some((s) => s.text.includes("TO smith"))).toBe(true);
 	for (const seg of ascii) expect(/^[\x20-\x7e]*$/.test(seg.text)).toBe(true);
 });
 
@@ -156,9 +143,8 @@ test("Studio pulses only card frames when teammate colors match the default edge
 		const segments = view.regions.flat();
 		for (const name of ["ada", "smith", "scout"])
 			expect(segments.find((s) => s.text === name)?.fg).toBe(STUDIO.edge);
-		const statuses = segments.filter((s) => /RUNNING|IDLE/.test(s.text));
+		const statuses = segments.filter((s) => /^\(.*\) $/.test(s.text));
 		expect(statuses.length).toBe(3);
-		for (const status of statuses) expect(status.fg).toBe(STUDIO.edge);
 		const frames = segments.filter((s) => s.text.startsWith("╭"));
 		expect(frames.map((s) => s.fg)).toEqual(
 			now === 10000
@@ -166,4 +152,44 @@ test("Studio pulses only card frames when teammate colors match the default edge
 				: [STUDIO.edge, STUDIO.edge, STUDIO.edge],
 		);
 	}
+});
+
+test("every card draws its state word beside the face, at any width and glyph mode", () => {
+	for (const glyphs of ["unicode", "ascii"] as const)
+		for (const columns of [48, 60, 80, 120]) {
+			const text = render(10000, true, columns, glyphs)
+				.regions.flat()
+				.map((s) => s.text)
+				.join("");
+			expect(text).toContain("heads-down");
+			expect(text).toContain("snoozing");
+		}
+});
+
+test("a quiet card does not change second to second, so it never forces a redraw", () => {
+	const text = (now: number) =>
+		render(now)
+			.regions.flat()
+			.map((s) => s.text)
+			.join("");
+	expect(text(20000)).toBe(text(21000));
+});
+
+test("the state word never runs into the z's, whichever frame shows", () => {
+	for (let now = 20000; now < 32000; now += 2000)
+		for (const columns of [60, 80, 120]) {
+			const text = render(now, true, columns)
+				.regions.flat()
+				.map((s) => s.text)
+				.join("");
+			expect(/[zZ]snoozing/.test(text)).toBe(false);
+		}
+});
+
+test("idle cards dim and working cards do not", () => {
+	const segs = render(20000).regions.flat();
+	const dimmed = (name: string) =>
+		segs.find((s) => s.text === name)?.dim === true;
+	expect(dimmed("scout")).toBe(true);
+	expect(dimmed("ada")).toBe(false);
 });
