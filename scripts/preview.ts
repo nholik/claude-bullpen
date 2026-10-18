@@ -38,6 +38,7 @@ const { storyFor, storyLines } = await import("../src/render/story");
 const { paneView } = await import("../src/render/pane");
 const { readJournal, STATE_EVENTS } = await import("../src/journal");
 const { replayAt } = await import("../src/replay");
+const { createCardWidthTracker } = await import("../src/render/card-width");
 
 // A render hang must not pin a CPU: a worker thread watches the frame start
 // time and kills the process if one frame runs past the limit.
@@ -166,6 +167,7 @@ function frameAt(elapsed: number): Frame {
 	};
 }
 
+const cardWidths = createCardWidthTracker();
 for (let frame = 0; frame < frames; frame++) {
 	Atomics.store(frameClock, 0, Date.now() & 0x7fffffff);
 	const { now, replay, source } = frameAt(at + frame * 100);
@@ -178,6 +180,7 @@ for (let frame = 0; frame < frames; frame++) {
 		github: source,
 		profile: profile,
 		mode: team ? "replay" : "demo",
+		cardWidths,
 	});
 	if (options.has("--story")) {
 		const issue = number("--story", 204, 1, 9999999);

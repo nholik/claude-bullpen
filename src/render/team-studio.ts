@@ -3,6 +3,11 @@ import type { BullpenModel, Teammate } from "../model";
 import { activeTime, flowSummary } from "../model/signals";
 import { colorFor, colorIndex, roleLabel } from "../profile";
 import { activityPhrase } from "./activity";
+import {
+	type CardWidthTracker,
+	cardsPerRow,
+	settledCardWidth,
+} from "./card-width";
 import { age, align, clock, edge, inside, section, text } from "./layout";
 import { fit, glyphLines, type Line, textLine, width, wrapText } from "./lines";
 import { moodFor, snoozeFrame } from "./mood";
@@ -194,6 +199,8 @@ export function teamStudioView(
 	rows: number,
 	now: number,
 	mode: "live" | "demo" | "replay" = "live",
+	cardWidths?: CardWidthTracker,
+	wallNow = now,
 ): { header: Line[]; regions: Line[] } {
 	const urgency = (m: Teammate) =>
 		model.asks.some((a) => a.open && a.from === m.name)
@@ -261,16 +268,21 @@ export function teamStudioView(
 	const rightWidth = columns - leftWidth - 3;
 	const compact = columns < 110;
 	const across = compact ? 1 : leftWidth >= 105 ? 3 : leftWidth >= 64 ? 2 : 1;
-	const cardWidth = Math.max(
-		12,
-		Math.floor((leftWidth - (across - 1) * 2) / across),
-	);
 	// SHIPPING keeps its rows: cards give way before the path to merge does.
 	const reserve = Math.min(shipping.length + 1, 6) + 1 + (away.length ? 1 : 0);
 	const slot = compact ? 2 : CARD_ROWS + 1;
 	const capacity =
 		across * Math.max(0, Math.floor((room - 3 - reserve) / slot));
 	const shown = team.slice(0, capacity);
+	// A small team gets wider cards (up to a cap) instead of empty space.
+	const perRow = compact ? 1 : cardsPerRow(across, shown.length);
+	const settled = compact
+		? Math.max(12, leftWidth)
+		: settledCardWidth(leftWidth, perRow);
+	const cardWidth =
+		compact || !cardWidths || !shown.length
+			? settled
+			: cardWidths.sample(perRow, settled, wallNow, profile.animations);
 	const left: Line[] = shippingSection(
 		model,
 		github,
@@ -280,9 +292,9 @@ export function teamStudioView(
 		now,
 	);
 	left.push(section("WORKSTATIONS / teammates", leftWidth));
-	for (let index = 0; index < shown.length; index += across) {
+	for (let index = 0; index < shown.length; index += perRow) {
 		const cards = shown
-			.slice(index, index + across)
+			.slice(index, index + perRow)
 			.map((member) =>
 				workstation(member, model, github, profile, cardWidth, now, compact),
 			);

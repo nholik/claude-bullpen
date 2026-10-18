@@ -2,6 +2,7 @@ import type { GithubSource, Member, Profile } from "../../types";
 import { floorRows } from "../floor";
 import type { BullpenModel } from "../model";
 import { DEFAULT_PROFILE } from "../profile";
+import type { CardWidthTracker } from "./card-width";
 import { band, footer, header } from "./header";
 import { beside, glyphLines, type Line, textLine } from "./lines";
 import { hallway, huddles } from "./regions";
@@ -26,6 +27,10 @@ export type PaneOptions = {
 	/** False when this surface cannot draw a Raster. */
 	raster?: boolean;
 	mode?: "live" | "demo" | "replay";
+	/** Keeps card widths between draws so a resize can tween. */
+	cardWidths?: CardWidthTracker;
+	/** The real clock, for the card tween; `now` may be replayed. */
+	wallNow?: number;
 };
 export function paneView(
 	model: BullpenModel,
@@ -68,6 +73,8 @@ export function paneView(
 			rows - 3,
 			now,
 			options.mode,
+			options.cardWidths,
+			options.wallNow,
 		);
 		return {
 			header: view.header,

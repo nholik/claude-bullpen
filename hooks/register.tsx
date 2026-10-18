@@ -71,6 +71,10 @@ import {
 	parseProfile,
 	withMemberColors,
 } from "../src/profile";
+import {
+	createCardWidthTrackers,
+	TWEEN_REDRAW_MS,
+} from "../src/render/card-width";
 import { band } from "../src/render/header";
 import { fit, glyphLines, type Line, wrapText } from "../src/render/lines";
 import { type Focus, paneView } from "../src/render/pane";
@@ -343,6 +347,28 @@ async function tickAnimation($: $) {
 		animationTimer?.cancel();
 		animationTimer = undefined;
 	}
+}
+/** Card widths persist between draws; a team-size change tweens them. */
+const cardWidths = createCardWidthTrackers();
+let tweenTimer: Timer | undefined;
+/** Redraw at 10 Hz while card widths settle, then stop the timer. */
+function followCardTween($: $, wallNow: number) {
+	if (!cardWidths.anyMoving(wallNow)) {
+		tweenTimer?.cancel();
+		tweenTimer = undefined;
+		return;
+	}
+	if (tweenTimer) return;
+	tweenTimer = $.clock.every(TWEEN_REDRAW_MS, () => {
+		void (async () => {
+			const at = await now($);
+			if (!cardWidths.anyMoving(at)) {
+				tweenTimer?.cancel();
+				tweenTimer = undefined;
+			}
+			await update($, viewTime, () => at);
+		})().catch(() => {});
+	});
 }
 let pollLoop: PollLoop | undefined;
 let pollGeneration = 0;
@@ -763,6 +789,9 @@ export function register(on: On) {
 			animationTimer = undefined;
 			floorSize = undefined;
 			scene = undefined;
+			tweenTimer?.cancel();
+			tweenTimer = undefined;
+			cardWidths.clear();
 		}
 		return next(e);
 	});
@@ -801,6 +830,9 @@ export function register(on: On) {
 		animationTimer?.cancel();
 		animationTimer = undefined;
 		scene = undefined;
+		tweenTimer?.cancel();
+		tweenTimer = undefined;
+		cardWidths.clear();
 		viewTimer?.cancel();
 		pollLoop?.cancel();
 		pollGeneration++;
@@ -1054,6 +1086,7 @@ export function register(on: On) {
 
 		await read($, viewTime);
 		const focused = await read($, focus);
+		const wallNow = await now($);
 		const view = paneView(model, list, columns, e.props.scroll.bodyRows, at, {
 			mode: (await read($, replay))
 				? "replay"
@@ -1065,7 +1098,10 @@ export function register(on: On) {
 			focus: focused || undefined,
 			raster: e.surface === "terminal",
 			seenAt: await read($, seenAt),
+			cardWidths: cardWidths.for(e.surface),
+			wallNow,
 		});
+		followCardTween($, wallNow);
 		const floorHeight = view.floorRows;
 		const titles =
 			source.result?.status === "ok"
