@@ -121,35 +121,18 @@ export function ownedRefs(detail: string, refs: readonly number[]): number[] {
 	return refs.filter((n) => !settled.has(n) && (!inCells || named.has(n)));
 }
 
-// Words that make a "done" conditional, future, blocked or negated.
-const NOT_YET =
-	/\b(?:must|needs?|should|shall|will|would|could|can|before|until|once|unless|if|when|after|blocked|waiting|pending|yet|not|never|no|to be)\b|n't\b/i;
-// A report that the sender's own work is finished, as the clause's predicate.
-const DONE_CLAUSE = new RegExp(
-	[
-		/^\W*(?:done|finished|complete[d]?|all set)\b/,
-		/\b(?:done|finished|complete[d]?|all set)\W*$/,
-		/\bPR\s+(?:is\s+)?(?:up|opened|open)\b/,
-		/\b(?:opened|pushed)\s+(?:the\s+)?PR\b/,
-	]
-		.map((r) => r.source)
-		.join("|"),
-	"i",
-);
-
 /**
- * Whether a message reports its sender's work finished ("Worktree prune
- * done.", "Done: removed 6 worktrees", "PR is up"), so a turn-end after it is a
- * finish, not a stall. Conservative: a missed done is a false stuck, a false
- * done hides a real stall, so questions, negations and any modal, conditional
- * or blocked wording ("must be completed before", "blocked until #12 is done")
- * don't count.
+ * The refs of an event that can say what its sender is working on. The
+ * SendMessage tool call carries the same text as the message event that
+ * follows it, which `ownedRefs` filters, so the call moves no one.
  */
-export function isDoneReport(detail: string): boolean {
-	if (detail.includes("?")) return false;
-	const clauses = detail.split(/[.;\n!]+/);
-	if (clauses.some((c) => NOT_YET.test(c))) return false;
-	return clauses.some((c) => DONE_CLAUSE.test(c));
+export function attributableRefs(
+	e: { kind: string; target?: string; detail: string },
+	refs: readonly number[],
+): number[] {
+	if (e.kind === "message") return ownedRefs(e.detail, refs);
+	if (e.kind === "tool" && e.target === "SendMessage") return [];
+	return [...refs];
 }
 
 /**
