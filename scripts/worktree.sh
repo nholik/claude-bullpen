@@ -7,7 +7,7 @@
 #   scripts/worktree.sh <issue> <slug>        # .worktrees/<issue> on branch <issue>-<slug>, from origin/main
 #   scripts/worktree.sh --existing <name> <branch>
 #                                             # .worktrees/<name> on a local branch <name> tracking origin/<branch> (gate)
-#   scripts/worktree.sh --remove <name>       # refuses if uncommitted changes; else removes the worktree and its branch
+#   scripts/worktree.sh --remove <name>       # refuses if uncommitted changes or unpushed commits; else removes the worktree and its branch
 #
 # Prints the worktree path as its last line.
 
@@ -46,6 +46,7 @@ case "${1:-}" in
 	dir="$root/.worktrees/$2"
 	[[ -d "$dir" ]] || die "no worktree at $dir"
 	[[ -z "$(git -C "$dir" status --porcelain)" ]] || die "$dir has uncommitted changes; commit or discard them first"
+	[[ -z "$(git -C "$dir" log --oneline HEAD --not --remotes)" ]] || die "$dir has commits that are on no remote; push them first"
 	branch="$(git -C "$dir" symbolic-ref --short -q HEAD || true)"
 	git worktree remove "$dir"
 	[[ -z "$branch" ]] || git branch -D "$branch"
