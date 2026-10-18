@@ -13,7 +13,7 @@ import { applyEvent, reduceEvents, type TeamState } from "./team";
  * pins the reducer's output for the fixtures to this number and fails when the
  * output moves without a bump.
  */
-export const MODEL_VERSION = 4;
+export const MODEL_VERSION = 5;
 
 /** The state from scratch: the last `STATE_EVENTS` events, oldest first. */
 export function rebuildState(events: readonly BullpenEvent[]): TeamState {

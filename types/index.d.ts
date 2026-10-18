@@ -37,6 +37,10 @@ export type BullpenEvent = {
 	outcome?: "ok" | "error";
 	/** Original ask timestamp, for an explicitly submitted human answer. */
 	replyTo?: number;
+	/** The issue this call shows its agent owns (worktree path, new branch, PR). */
+	owns?: number;
+	/** What `owns` came from. */
+	ownedBy?: "worktree" | "pr";
 };
 
 export type MemberStatus = "running" | "idle" | "gone";
@@ -48,6 +52,8 @@ export type Member = {
 	status: MemberStatus;
 	/** Last issue this member referenced. */
 	issue?: number;
+	/** What set `issue` when an explicit source did; prose then can't move it. */
+	owned?: "worktree" | "pr" | "brief";
 	/** Index into the palette; stable for the session. */
 	color: number;
 	/** The agent type it was spawned as (`builder`, `Explore`, ...). */
@@ -158,6 +164,7 @@ export type TeamSnapshot = {
 			status: MemberStatus;
 			away?: boolean;
 			issue?: number;
+			owned?: "worktree" | "pr" | "brief";
 			lastActiveAt: number;
 			goneAt?: number;
 			turns?: number;

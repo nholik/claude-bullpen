@@ -10,6 +10,7 @@ import type {
 	TeamSnapshot,
 } from "../../types";
 import { nextIssue } from "../events";
+import { claimOwner } from "../ownership";
 import {
 	closedIssues,
 	isAsk,
@@ -130,6 +131,7 @@ function step(
 		color: prev?.color ?? Object.keys(teammates).length,
 		status: prev?.status ?? "running",
 		issue: prev?.issue,
+		owned: prev?.owned,
 		lastActiveAt: Math.max(prev?.lastActiveAt ?? e.at, e.at),
 		trail: prev?.trail ?? [],
 		goneAt: prev?.goneAt,
@@ -184,8 +186,22 @@ export function applyEvent(
 	const actor = teammates[e.who];
 	const known = isKnown(e.kind);
 	let issue = actor?.issue;
-	if (spawned === e.who) issue = actor?.issue ?? refs[0];
-	else if (known && e.kind !== "leave" && e.kind !== "answer")
+	let owned = actor?.owned;
+	const claim =
+		e.owns !== undefined && e.ownedBy && !isLead(e.who, options)
+			? claimOwner(actor?.owned, { issue: e.owns, by: e.ownedBy })
+			: undefined;
+	if (claim) {
+		issue = claim.issue;
+		owned = claim.by;
+	} else if (spawned === e.who) {
+		issue = actor?.issue ?? refs[0];
+	} else if (
+		known &&
+		!actor?.owned &&
+		e.kind !== "leave" &&
+		e.kind !== "answer"
+	)
 		issue = nextIssue(
 			e.kind,
 			actor?.issue,
@@ -206,6 +222,7 @@ export function applyEvent(
 		agentId: e.agentId ?? actor?.agentId,
 		status,
 		issue,
+		owned,
 		trail: keepLast(actor?.trail ?? [], trailStep, TRAIL_LENGTH),
 		goneAt: status === "gone" ? (actor?.goneAt ?? e.at) : undefined,
 		turns: (actor?.turns ?? 0) + (e.kind === "turn-start" ? 1 : 0),

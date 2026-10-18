@@ -1,6 +1,7 @@
 // The team model: what the views draw, derived from the journal's events.
 
 import type { BullpenEventKind, MemberStatus } from "../../types";
+import type { OwnSource } from "../ownership";
 import type { ShipPath } from "./ship";
 
 /** One recent thing a teammate did, for the desk card's trail. */
@@ -26,6 +27,8 @@ export type Teammate = {
 	away?: boolean;
 	/** The issue this teammate is on, as `nextIssue` attributes it. */
 	issue?: number;
+	/** What set `issue` when an explicit source did; prose then can't move it. */
+	owned?: OwnSource;
 	lastActiveAt: number;
 	goneAt?: number;
 	/** Counters cover the retained observation window. */

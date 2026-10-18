@@ -68,6 +68,7 @@ import {
 } from "../src/model";
 import { briefIssue, confirmedToolCloses } from "../src/model/detect";
 import { createMotion, motionFor } from "../src/motion";
+import { type Own, ownershipOf } from "../src/ownership";
 import {
 	DEFAULT_PROFILE,
 	parseProfile,
@@ -658,6 +659,7 @@ async function record(
 		confirmedCloses?: number[];
 		outcome?: "ok" | "error";
 		agentType?: string;
+		owns?: Own;
 	} = {},
 ) {
 	collectorOf($).push({
@@ -671,6 +673,7 @@ async function record(
 		confirmedCloses: extra.confirmedCloses,
 		outcome: extra.outcome,
 		agentType: extra.agentType,
+		owns: extra.owns,
 		attribute: extra.attribute ?? true,
 	});
 }
@@ -1121,6 +1124,7 @@ export function register(on: On) {
 				record($, "tool", e.agentId, describeTool(String(e.tool), args), {
 					target: String(e.tool),
 					text: toolText(args),
+					owns: ownershipOf(String(e.tool), args),
 				}),
 			)
 			.catch(() => {});
