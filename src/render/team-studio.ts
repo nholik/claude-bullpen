@@ -6,7 +6,6 @@ import { activityPhrase } from "./activity";
 import {
 	type CardWidthTracker,
 	cardsPerRow,
-	packRows,
 	settledCardWidth,
 } from "./card-width";
 import { age, align, clock, edge, inside, section, text } from "./layout";
@@ -283,9 +282,6 @@ export function teamStudioView(
 		compact || !cardWidths || !shown.length
 			? settled
 			: cardWidths.sample(perRow, settled, now, profile.animations);
-	const rowWidths = compact
-		? shown.map(() => [cardWidth])
-		: packRows(shown.length, perRow, cardWidth, leftWidth);
 	const left: Line[] = shippingSection(
 		model,
 		github,
@@ -295,15 +291,12 @@ export function teamStudioView(
 		now,
 	);
 	left.push(section("WORKSTATIONS / teammates", leftWidth));
-	let index = 0;
-	for (const widths of rowWidths) {
-		const cards = widths.map((w, i) => {
-			const member = shown[index + i];
-			return member
-				? workstation(member, model, github, profile, w, now, compact)
-				: [];
-		});
-		index += widths.length;
+	for (let index = 0; index < shown.length; index += perRow) {
+		const cards = shown
+			.slice(index, index + perRow)
+			.map((member) =>
+				workstation(member, model, github, profile, cardWidth, now, compact),
+			);
 		for (let row = 0; row < (compact ? 2 : CARD_ROWS); row++) {
 			const line: Line = [];
 			for (const [i, card] of cards.entries()) {

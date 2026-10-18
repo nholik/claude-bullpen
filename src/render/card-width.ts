@@ -10,8 +10,6 @@ export const CARD_GAP = 2;
 export const TWEEN_MS = 400;
 /** Redraw rate while a tween runs; the caller owns the timer. */
 export const TWEEN_REDRAW_MS = 100;
-/** A card squeezed beside a shrinking neighbour wraps below this width. */
-const SQUEEZE_MIN = 16;
 
 /** Cards per row: the pane's capacity, but never more than there are cards. */
 export function cardsPerRow(across: number, shown: number): number {
@@ -27,43 +25,14 @@ export function settledCardWidth(leftWidth: number, perRow: number): number {
 	);
 }
 
-/**
- * Per-row card widths for `count` cards. At rest every card is `width` wide.
- * Mid-tween, while a growing team's cards have not shrunk enough to sit side
- * by side, a card takes the space left in its row, or wraps to the next row
- * when that is too little. Each pass places at least one card, so `left`
- * shrinks every time round.
- */
-export function packRows(
-	count: number,
-	perRow: number,
-	width: number,
-	leftWidth: number,
-): number[][] {
-	const rows: number[][] = [];
-	let left = Math.max(0, count);
-	while (left > 0) {
-		const row: number[] = [];
-		let used = 0;
-		while (row.length < perRow && row.length < left) {
-			const gap = row.length ? CARD_GAP : 0;
-			const w = Math.min(width, leftWidth - used - gap);
-			if (row.length && w < SQUEEZE_MIN) break;
-			row.push(Math.max(MIN_CARD_WIDTH, w));
-			used += gap + w;
-		}
-		rows.push(row);
-		left -= row.length;
-	}
-	return rows;
-}
-
 export type CardWidthTracker = {
 	/**
-	 * The width to draw at `now`. A change in `perRow` starts a tween from the
-	 * width on screen; a change in `settled` alone (the pane was resized), a
-	 * first draw or time running backwards snaps. With animations off every
-	 * change snaps.
+	 * The width to draw at `now`, never more than `settled`, so the cards always
+	 * fit their row. When a change in `perRow` makes cards wider (the team
+	 * shrank) they ease from the width on screen; when it makes them narrower
+	 * (the team grew) they snap. A change in `settled` alone (the pane was
+	 * resized), a first draw or time running backwards snaps. With animations
+	 * off every change snaps.
 	 */
 	sample(
 		perRow: number,
@@ -96,7 +65,7 @@ export function createCardWidthTracker(): CardWidthTracker {
 				tween = undefined;
 			} else if (nextPerRow !== perRow) {
 				const from = valueAt(now);
-				tween = from === nextSettled ? undefined : { from, startAt: now };
+				tween = from >= nextSettled ? undefined : { from, startAt: now };
 			} else if (nextSettled !== settled) {
 				tween = undefined;
 			}
