@@ -9,7 +9,7 @@ import type {
 	TextProps,
 	Timer,
 } from "claude-code";
-import { atom, read, update } from "claude-code";
+import { atom, derive, read, update } from "claude-code";
 import {
 	applyBatch,
 	Batcher,
@@ -58,11 +58,12 @@ import {
 	toLine,
 } from "../src/journal";
 import {
-	applyEvent,
 	type BullpenModel,
 	buildModel,
+	foldBatch,
+	MODEL_VERSION,
 	modelOf,
-	reduceEvents,
+	stateFor,
 } from "../src/model";
 import { briefIssue, confirmedToolCloses } from "../src/model/detect";
 import { createMotion, motionFor } from "../src/motion";
@@ -109,6 +110,10 @@ const JOURNAL_FLUSH_MS = 1000;
 
 const events = atom({ plugin: "bullpen", key: "events" } as const, []);
 const teamModel = atom({ plugin: "bullpen", key: "teamModel" } as const, null);
+const modelVersion = atom(
+	{ plugin: "bullpen", key: "modelVersion" } as const,
+	0,
+);
 const members = atom({ plugin: "bullpen", key: "members" } as const, {});
 const profile = atom(
 	{ plugin: "bullpen", key: "profile" } as const,
@@ -163,8 +168,39 @@ async function readScene($: $) {
 		now: realNow,
 		offset: 0,
 		readOnly: false,
-		state: await read($, teamModel),
+		state: await currentModel($),
 	};
+}
+
+/**
+ * The reduced state for drawing. Drawing can't write `$.state`, so a state
+ * left stale by a hot reload is rebuilt in memory, cached by the versions of
+ * its three sources, until `syncModel` stores the rebuild from the collector.
+ */
+const currentState = derive(
+	[teamModel, modelVersion, events],
+	(state, stamped, list) => stateFor(state, stamped, list),
+);
+
+async function currentModel($: $) {
+	return read($, currentState);
+}
+
+/**
+ * Keeps the stored reduced state in step with the reducer and folds `added`
+ * onto it: after a hot reload that changed model code (or `/bullpen reload`,
+ * `force`) the state is rebuilt from the event window, so stale asks and ship
+ * paths don't outlive their rules. Writes state, so it runs only inside the
+ * collector's flush, where it can't race a batch.
+ */
+async function syncModel($: $, added: readonly BullpenEvent[], force: boolean) {
+	const state = await read($, teamModel);
+	const stamped = await read($, modelVersion);
+	if (added.length === 0 && state && stamped === MODEL_VERSION && !force)
+		return;
+	const out = foldBatch(state, stamped, await read($, events), added, force);
+	await update($, teamModel, () => out.state);
+	await update($, modelVersion, () => out.version);
 }
 
 function sceneModel(
@@ -503,12 +539,12 @@ async function flushState($: $, ops: CollectOp[]) {
 		added = out.events;
 		return out.members;
 	});
-	if (added.length === 0) return;
-	const prior =
-		(await read($, teamModel)) ?? reduceEvents(await read($, events));
-	await update($, teamModel, () =>
-		added.reduce((state, event) => applyEvent(state, event), prior),
+	await syncModel(
+		$,
+		added,
+		ops.some((op) => op.op === "rebuild"),
 	);
+	if (added.length === 0) return;
 	lastActivityAt = await now($);
 	await update($, events, (list) =>
 		[...(list ?? []), ...added].slice(-STATE_EVENTS),
@@ -974,7 +1010,10 @@ export function register(on: On) {
 		}
 		if (e.args.trim() === "reload") {
 			await loadProfile($);
-			return { text: "Bullpen: reloaded .claude/bullpen.json." };
+			collectorOf($).push({ op: "rebuild" });
+			return {
+				text: "Bullpen: reloaded .claude/bullpen.json and rebuilt the team state.",
+			};
 		}
 		const opened = await openPane($);
 		if (e.args.trim() === "demo") {

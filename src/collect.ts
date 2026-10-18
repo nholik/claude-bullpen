@@ -81,7 +81,9 @@ export type CollectOp =
 	 */
 	| { op: "reconcile"; at: number; listed: ListedAgent[] }
 	/** Removes every demo member. */
-	| { op: "clear-demo" };
+	| { op: "clear-demo" }
+	/** Rebuilds the reduced team state from the event window; no member change. */
+	| { op: "rebuild" };
 
 function touched(
 	all: Record<string, Member>,
@@ -164,6 +166,8 @@ export function applyBatch(
 					});
 				break;
 			}
+			case "rebuild":
+				break;
 			case "clear-demo":
 				all = Object.fromEntries(
 					Object.entries(all).filter(([id]) => !id.startsWith(DEMO_PREFIX)),
