@@ -416,10 +416,12 @@ async function dismissNeed($: $) {
 	// The instant UI echo; the journalled reply is what survives a resume.
 	await update($, decisionsHandled, (ids) => [...ids, item.id]);
 	if (!(await readScene($)).readOnly)
-		await record($, "reply", undefined, "dismissed", {
-			attribute: false,
-			answered: [item.id],
-		});
+		await producers.track(
+			record($, "reply", undefined, "dismissed", {
+				attribute: false,
+				answered: [item.id],
+			}),
+		);
 	const length = await needsLength($);
 	await update($, needsCursor, (at) => moveCursor(at, 0, length));
 	if (!length) await update($, focus, () => "");

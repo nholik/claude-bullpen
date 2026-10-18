@@ -84,14 +84,17 @@ export function quotedPrefix(d: Queueable): string {
 }
 
 const QUOTE = /^> re(?: #(\d+))?: (.*)$/gm;
-const plain = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase();
+/** Case and whitespace folded: what makes two decision texts the same. */
+export const plain = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase();
 
 /**
  * The ids of the open decisions a submitted prompt quotes (`> re #N: text`, as
  * Enter fills it). Per quote: with a `#N`, only decisions on #N are candidates.
  * An exact text match wins; else a prefix match (either way) counts only when it
  * is the single candidate matching; else an edited body still names the one
- * decision on #N. Anything ambiguous closes nothing, and so does an unquoted prompt.
+ * decision on #N, but only when the body matches nothing in the whole open set
+ * (a body quoting a decision on another issue closes nothing here).
+ * Anything ambiguous closes nothing, and so does an unquoted prompt.
  */
 export function repliedTo(
 	text: string,
@@ -104,15 +107,18 @@ export function repliedTo(
 		const pool =
 			ref === undefined ? open : open.filter((d) => d.issues[0] === ref);
 		const exact = body === "" ? [] : pool.filter((d) => plain(d.text) === body);
-		const prefix = pool.filter((d) => {
+		const near = (d: { text: string }) => {
 			const t = plain(d.text);
 			return body !== "" && (t.startsWith(body) || body.startsWith(t));
-		});
+		};
+		const prefix = pool.filter(near);
+		const quotesElsewhere =
+			body !== "" && open.some((d) => plain(d.text) === body || near(d));
 		const found = exact.length
 			? exact
 			: prefix.length === 1
 				? prefix
-				: ref !== undefined && pool.length === 1
+				: ref !== undefined && pool.length === 1 && !quotesElsewhere
 					? pool
 					: [];
 		for (const d of found) if (!ids.includes(d.id)) ids.push(d.id);

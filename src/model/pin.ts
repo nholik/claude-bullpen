@@ -26,4 +26,6 @@ export default `
 {"version":1,"at":1792248200000,"kind":"decision","who":"lead","detail":"Cut the second flag?","issues":[9]}
 {"version":1,"at":1792248300000,"kind":"reply","who":"lead","detail":"replied","issues":[],"answered":["d1792248100000-0"]}
 {"version":1,"at":1792248400000,"kind":"decision","who":"lead","detail":"Merge #58 now?","issues":[58],"context":"Checks are green."}
+{"version":1,"at":1792248500000,"kind":"decision","who":"lead","detail":"merge  #58 NOW?","issues":[58],"context":"Dropped as a near-duplicate."}
+{"version":1,"at":1792248600000,"kind":"decision","who":"lead","detail":"MERGE #58 now?","issues":[59],"context":"Same words, another issue: kept."}
 `;

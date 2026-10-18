@@ -9,6 +9,7 @@ import type {
 	MemberStatus,
 	TeamSnapshot,
 } from "../../types";
+import { plain } from "../decisions";
 import { nextIssue } from "../events";
 import { claimOwner } from "../ownership";
 import {
@@ -371,6 +372,9 @@ export function applyEvent(
  * decisions it quoted (`answered`). A reply with no ids, as older journals
  * wrote, closes nothing.
  */
+const decisionKey = (text: string, issues: readonly number[]) =>
+	`${[...issues].sort((a, b) => a - b).join(",")}|${plain(text)}`;
+
 function applyDecision(state: TeamState, e: BullpenEvent): TeamState {
 	if (e.kind === "reply") {
 		const ids = e.answered ?? [];
@@ -385,8 +389,15 @@ function applyDecision(state: TeamState, e: BullpenEvent): TeamState {
 				}
 			: state;
 	}
-	// A lead restating a decision it already put is not a second one.
-	if (state.decisions.some((d) => d.open && d.text === e.detail)) return state;
+	// A lead restating a decision it already put is not a second one, even with
+	// different case or spacing on the same issues: a quote could not tell the
+	// two apart. The first stays and the later one is dropped whole, its context
+	// included. The same words on other issues are a different decision.
+	const key = decisionKey(e.detail, e.issues ?? []);
+	if (
+		state.decisions.some((d) => d.open && decisionKey(d.text, d.issues) === key)
+	)
+		return state;
 	const same = state.decisions.filter((d) => d.at === e.at).length;
 	const decision: Decision = {
 		id: `d${e.at}-${same}`,

@@ -50,7 +50,14 @@ test("MODEL_VERSION fingerprints the reducer's output for the pin journal", asyn
 	expect(state.decisions.filter((d) => d.open).map((d) => d.text)).toEqual([
 		"Cut the second flag?",
 		"Merge #58 now?",
+		"MERGE #58 now?",
 	]);
+	// "merge  #58 NOW?" differs only by case and spacing: it is not a second decision.
+	expect(
+		state.decisions.filter((d) => d.issues.includes(58)).map((d) => d.text),
+	).toEqual(["Merge #58 now?"]);
+	// The same words on another issue are a separate decision.
+	expect(state.decisions.some((d) => d.issues.includes(59))).toBe(true);
 	expect(state.asks.some((a) => a.open)).toBe(true);
 	expect(Object.values(state.teammates).some((t) => t.owned)).toBe(true);
 	expect(MODEL_VERSION).toBe(fingerprintOf(state));

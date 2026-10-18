@@ -268,6 +268,31 @@ test("a reply closes only the decisions it names; an old one with no ids closes 
 	).toBe(2);
 });
 
+test("decisions differing only by case or spacing collapse; a quote of either spelling closes the survivor", () => {
+	const events = [
+		ev(0, "decision", "Merge #58 now?", { issues: [58], context: "first" }),
+		ev(1, "decision", "merge  #58 NOW?", { issues: [58], context: "second" }),
+	];
+	const { decisions } = buildModel(events, T + 5000);
+	expect(decisions.map((d) => d.text)).toEqual(["Merge #58 now?"]);
+	expect(decisions[0]?.context).toBe("first");
+	for (const spelling of ["Merge #58 now?", "merge  #58 NOW?"])
+		expect(repliedTo(`> re #58: ${spelling}\nyes`, decisions)).toEqual([
+			decisions[0]?.id,
+		]);
+});
+
+test("the same words on two different issues are two decisions", () => {
+	const { decisions } = buildModel(
+		[
+			ev(0, "decision", "Ship it?", { issues: [7] }),
+			ev(1, "decision", "ship it?", { issues: [9] }),
+		],
+		T + 5000,
+	);
+	expect(decisions.map((d) => d.issues)).toEqual([[7], [9]]);
+});
+
 test("repliedTo never closes a decision the quote does not single out", () => {
 	const both = [
 		{ id: "a", text: "Merge #58", issues: [58] },
@@ -282,6 +307,13 @@ test("repliedTo never closes a decision the quote does not single out", () => {
 		{ id: "y", text: "Ship #9 today?", issues: [9] },
 	];
 	expect(repliedTo("> re #7: ship\nok", two)).toEqual(["x"]);
+	// A body quoting a decision on another issue does not fall back to #9's.
+	const nine = [
+		{ id: "n", text: "Ship #9 today?", issues: [9] },
+		{ id: "m", text: "Merge #58 now?", issues: [58] },
+	];
+	expect(repliedTo("> re #9: Merge #58 now?\nyes", nine)).toEqual([]);
+	expect(repliedTo("> re #9: ship it\nyes", nine)).toEqual(["n"]);
 	// A bare letter matching several decisions closes none; one match is fine.
 	const s = [
 		{ id: "p", text: "skip it?", issues: [] },
