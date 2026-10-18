@@ -74,35 +74,37 @@ test("isAsk: status reports and verdicts are not asks", async () => {
 	expect(isAsk("Opened https://example.com/pr?id=3 for review")).toBe(false);
 	expect(isAsk("Ran `gh pr list --json x?` fine, all green")).toBe(false);
 	expect(isAsk("Should I merge #121 or wait for gate?")).toBe(true);
+	expect(isAsk("Can you review https://github.com/x/y/pull/127?")).toBe(true);
+	expect(isAsk("Gate said CHANGES; should I fold the P2 in?")).toBe(true);
+	expect(isAsk("No reply needed on #12, but should I take #13?")).toBe(true);
+	expect(isAsk("Updated CHANGES.md and pushed")).toBe(false);
 	expect(isAsk("Blocked on the gh token, need you to log in")).toBe(true);
 });
 
-test("asks close on a non-ask follow-up, a new turn or leaving", async () => {
+test("asks stay open until a withdrawal, a lead reply or a leave", async () => {
 	const ask = ev(1, "b83", "message", "#83 skip or fix?", {
 		target: "team-lead",
 	});
 	const open = (events: BullpenEvent[]) =>
 		reduceEvents([ask, ...events]).asks.map((a) => a.open);
 	expect(open([])).toEqual([true]);
-	// Idling after asking is the normal wait: still open.
 	expect(open([ev(2, "b83", "turn-end", "")])).toEqual([true]);
-	expect(open([ev(2, "gate", "turn-start", "")])).toEqual([true]);
-	expect(open([ev(2, "b83", "turn-start", "")])).toEqual([false]);
+	expect(open([ev(2, "b83", "turn-start", "")])).toEqual([true]);
+	expect(
+		open([
+			ev(2, "b83", "message", "pushed fix, check green", {
+				target: "team-lead",
+			}),
+		]),
+	).toEqual([true]);
 	expect(open([ev(2, "b83", "leave", "")])).toEqual([false]);
 	expect(
 		open([
-			ev(2, "b83", "message", "nothing needed from you", {
+			ev(2, "b83", "message", "never mind, nothing needed from you", {
 				target: "team-lead",
 			}),
 		]),
 	).toEqual([false]);
-	expect(
-		open([
-			ev(2, "b83", "message", "still stuck, need a decision", {
-				target: "team-lead",
-			}),
-		]),
-	).toEqual([true, true]);
 });
 
 test("isKickback: saying so, or a reviewer reporting failure", async () => {

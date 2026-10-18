@@ -10,7 +10,13 @@ import type {
 	TeamSnapshot,
 } from "../../types";
 import { nextIssue } from "../events";
-import { closedIssues, isAsk, isKickback, isReviewer } from "./detect";
+import {
+	closedIssues,
+	isAsk,
+	isKickback,
+	isReviewer,
+	withdrawsAsk,
+} from "./detect";
 import { applyShip, EMPTY_SHIP, type ShipState } from "./ship";
 import type { Ask, HallwayMessage, Huddle, Kickback, Teammate } from "./types";
 
@@ -282,20 +288,18 @@ export function applyEvent(
 					: ask,
 			);
 		else if (isLead(e.target, options)) {
-			// A later message that is not itself an ask supersedes the sender's.
+			// Only an explicit withdrawal closes it; a lead reply or answer does too.
 			if (isAsk(e.detail))
 				asks = keepLast(
 					asks,
 					{ ...message, agentId: e.agentId, open: true },
 					KEEP,
 				);
-			else asks = closeAsksFrom(asks, e.who);
+			else if (withdrawsAsk(e.detail)) asks = closeAsksFrom(asks, e.who);
 		}
 	}
-	// Asks outlive the turn that raised them (the sender waits idle), but not
-	// the sender starting a new turn or leaving.
-	if (e.kind === "turn-start" || e.kind === "leave")
-		asks = closeAsksFrom(asks, e.who);
+	// Asks outlive the sender's turns (a new turn may come from anyone), not the sender.
+	if (e.kind === "leave") asks = closeAsksFrom(asks, e.who);
 
 	return {
 		teammates,

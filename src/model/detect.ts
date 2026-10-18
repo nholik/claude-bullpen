@@ -2,25 +2,32 @@
 // Heuristics over short English text, so each errs toward not firing.
 import { shellSegments } from "../command";
 
-// Text that says nothing is wanted outweighs any "?" or "blocked" around it.
+// Phrases (to the clause end) that say nothing is wanted, removed so a real question beside them stays.
 const NOTHING_WANTED =
-	/\bnothing (is |else )?(needed|required|wanted)\b|\bnot a (request|question|blocker)\b|\bno (action|reply|answer|decision) (is )?(needed|required)\b|\bno need to (reply|respond|answer)\b/i;
+	/(?:\bnothing (?:is |else )?(?:needed|required|wanted)\b|\bnot a (?:request|question|blocker)\b|\bno (?:action|reply|answer|decision) (?:is )?(?:needed|required)\b|\bno need to (?:reply|respond|answer)\b|\bnever ?mind\b)[^.;,!?\n]*/gi;
 // A review verdict, in capitals so ordinary "pass" and "changes" stay words.
-const VERDICT = /\b(PASS|CHANGES)\b/;
+const VERDICT = /\b(?:PASS|CHANGES)\b(?!\.md)[^.;,!?\n]*/g;
 // Review language: "one P1 blocks the merge", "no blockers".
 const REVIEW_BLOCK =
-	/\bP[0-3]\b[^.\n]{0,40}\bblock\w*|\b(no|zero|0) blockers?\b/gi;
-// Quoted and linked text: a "?" inside it is not the sender's question.
-const QUOTED_TEXT = /`[^`]*`|"[^"\n]*"|https?:\/\/\S+/g;
+	/\bP[0-3]\b[^.\n]{0,40}\bblock\w*|\b(?:no|zero|0) blockers?\b/gi;
+// Quoted and linked text: a "?" inside it is not the sender's question. A URL
+// stops before trailing punctuation, so "review https://x/pull/1?" still asks.
+const QUOTED_TEXT = /`[^`]*`|"[^"\n]*"|https?:\/\/\S*[^\s.,;:!?)]/g;
+
+/** Whether the sender takes back an earlier ask: "nothing needed", "never mind". */
+export function withdrawsAsk(text: string): boolean {
+	return text.search(NOTHING_WANTED) >= 0;
+}
 
 /** A message to the lead that wants an answer: a question or a block. */
 export function isAsk(text: string): boolean {
-	if (NOTHING_WANTED.test(text) || VERDICT.test(text)) return false;
 	const plain = text
+		.replace(NOTHING_WANTED, " ")
+		.replace(VERDICT, " ")
 		.replace(QUOTED_TEXT, " ")
 		.replace(REVIEW_BLOCK, " ")
-		.replace(/\b(not|no longer|never) block\w*/gi, "");
-	return /\?|\bblock(ed|ing|er)\b|\bskip or fix\b|\bneed (you|your|a decision)\b/i.test(
+		.replace(/\b(?:not|no longer|never) block\w*/gi, "");
+	return /\?|\bblock(?:ed|ing|er)\b|\bskip or fix\b|\bneed (?:you|your|a decision)\b/i.test(
 		plain,
 	);
 }
