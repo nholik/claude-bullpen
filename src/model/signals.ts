@@ -59,6 +59,8 @@ export function stuckReasons(
 			(t.issue !== undefined && model.closed.includes(t.issue))
 		)
 			continue;
+		// Said it was done, then ended its turn: finished, not stuck.
+		if (t.status === "idle" && t.reportedDone) continue;
 		const ship = shipOf(model, t);
 		if (ship?.stage === "merged" || ship?.stage === "shipped") continue;
 		const quiet = Math.max(

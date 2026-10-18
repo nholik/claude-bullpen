@@ -13,8 +13,10 @@ import { nextIssue } from "../events";
 import {
 	closedIssues,
 	isAsk,
+	isDoneReport,
 	isKickback,
 	isReviewer,
+	ownedRefs,
 	withdrawsAsk,
 } from "./detect";
 import { applyShip, EMPTY_SHIP, type ShipState } from "./ship";
@@ -137,6 +139,7 @@ function step(
 		lastProgressAt: prev?.lastProgressAt,
 		failedCommand: prev?.failedCommand,
 		failureCount: prev?.failureCount ?? 0,
+		reportedDone: prev?.reportedDone,
 		...patch,
 	};
 }
@@ -183,7 +186,11 @@ export function applyEvent(
 	let issue = actor?.issue;
 	if (spawned === e.who) issue = actor?.issue ?? refs[0];
 	else if (known && e.kind !== "leave" && e.kind !== "answer")
-		issue = nextIssue(e.kind, actor?.issue, refs);
+		issue = nextIssue(
+			e.kind,
+			actor?.issue,
+			e.kind === "message" ? ownedRefs(e.detail, refs) : refs,
+		);
 	let status = actor?.status ?? "running";
 	if (known) status = e.kind === "turn-end" ? "idle" : "running";
 	// A typed leave event is the journal evidence that a member departed.
@@ -222,6 +229,13 @@ export function applyEvent(
 				: command
 					? undefined
 					: actor?.failedCommand,
+		// A done report followed by turn-end is a finish; later work clears it.
+		reportedDone:
+			e.kind === "message"
+				? isDoneReport(e.detail)
+				: e.kind === "tool" || e.kind === "turn-start"
+					? false
+					: actor?.reportedDone,
 		failureCount: command
 			? e.outcome === "error"
 				? actor?.failedCommand === command

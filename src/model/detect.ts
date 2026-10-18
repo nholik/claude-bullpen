@@ -96,6 +96,44 @@ const CLOSED = new RegExp(
 	"gi",
 );
 
+// A table cell holding a ref, `| #114 (merged) |`: a report row, not a claim.
+const REPORT_CELL = /\|[^|\n]*#\d{1,7}\b[^|\n]*\|/;
+// A ref the text itself calls settled: "#114 (merged)", "#12 closed".
+const SETTLED_REF =
+	/#(\d{1,7})\b\s*\(?\s*(?:merged|closed|shipped|done|✓)(?![\w-])/gi;
+
+/**
+ * The refs of a message that can say what its sender is working on. A report
+ * table of PRs lists work, it doesn't claim it, and a ref the message calls
+ * merged or closed is not open work. Drops both.
+ */
+export function ownedRefs(detail: string, refs: readonly number[]): number[] {
+	if (!refs.length || REPORT_CELL.test(detail)) return [];
+	const settled = new Set(
+		[...detail.matchAll(SETTLED_REF)].map((m) => Number(m[1])),
+	);
+	return refs.filter((n) => !settled.has(n));
+}
+
+const DONE_REPORT = /\b(?:done|complete[d]?|finished|all set)\b/i;
+
+/**
+ * Whether a message reports its sender's work finished ("Worktree prune
+ * done."), so a turn-end after it is a finish, not a stall. Questions and
+ * negations ("not done yet") don't count.
+ */
+export function isDoneReport(detail: string): boolean {
+	if (detail.includes("?")) return false;
+	const m = DONE_REPORT.exec(detail);
+	if (!m) return false;
+	const clauseStart = Math.max(
+		detail.lastIndexOf(".", m.index),
+		detail.lastIndexOf(";", m.index),
+		detail.lastIndexOf("\n", m.index),
+	);
+	return !NEGATED.test(detail.slice(clauseStart + 1, m.index));
+}
+
 /**
  * Issues a message explicitly confirms closed:
  * "closed #208", "#208 shipped", "#208 ✓". Not "closes #208", a PR promising

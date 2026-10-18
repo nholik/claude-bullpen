@@ -1,6 +1,6 @@
 import type { BullpenEvent, GithubSource, Profile } from "../../types";
 import { nextIssue } from "../events";
-import { isKickback, isReviewer } from "../model/detect";
+import { isKickback, isReviewer, ownedRefs } from "../model/detect";
 import { colorFor, colorIndex, roleFor } from "../profile";
 import { fit, glyphLines, type Line, textLine, wrapText } from "./lines";
 
@@ -27,7 +27,13 @@ export function storyFor(
 				? (previous ?? event.issues[0])
 				: event.kind === "leave" || event.kind === "answer"
 					? previous
-					: nextIssue(event.kind, previous, event.issues);
+					: nextIssue(
+							event.kind,
+							previous,
+							event.kind === "message"
+								? ownedRefs(event.detail, event.issues)
+								: event.issues,
+						);
 		if (current !== undefined) assigned.set(name, current);
 		if (event.issues.includes(issue) || current === issue) selected.push(event);
 	}
