@@ -188,7 +188,7 @@ const NOT_YOURS = new RegExp(
 // A negated tail on a positive clause: "Your issue is #13, not #12".
 // A parenthesized tail ends at its `)`; a comma tail runs to the clause end.
 const NEGATED_TAIL =
-	/\s*\((?:not|never)\b[^)\n]*\)|,\s*(?:but\s+)?(?:not|never)\b[^.!?;\n]*/gi;
+	/\s*\((?:not|never)\b[^)\n]*\)?|,\s*(?:but\s+)?(?:not|never)\b[^.!?;\n]*/gi;
 const ASSIGNED =
 	/\b(?:(?:your|the|this|assigned|owned?)\s+(?:issue|task|ticket)|(?:issue|task|ticket)\s+(?:is|:)|(?:work(?:ing)?\s+on|own|owns|take|taking|fix|implement))\s*(?:is\s+)?(?:issue\s+)?#(\d{1,7})\b/i;
 

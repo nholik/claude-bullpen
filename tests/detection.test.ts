@@ -143,6 +143,9 @@ test("a spawn brief assigns one issue, ignoring quoted examples and round lists"
 		["Your issue is #13 (#12 is someone else's).", 13],
 		["Work on #13 (not #12)", 13],
 		["Compare #13 (not #12), then work on #14.", 14],
+		["Work on #13 (not #12,\nwhich ada has).", 13],
+		["Your issue is #13 (not #12 -\nada owns it).", 13],
+		["Work on #13 (not #12", 13],
 	] as const)
 		expect(briefIssue(brief)).toBe(expected);
 });
