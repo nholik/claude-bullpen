@@ -4,7 +4,7 @@ import { shellSegments } from "../command";
 
 // Phrases (to the clause end) that say nothing is wanted, removed so a real question beside them stays.
 const NOTHING_WANTED =
-	/(?:\bnothing (?:is |else )?(?:needed|required|wanted)\b|\bnot a (?:request|question|blocker)\b|\bno (?:action|reply|answer|decision) (?:is )?(?:needed|required)\b|\bno need to (?:reply|respond|answer)\b|\bnever ?mind\b|\bresolved\b|\bno longer (?:blocked|stuck)\b)[^.;,!?\n]*/gi;
+	/(?:\bnothing (?:is |else )?(?:needed|required|wanted)\b|\bnot a (?:request|question|blocker)\b|\bno (?:action|reply|answer|decision) (?:is )?(?:needed|required)\b|\bno need to (?:reply|respond|answer)\b|\bnever ?mind\b|\b(?:that's|it's|question|ask) resolved\b|\bresolved it\b|\bno longer (?:blocked|stuck)\b)[^.;,!?\n]*/gi;
 // A review verdict, in capitals so ordinary "pass" and "changes" stay words.
 const VERDICT = /\b(?:PASS|CHANGES)\b(?!\.md)[^.;,!?\n]*/g;
 // Review language: "one P1 blocks the merge", "no blockers".
