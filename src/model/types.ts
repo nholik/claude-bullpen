@@ -33,8 +33,6 @@ export type Teammate = {
 	activeMs?: number;
 	turnStartedAt?: number;
 	lastProgressAt?: number;
-	/** Its last message said the work is done; cleared by the next tool or turn. */
-	reportedDone?: boolean;
 	failedCommand?: string;
 	failureCount?: number;
 	/** The last few steps, oldest first. */

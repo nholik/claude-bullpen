@@ -166,7 +166,6 @@ export type TeamSnapshot = {
 			lastProgressAt?: number;
 			failedCommand?: string;
 			failureCount?: number;
-			reportedDone?: boolean;
 			trail: {
 				at: number;
 				kind: BullpenEventKind;
