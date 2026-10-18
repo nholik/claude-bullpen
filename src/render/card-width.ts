@@ -79,3 +79,20 @@ export function createCardWidthTracker(): CardWidthTracker {
 		moving: () => tween !== undefined,
 	};
 }
+
+/** One tracker per surface: surfaces draw at different widths and must not reset each other's tween. */
+export function createCardWidthTrackers() {
+	const trackers = new Map<string, CardWidthTracker>();
+	return {
+		for(surface: string): CardWidthTracker {
+			let tracker = trackers.get(surface);
+			if (!tracker) {
+				tracker = createCardWidthTracker();
+				trackers.set(surface, tracker);
+			}
+			return tracker;
+		},
+		anyMoving: () => [...trackers.values()].some((t) => t.moving()),
+		clear: () => trackers.clear(),
+	};
+}

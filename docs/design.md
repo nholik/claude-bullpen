@@ -171,7 +171,7 @@ Only four things move, and each has to earn it:
 4. **Card resize.** When the team shrinks and the remaining cards widen, the width eases over
    about 0.4 s at no more than 10 redraws a second, then the timer stops. No bounce, no overshoot.
    When the team grows, cards narrow at once: the arrival is the event, and a card never wraps
-   to a second row mid-motion.
+   to a second row mid-motion. Dragging the pane edge within a layout snaps; crossing to a different cards-per-row follows the same rules.
    A card is never wider than 70 columns, and a small team's cards sit left-aligned.
 
 In addition, the change-glow is a decay, not an animation: it is redrawn on the existing

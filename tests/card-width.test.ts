@@ -4,6 +4,7 @@ import { DEFAULT_PROFILE } from "../src/profile";
 import {
 	cardsPerRow,
 	createCardWidthTracker,
+	createCardWidthTrackers,
 	MAX_CARD_WIDTH,
 	settledCardWidth,
 	TWEEN_MS,
@@ -136,4 +137,18 @@ test("the Studio never wraps a card to a new row mid-tween", () => {
 			}
 		}
 	}
+});
+
+test("surfaces keep separate trackers and the set stays moving until all settle", () => {
+	const set = createCardWidthTrackers();
+	set.for("terminal").sample(3, 23, 0, true);
+	set.for("desktop").sample(1, 70, 0, true);
+	expect(set.for("terminal").sample(1, 70, 1000, true)).toBe(23);
+	expect(set.for("desktop").sample(1, 70, 1000, true)).toBe(70);
+	expect(set.anyMoving()).toBe(true);
+	expect(set.for("terminal").sample(1, 70, 1500, true)).toBe(70);
+	expect(set.for("desktop").sample(1, 70, 1500, true)).toBe(70);
+	expect(set.anyMoving()).toBe(false);
+	set.clear();
+	expect(set.anyMoving()).toBe(false);
 });
