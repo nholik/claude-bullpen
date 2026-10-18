@@ -81,7 +81,15 @@ export function argText(args: Record<string, unknown>): string {
 		.join(" ");
 }
 
-/** Text scanned for issue refs: the arguments, plus `gh issue <n>` targets. */
+/**
+ * Text scanned for issue refs: the arguments, plus `gh issue <n>` targets.
+ *
+ * Ownership: running `gh issue view|comment|edit|close|reopen <n>` (ghTargets)
+ * says you are working on that issue. A `gh pr <verb> <n>` number is a PR
+ * (view, diff, checks, comment, review, merge...), never an issue, so its `#n`
+ * is dropped whatever the verb. Only executed commands count: shellSegments
+ * ignores quoted text and heredoc bodies, and echo/printf are skipped.
+ */
 export function toolText(args: Record<string, unknown>): string {
 	const command = typeof args.command === "string" ? args.command : "";
 	const targets = ghTargets(command).map((n) => `#${n}`);

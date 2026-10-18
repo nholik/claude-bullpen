@@ -151,6 +151,12 @@ export function confirmedToolCloses(
 
 // Quoted examples in a brief ("Can confirm #12 is closed") are not assignments.
 const QUOTED = /"[^"\n]*"|“[^”\n]*”|`[^`\n]*`|(?<!\w)'[^'\n]*'(?!\w)/g;
+// Phrases that hand an issue to someone else: "leave #12 alone", "#12 is
+// someone else's". Plain negation ("do not work on #12", "not #12") is NEGATED.
+const NOT_YOURS =
+	/\bleave\b[^.!?;\n]*#\d|#\d+\s+(?:is|belongs|goes)\b[^.!?;\n]*\b(?:someone|somebody|another|other|else'?s?)\b|\b(?:someone|somebody) else'?s\b|\b(?:other|another)\s+(?:builder|agent|teammate)'?s?\b/i;
+// A negated tail on a positive clause: "Your issue is #13, not #12".
+const NEGATED_TAIL = /(?:,\s*(?:but\s+)?|\s*\()(?:not|never)\b[^.!?;\n]*\)?/gi;
 const ASSIGNED =
 	/\b(?:(?:your|the|this|assigned|owned?)\s+(?:issue|task|ticket)|(?:issue|task|ticket)\s+(?:is|:)|(?:work(?:ing)?\s+on|own|owns|take|taking|fix|implement))\s*(?:is\s+)?(?:issue\s+)?#(\d{1,7})\b/i;
 
@@ -163,8 +169,9 @@ const ASSIGNED =
 export function briefIssue(brief: string): number | undefined {
 	const text = brief
 		.replace(QUOTED, " ")
+		.replace(NEGATED_TAIL, "")
 		.split(/(?<=[.!?])\s+|[;\n]/)
-		.filter((clause) => !NEGATED.test(clause))
+		.filter((clause) => !NEGATED.test(clause) && !NOT_YOURS.test(clause))
 		.join(". ");
 	const assigned = ASSIGNED.exec(text);
 	if (assigned?.[1]) return Number(assigned[1]);
