@@ -82,7 +82,7 @@ import {
 	roleNames,
 	withMemberColors,
 } from "../src/profile";
-import { readReady, readyArgv } from "../src/ready";
+import { freshReady, readReady, readyArgv } from "../src/ready";
 import {
 	createCardWidthTrackers,
 	TWEEN_REDRAW_MS,
@@ -95,7 +95,7 @@ import { storyFor, storyLines } from "../src/render/story";
 import { replayAt } from "../src/replay";
 import { atTail, type RowStart, reanchor, rowStarts } from "../src/scroll";
 import { join } from "../src/vendor/pathe.js";
-import type { BullpenEventKind, Member, Profile } from "../types";
+import type { BullpenEventKind, GithubSource, Member, Profile } from "../types";
 
 const PANE = "bullpen";
 const STORY = "bullpen-story";
@@ -139,6 +139,12 @@ type $ = EngineInterface;
 let floorSize: { columns: number; rows: number } | undefined;
 const demoStart = atom({ plugin: "bullpen", key: "demoStart" } as const, -1);
 let demoTimers: Timer[] = [];
+/** The github source with a stale merge-ready list dropped: unknown is not ready. */
+function freshGithub(source: GithubSource, now: number): GithubSource {
+	return source.ready
+		? { ...source, ready: freshReady(source.ready, now) }
+		: source;
+}
 async function readScene($: $) {
 	await read($, viewTime);
 	const realNow = await now($);
@@ -172,7 +178,7 @@ async function readScene($: $) {
 	return {
 		members: await read($, members),
 		events: await read($, events),
-		github: await read($, github),
+		github: freshGithub(await read($, github), realNow),
 		now: realNow,
 		offset: 0,
 		readOnly: false,

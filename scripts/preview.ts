@@ -128,6 +128,8 @@ const sampleReady = Array.from(
 		url: `https://github.com/example/repo/pull/${300 + i}`,
 		head: "a".repeat(40),
 		checkedAt: 0,
+		// The third sample is still waiting on Codex.
+		...(i === 2 ? { codexPending: true } : {}),
 	}),
 );
 const color = (n: number, background = false) =>
@@ -190,7 +192,10 @@ for (let frame = 0; frame < frames; frame++) {
 	const framed = frameAt(at + frame * 100);
 	const { now, replay } = framed;
 	const source = sampleReady.length
-		? { ...framed.source, ready: sampleReady }
+		? {
+				...framed.source,
+				ready: sampleReady.map((pr) => ({ ...pr, checkedAt: now })),
+			}
 		: framed.source;
 	const members = replay.members;
 	const model = buildModel(replay.events, now, {

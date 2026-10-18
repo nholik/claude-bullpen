@@ -133,6 +133,8 @@ export type ReadyPr = {
 	/** The head sha the gate passed; a push changes it and the PR leaves the queue. */
 	head: string;
 	checkedAt: number;
+	/** Codex has not finished reviewing this head: queued, but not merge-ready. */
+	codexPending?: boolean;
 };
 
 export type GithubSource = {

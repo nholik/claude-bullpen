@@ -1,6 +1,22 @@
 import { expect, test } from "claude-code/testing";
-import { gatePassed, parseReady, readReady, readyArgv } from "../src/ready";
-import { HEAD, MIXED, NO_PRS, OLD, READY_ONLY } from "./fixtures/ready-prs";
+import {
+	codexReviewed,
+	freshReady,
+	gatePassed,
+	parseReady,
+	READY_TTL_MS,
+	readReady,
+	readyArgv,
+} from "../src/ready";
+import {
+	codexSummary,
+	HEAD,
+	MIXED,
+	NO_PRS,
+	OLD,
+	READY_ONLY,
+	TRUTH,
+} from "./fixtures/ready-prs";
 
 const o = (...bodies: string[]) =>
 	bodies.map((body) => ({ body, authorAssociation: "OWNER" }));
@@ -60,4 +76,54 @@ test("the query is one read-only graphql call for the repo", () => {
 	expect(argv).toContain("owner=example");
 	expect(argv).toContain("name=repo");
 	expect(argv.join(" ")).not.toContain("mutation");
+});
+
+test("Codex counts only when its bot summary says completed on exactly the head", () => {
+	const bot = { login: "chatgpt-codex-connector" };
+	const on = (sha: string | null, status: string | null) => ({
+		body: codexSummary(sha, status).body,
+		author: bot,
+	});
+	expect(codexReviewed([on(HEAD, "completed")], HEAD)).toBe(true);
+	expect(codexReviewed([on(HEAD, "in_progress")], HEAD)).toBe(false);
+	expect(codexReviewed([on(OLD, "completed")], HEAD)).toBe(false);
+	expect(codexReviewed([on(null, null)], HEAD)).toBe(false);
+	// The newest marker wins: a re-review pending on a new head undoes an old pass.
+	expect(codexReviewed([on(HEAD, "completed"), on(HEAD, "queued")], HEAD)).toBe(
+		false,
+	);
+	const rest = { author: { login: "chatgpt-codex-connector[bot]" } };
+	expect(
+		codexReviewed([{ body: on(HEAD, "completed").body, ...rest }], HEAD),
+	).toBe(true);
+	const quoted = { body: on(HEAD, "completed").body, author: { login: "x" } };
+	expect(codexReviewed([quoted], HEAD)).toBe(false);
+	expect(
+		codexReviewed([{ body: on(HEAD, "completed").body, author: null }], HEAD),
+	).toBe(false);
+	expect(
+		codexReviewed(
+			[{ body: "<!-- codex-review-state:v1 {oops} -->", author: bot }],
+			HEAD,
+		),
+	).toBe(false);
+});
+
+test("Codex pending, an old sha, a draft or a blocked merge state keep a PR out of ready", () => {
+	const rows = parseReady(TRUTH, 0) ?? [];
+	// 215 pending on the head, 216 reviewed an old sha, 219 an impostor, 220 no review yet.
+	expect(rows.map((p) => [p.number, p.codexPending === true])).toEqual([
+		[215, true],
+		[216, true],
+		[219, true],
+		[220, true],
+		[223, false],
+	]);
+});
+
+test("a ready list older than three polls is dropped", () => {
+	const ready = parseReady(READY_ONLY, 1000);
+	expect(freshReady(ready, 1000 + READY_TTL_MS)?.length).toBe(1);
+	expect(freshReady(ready, 1000 + READY_TTL_MS + 1)).toEqual([]);
+	expect(freshReady(undefined, 0)).toBeUndefined();
 });
