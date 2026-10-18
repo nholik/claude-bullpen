@@ -133,7 +133,7 @@ export function modelOf(
 		).length,
 		morale: moraleOf(live, huddles, now, options.leads ?? DEFAULT_LEADS),
 	};
-	model.stuck = stuckReasons(model, now);
+	model.stuck = stuckReasons(model, now, options.roles);
 	model.morale = moraleOf(
 		live,
 		huddles,

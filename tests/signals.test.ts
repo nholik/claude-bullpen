@@ -328,3 +328,75 @@ test("denied, interrupted, and background commands never report a successful com
 	expect(toolOutcome({ isError: true, result: "failure" })).toBe("error");
 	expect(toolOutcome({ result: { interrupted: false } })).toBe("ok");
 });
+
+test("idle reviewers and builders with an open PR are waiting, not stuck", () => {
+	const view = (events: BullpenEvent[], now: number) => {
+		const model = buildModel(events, now);
+		const text = teamStudioView(
+			model,
+			{ filter: "", burndown: [], checkedAt: 0 },
+			DEFAULT_PROFILE,
+			110,
+			32,
+			now,
+		)
+			.regions.flat()
+			.map((s) => s.text)
+			.join("");
+		return { model, text };
+	};
+	const idle = 20 * minute;
+	const announce = event("message", 1, {
+		target: "lead",
+		detail: "#12 PR is up: https://github.com/o/r/pull/30. Check is green.",
+	});
+	const ask = event("message", 2, {
+		target: "gate",
+		detail: "#12: please review PR https://github.com/o/r/pull/30",
+	});
+	const done = event("turn-end", 3);
+
+	// Builder with no PR is still stuck.
+	expect(buildModel([event("tool", 0), done], idle).stuck?.builder).toBe(
+		"idle with open work 19m",
+	);
+
+	// PR announced, then in review: waiting on review.
+	const reviewing = view([announce, ask, done], idle);
+	expect(reviewing.model.stuck?.builder).toBeUndefined();
+	expect(reviewing.text).toContain("waiting on review");
+	expect(reviewing.text).not.toContain("stuck");
+	expect(flowSummary(reviewing.model, [], idle).text).not.toContain("stall");
+
+	// Approved: waiting on a human merge.
+	const approved = view(
+		[
+			announce,
+			ask,
+			event("message", 3, {
+				who: "gate",
+				target: "lead",
+				detail: "PR #30 (#12) PASS",
+			}),
+			event("turn-end", 4),
+		],
+		idle,
+	);
+	expect(approved.model.stuck?.builder).toBeUndefined();
+	expect(approved.text).toContain("waiting on merge");
+
+	// A reviewer or designer that finished is done, however the role is named.
+	for (const [who, role] of [
+		["gate", undefined],
+		["ux121", undefined],
+		["checker", "reviewer"],
+		["mock", "designer"],
+	] as const) {
+		const model = buildModel(
+			[event("tool", 0, { who }), event("turn-end", 1, { who })],
+			idle,
+			role ? { roles: { [who]: role } } : {},
+		);
+		expect(model.stuck?.[who]).toBeUndefined();
+	}
+});

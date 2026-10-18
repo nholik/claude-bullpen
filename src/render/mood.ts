@@ -20,6 +20,8 @@ export type MoodInput = {
 	needsYou?: boolean;
 	/** Waiting on a reviewer or gate. */
 	waitingOnReview?: boolean;
+	/** The PR passed review; only a human merge is left. */
+	waitingOnMerge?: boolean;
 	/** Minutes their issue has been stalled, when it is. */
 	stalledMin?: number;
 	stuckReason?: string;
@@ -142,11 +144,13 @@ export function moodKind(input: MoodInput): MoodKind {
 export function moodFor(input: MoodInput): Mood {
 	const kind = moodKind(input);
 	const label =
-		kind === "stuck"
-			? `stuck · ${input.stuckReason ?? `${input.stalledMin ?? 0}m`}`
-			: kind === "failing" && (input.failingChecks ?? 0) > 1
-				? `checks red x${input.failingChecks}`
-				: LABELS[kind];
+		kind === "review" && input.waitingOnMerge
+			? "waiting on merge"
+			: kind === "stuck"
+				? `stuck · ${input.stuckReason ?? `${input.stalledMin ?? 0}m`}`
+				: kind === "failing" && (input.failingChecks ?? 0) > 1
+					? `checks red x${input.failingChecks}`
+					: LABELS[kind];
 	return { kind, label, ...MOODS[kind] };
 }
 

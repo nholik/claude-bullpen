@@ -1,6 +1,6 @@
 import type { GithubSource, Profile } from "../../types";
 import type { BullpenModel, Teammate } from "../model";
-import { activeTime, flowSummary } from "../model/signals";
+import { activeTime, flowSummary, waitingStage } from "../model/signals";
 import { colorFor, colorIndex, roleLabel } from "../profile";
 import { activityPhrase } from "./activity";
 import {
@@ -62,9 +62,8 @@ function workstation(
 		status: member.status,
 		away: member.away,
 		stuckReason: model.stuck?.[member.name],
-		waitingOnReview: model.ship.some(
-			(p) => p.issue === member.issue && p.stage === "in-review",
-		),
+		waitingOnReview: waitingStage(model, member) !== undefined,
+		waitingOnMerge: waitingStage(model, member) === "merge",
 		failingChecks: member.failureCount,
 		justMerged: model.ship.some(
 			(p) =>
