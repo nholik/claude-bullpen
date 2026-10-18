@@ -565,3 +565,46 @@ test("roleNames resolves by name, mixed case and agent type", () => {
 		colorOnly: "reviewer",
 	});
 });
+
+test("a reviewer known only by agent type in the profile is not stuck or waiting", () => {
+	const idle = 20 * minute;
+	const who = "checker";
+	const events = [
+		event("tool", 0, { who }),
+		event("message", 1, {
+			who,
+			target: "lead",
+			detail: "#12 PR is up: https://github.com/o/r/pull/30. Check is green.",
+		}),
+		event("turn-end", 2, { who }),
+		event("tool", 0, { who: "bare" }),
+		event("turn-end", 1, { who: "bare" }),
+	];
+	const agentTypes = { [who]: "general-purpose", bare: "general-purpose" };
+	const profile = {
+		...DEFAULT_PROFILE,
+		roles: { "general-purpose": { role: "reviewer" } },
+	};
+	const members = [
+		{ name: who, agentType: "general-purpose" },
+		{ name: "bare", agentType: "general-purpose" },
+	];
+	const roles = roleNames(profile, members);
+	const model = buildModel(events, idle, { agentTypes, roles });
+	expect(model.stuck?.[who]).toBeUndefined();
+	expect(model.stuck?.bare).toBeUndefined();
+	const text = (p: typeof profile | typeof DEFAULT_PROFILE) =>
+		teamStudioView(
+			model,
+			{ filter: "", burndown: [], checkedAt: 0 },
+			p,
+			110,
+			32,
+			idle,
+		)
+			.regions.flat()
+			.map((s) => s.text)
+			.join("");
+	expect(text(DEFAULT_PROFILE).includes("waiting on review")).toBe(true);
+	expect(text(profile).includes("waiting on review")).toBe(false);
+});
