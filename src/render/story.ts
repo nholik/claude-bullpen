@@ -2,7 +2,7 @@ import type { BullpenEvent, GithubSource, Profile } from "../../types";
 import { nextIssue } from "../events";
 import { attributableRefs, isKickback, isReviewer } from "../model/detect";
 import { claimOwner, type OwnSource } from "../ownership";
-import { colorFor, colorIndex, roleFor } from "../profile";
+import { colorFor, colorIndex, memberRole } from "../profile";
 import { fit, glyphLines, type Line, textLine, wrapText } from "./lines";
 
 export type Story = {
@@ -10,6 +10,8 @@ export type Story = {
 	title?: string;
 	state: string;
 	events: BullpenEvent[];
+	/** Agent type by team name, from spawn events, for role lookups. */
+	agentTypes?: Record<string, string>;
 };
 /** Follow each actor's work attribution, retaining explicit cross-issue mentions. */
 export function storyFor(
@@ -58,6 +60,13 @@ export function storyFor(
 		title: gh?.title,
 		state: gh?.state ?? "GitHub state unavailable",
 		events: selected,
+		agentTypes: Object.fromEntries(
+			events.flatMap((e) =>
+				e.kind === "spawn" && e.target && e.agentType
+					? [[e.target, e.agentType]]
+					: [],
+			),
+		),
 	};
 }
 function storyLinesImpl(
@@ -100,7 +109,13 @@ function storyLinesImpl(
 						: e.kind === "message"
 							? isKickback(
 									e.detail,
-									isReviewer(e.who, roleFor(e.who, profile)?.role),
+									isReviewer(
+										e.who,
+										memberRole(
+											{ name: e.who, agentType: story.agentTypes?.[e.who] },
+											profile,
+										),
+									),
 								)
 								? "kickback"
 								: /\b(PASS|FAIL|LGTM|approved)\b/i.test(e.detail)

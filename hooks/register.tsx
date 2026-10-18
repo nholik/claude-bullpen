@@ -202,7 +202,13 @@ async function syncModel($: $, added: readonly BullpenEvent[], force: boolean) {
 	const stamped = await read($, modelVersion);
 	if (added.length === 0 && state && stamped === MODEL_VERSION && !force)
 		return;
-	const out = foldBatch(state, stamped, await read($, events), added, force);
+	const roles = roleNames(
+		await read($, profile),
+		Object.values(await read($, members)),
+	);
+	const out = foldBatch(state, stamped, await read($, events), added, force, {
+		roles,
+	});
 	await update($, teamModel, () => out.state);
 	await update($, modelVersion, () => out.version);
 }

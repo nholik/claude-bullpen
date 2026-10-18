@@ -238,8 +238,9 @@ export function memberRole(
 	profile: Profile,
 ): string | undefined {
 	return (
-		roleFor(member.name, profile)?.role ??
-		(member.agentType ? roleFor(member.agentType, profile)?.role : undefined)
+		roleFor(member.name, profile)?.role ||
+		(member.agentType ? roleFor(member.agentType, profile)?.role : undefined) ||
+		undefined
 	);
 }
 
@@ -273,9 +274,7 @@ export function roleLabel(
 	agentType: string | undefined,
 	profile: Profile,
 ): string {
-	const chosen =
-		roleFor(name, profile)?.role ??
-		(agentType ? roleFor(agentType, profile)?.role : undefined);
+	const chosen = memberRole({ name, agentType }, profile);
 	if (chosen) return chosen;
 	if (name === "lead") return "lead";
 	if (!agentType) return "";
