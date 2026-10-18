@@ -96,3 +96,20 @@ test("mixed-type palette retains valid colors and affects floor pixels", () => {
 		drawFloor([member], 110, 13, 0).cells,
 	);
 });
+test("the footer says why there is no GitHub data", () => {
+	const text = (g: Parameters<typeof footer>[0], m?: "demo" | "replay") =>
+		footer(g, 120, m)[0]
+			?.map((s) => s.text)
+			.join("");
+	const fresh = { filter: "", checkedAt: 0, burndown: [] };
+	expect(text(fresh)).toContain("waiting for first poll");
+	expect(text({ ...fresh, checkedAt: 5 })).toContain("no result yet");
+	expect(text(fresh, "demo")).toContain("paused in demo");
+	expect(text(fresh, "replay")).toContain("paused in replay");
+	expect(
+		text({
+			...fresh,
+			result: { status: "error", message: "gh not found" } as never,
+		}),
+	).toContain("gh not found");
+});

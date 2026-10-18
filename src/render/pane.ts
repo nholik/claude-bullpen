@@ -84,7 +84,7 @@ export function paneView(
 			regions: view.regions,
 			footer: glyphLines(
 				[
-					...footer(github, columns),
+					...footer(github, columns, options.mode),
 					textLine("a: answer · s: shipping · t: talk (toggle)", columns),
 				],
 				profile.glyphs,
@@ -97,7 +97,7 @@ export function paneView(
 		Math.max(0, rows - 3),
 	);
 	const bottom = [
-		...footer(github, columns),
+		...footer(github, columns, options.mode),
 		textLine("a: answer · s: shipping · t: talk (toggle)", columns),
 	].slice(0, Math.max(0, rows - heading.length - 1));
 	const available = Math.max(0, rows - heading.length - bottom.length - 1);

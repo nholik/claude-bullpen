@@ -374,6 +374,14 @@ let pollLoop: PollLoop | undefined;
 let pollGeneration = 0;
 let prPollCursor = 0;
 let viewTimer: Timer | undefined;
+let reconcileTimer: Timer | undefined;
+/** Last clock reading, when the view tick last fired, and liveness check pacing. */
+let lastClockMs = 0;
+let lastBeatAt = 0;
+let lastTimerStartAt = 0;
+let lastEnsureAt = 0;
+const ENSURE_MS = 2000;
+const BEAT_GRACE_MS = 5000;
 /** When state last gained events, and when viewTime last ticked. */
 let lastActivityAt = 0;
 let lastTickAt = 0;
@@ -383,6 +391,8 @@ const IDLE_TICK_MS = 15_000;
  * fading, otherwise often enough for minute-step ages. */
 async function tick($: $) {
 	const at = await now($);
+	lastClockMs = at;
+	lastBeatAt = at;
 	const recorded = await read($, replay);
 	const playing =
 		recorded &&
@@ -644,61 +654,70 @@ async function pollGithub($: $, generation = pollGeneration) {
 		workspace = (await $.session.cwd().catch(() => ""))
 			.split(/[\\/]/)
 			.findLast(Boolean);
-	if (result.status === "ok") {
-		if (!repo || !host) {
-			const resolved = await $.process.run(REPO_ARGV).catch(() => undefined);
-			if (resolved?.exitCode === 0) {
-				repo = parseRepo(resolved.stdout);
-				host = parseRepoHost(resolved.stdout);
-			}
-		}
-		if (repo && host)
-			result.counts = await fetchCounts(
-				(argv) => $.process.run(argv),
-				repo,
-				prev.filter,
-				host,
-			);
-		const counts = exactCounts(result);
-		if (repo && host && counts) {
-			const key = burndownKey(repo, prev.filter, host);
-			const point = { at, ...counts };
-			burndown = addSnapshot(parseBurndown(await $.store.get(key)), point);
-			await $.store.set(key, burndown);
-		}
-		if (repo && host) {
-			const repoName = repo,
-				hostname = host;
-			const tracked = [
-				...new Set(
-					sceneModel(await readScene($)).ship.flatMap((p) =>
-						p.pr === undefined ? [] : [p.pr],
-					),
-				),
-			];
-			const batch = Array.from(
-				{ length: Math.min(4, tracked.length) },
-				(_, i) => tracked[(prPollCursor + i) % tracked.length],
-			).filter((pr): pr is number => pr !== undefined);
-			prPollCursor = tracked.length
-				? (prPollCursor + batch.length) % tracked.length
-				: 0;
-			const updated = new Map((prs ?? []).map((p) => [p.number, p]));
-			const results = await Promise.allSettled(
-				batch.map((pr) =>
-					$.process.run(prArgv(repoName, hostname, pr), { timeoutMs: 5000 }),
-				),
-			);
-			for (const [i, result] of results.entries()) {
-				const pr =
-					result.status === "fulfilled" ? readPr(result.value, at) : undefined;
-				if (pr && pr.number === batch[i]) {
-					updated.delete(pr.number);
-					updated.set(pr.number, pr);
+	// An enrichment failure (store, counts, PR lookups) must not hide the poll result.
+	try {
+		if (result.status === "ok") {
+			if (!repo || !host) {
+				const resolved = await $.process.run(REPO_ARGV).catch(() => undefined);
+				if (resolved?.exitCode === 0) {
+					repo = parseRepo(resolved.stdout);
+					host = parseRepoHost(resolved.stdout);
 				}
 			}
-			prs = [...updated.values()].slice(-40);
+			if (repo && host)
+				result.counts = await fetchCounts(
+					(argv) => $.process.run(argv),
+					repo,
+					prev.filter,
+					host,
+				);
+			const counts = exactCounts(result);
+			if (repo && host && counts) {
+				const key = burndownKey(repo, prev.filter, host);
+				const point = { at, ...counts };
+				burndown = addSnapshot(parseBurndown(await $.store.get(key)), point);
+				await $.store.set(key, burndown);
+			}
+			if (repo && host) {
+				const repoName = repo,
+					hostname = host;
+				const tracked = [
+					...new Set(
+						sceneModel(await readScene($)).ship.flatMap((p) =>
+							p.pr === undefined ? [] : [p.pr],
+						),
+					),
+				];
+				const batch = Array.from(
+					{ length: Math.min(4, tracked.length) },
+					(_, i) => tracked[(prPollCursor + i) % tracked.length],
+				).filter((pr): pr is number => pr !== undefined);
+				prPollCursor = tracked.length
+					? (prPollCursor + batch.length) % tracked.length
+					: 0;
+				const updated = new Map((prs ?? []).map((p) => [p.number, p]));
+				const results = await Promise.allSettled(
+					batch.map((pr) =>
+						$.process.run(prArgv(repoName, hostname, pr), { timeoutMs: 5000 }),
+					),
+				);
+				for (const [i, result] of results.entries()) {
+					const pr =
+						result.status === "fulfilled"
+							? readPr(result.value, at)
+							: undefined;
+					if (pr && pr.number === batch[i]) {
+						updated.delete(pr.number);
+						updated.set(pr.number, pr);
+					}
+				}
+				prs = [...updated.values()].slice(-40);
+			}
 		}
+	} catch (error) {
+		$.ui.log(`bullpen: github poll follow-up failed (${error})`, {
+			to: "debug",
+		});
 	}
 	if (generation !== pollGeneration) return;
 	await update($, github, (cur) => ({
@@ -757,23 +776,60 @@ async function loadProfile($: $) {
 	await update($, github, (old) =>
 		old.filter === filter ? old : { filter, burndown: [], checkedAt: 0 },
 	);
+	startPolling($, parsed.profile.issues.pollSeconds);
+	if (parsed.warnings.length > 0)
+		$.ui.toast(`bullpen.json: ${parsed.warnings.join("; ")}`, {
+			timeoutMs: 10000,
+		});
+}
+
+/** (Re)starts the GitHub poll loop; a previous loop is cancelled first. */
+function startPolling($: $, pollSeconds: number) {
 	pollLoop?.cancel();
 	const generation = ++pollGeneration;
 	const loop = createPollLoop({
-		baseMs: parsed.profile.issues.pollSeconds * 1000,
+		baseMs: pollSeconds * 1000,
 		poll: async () => {
 			const success = await pollGithub($, generation).catch(() => false);
 			return (await read($, demoStart)) < 0 ? success : undefined;
 		},
 		current: () => generation === pollGeneration,
+		now: () => lastClockMs,
 		after: (ms, fn) => $.clock.after(ms, fn),
 	});
 	pollLoop = loop;
 	loop.start();
-	if (parsed.warnings.length > 0)
-		$.ui.toast(`bullpen.json: ${parsed.warnings.join("; ")}`, {
-			timeoutMs: 10000,
-		});
+}
+
+/** Starts the 1 s view tick and 4 s reconcile; each is cancelled first, so never doubled. */
+function startTimers($: $) {
+	viewTimer?.cancel();
+	viewTimer = $.clock.every(1000, () => {
+		void tick($).catch(() => {});
+	});
+	reconcileTimer?.cancel();
+	reconcileTimer = $.clock.every(
+		4000,
+		() => void producers.track(reconcile($)).catch(() => {}),
+	);
+	lastTimerStartAt = lastClockMs;
+}
+
+/**
+ * A hot reload cancels pending clock waits, and `session.start` only re-fires
+ * for changed modules, so the timers can die while the pane stays open. Called
+ * from render and from observers: restarts whatever has stopped beating.
+ */
+async function ensureLive($: $) {
+	const at = await now($);
+	lastClockMs = at;
+	if (at - lastEnsureAt < ENSURE_MS) return;
+	lastEnsureAt = at;
+	const viewDead =
+		!viewTimer || at - Math.max(lastBeatAt, lastTimerStartAt) > BEAT_GRACE_MS;
+	if (viewDead) startTimers($);
+	if (!pollLoop || pollLoop.stalled(at))
+		startPolling($, (await read($, profile)).issues.pollSeconds);
 }
 
 async function openPane($: $) {
@@ -803,10 +859,8 @@ export function register(on: On) {
 		await update($, replay, () => null);
 
 		await loadProfile($);
-		viewTimer?.cancel();
-		viewTimer = $.clock.every(1000, () => {
-			void tick($).catch(() => {});
-		});
+		lastClockMs = await now($);
+		startTimers($);
 
 		await $.command.register({
 			name: "bullpen",
@@ -814,11 +868,6 @@ export function register(on: On) {
 			argumentHint:
 				"[demo|live|replay PATH|answer|reload|story #N|focus shipping|talk|all]",
 		});
-
-		$.clock.every(
-			4000,
-			() => void producers.track(reconcile($)).catch(() => {}),
-		);
 
 		return next(e);
 	});
@@ -834,7 +883,11 @@ export function register(on: On) {
 		tweenTimer = undefined;
 		cardWidths.clear();
 		viewTimer?.cancel();
+		viewTimer = undefined;
+		reconcileTimer?.cancel();
+		reconcileTimer = undefined;
 		pollLoop?.cancel();
+		pollLoop = undefined;
 		pollGeneration++;
 		await producers.drain();
 		await collector?.drain();
@@ -1000,6 +1053,7 @@ export function register(on: On) {
 	});
 
 	on("tool.call", async ($, e, next) => {
+		void ensureLive($).catch(() => {});
 		const args = e as unknown as Record<string, unknown>;
 		// Observe only, and never hold up the call while recording it.
 		void producers
@@ -1065,6 +1119,7 @@ export function register(on: On) {
 	});
 
 	on("ui.render", { component: "Pane", requestId: PANE }, async ($, e) => {
+		await ensureLive($).catch(() => {});
 		const { Box, Text, Button } = $.ui.resolve(e);
 		const snapshot = await readScene($);
 		const list = Object.values(snapshot.members);

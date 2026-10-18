@@ -353,7 +353,24 @@ export type PollLoop = {
 	/** A manual poll succeeded: clear the failure count and re-time a backed-off timer. */
 	recover(): void;
 	cancel(): void;
+	/** True when no poll is running and the next one is long overdue: its timer died. */
+	stalled(nowMs: number): boolean;
 };
+
+/** How long past its due time a poll may be before the loop counts as dead. */
+export const POLL_GRACE_MS = 30_000;
+
+/** Why the footer has no burndown, in a few words. */
+export function noDataReason(
+	github: Pick<GithubSource, "result" | "checkedAt">,
+	mode: "live" | "demo" | "replay" = "live",
+): string {
+	if (mode === "demo") return "paused in demo";
+	if (mode === "replay") return "paused in replay";
+	if (github.result)
+		return github.result.status === "ok" ? "no counts" : github.result.message;
+	return github.checkedAt > 0 ? "no result yet" : "waiting for first poll";
+}
 
 export function createPollLoop(options: {
 	baseMs: number;
@@ -361,17 +378,20 @@ export function createPollLoop(options: {
 	poll: () => Promise<boolean | undefined>;
 	/** False once a newer loop replaces this one. */
 	current: () => boolean;
+	/** Milliseconds since the epoch, as last known; used to spot a dead timer. */
+	now?: () => number;
 	after: (ms: number, fn: () => void) => { cancel(): void };
 }): PollLoop {
 	let failures = 0;
 	let running = false;
 	let timer: { cancel(): void } | undefined;
+	let dueAt = Number.POSITIVE_INFINITY;
+	let cancelled = false;
 	const schedule = () => {
-		if (!options.current()) return;
-		timer = options.after(
-			pollDelay(options.baseMs, failures),
-			() => void run(),
-		);
+		if (cancelled || !options.current()) return;
+		const delay = pollDelay(options.baseMs, failures);
+		dueAt = (options.now?.() ?? 0) + delay;
+		timer = options.after(delay, () => void run());
 	};
 	const run = async () => {
 		timer = undefined;
@@ -383,7 +403,9 @@ export function createPollLoop(options: {
 	};
 	return {
 		start: () => void run(),
+		stalled: (nowMs) => !cancelled && !running && nowMs > dueAt + POLL_GRACE_MS,
 		cancel() {
+			cancelled = true;
 			timer?.cancel();
 			timer = undefined;
 		},
