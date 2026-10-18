@@ -202,6 +202,8 @@ export function applyEvent(
 		e.kind !== "answer"
 	)
 		issue = nextIssue(e.kind, actor?.issue, attributableRefs(e, refs));
+	// A respawn under the same name starts without its predecessor's owner.
+	if (e.kind === "leave") owned = undefined;
 	let status = actor?.status ?? "running";
 	if (known) status = e.kind === "turn-end" ? "idle" : "running";
 	// A typed leave event is the journal evidence that a member departed.

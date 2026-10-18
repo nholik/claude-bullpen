@@ -26,14 +26,49 @@ test("new worktrees and branches named <n>-slug show the owner", () => {
 		"git worktree add .worktrees/156 -b 156-ownership origin/main",
 		"git checkout -b 156-ownership",
 		"git switch -c 156-ownership",
-		"cd .worktrees/156 && npm test",
-		"git -C .worktrees/156 status",
 	];
 	for (const c of cases)
 		expect(bash(c)).toEqual({ issue: 156, by: "worktree" });
 	expect(bash("git checkout -b fix-thing")).toBeUndefined();
 	expect(bash("git worktree remove .worktrees/110-old")).toBeUndefined();
 	expect(bash("ls .worktrees")).toBeUndefined();
+});
+
+test("reading a worktree (cd, git -C) claims nothing", () => {
+	expect(bash("cd .worktrees/117 && git log")).toBeUndefined();
+	expect(bash("git -C .worktrees/117 log --oneline")).toBeUndefined();
+});
+
+test("quoted or printed commands claim nothing", () => {
+	expect(bash("echo 'git checkout -b 12-thing'")).toBeUndefined();
+	expect(
+		bash("git commit -m 'move .worktrees/12 and git switch -c 12-x'"),
+	).toBeUndefined();
+	expect(bash(`echo 'gh pr create --body "Closes #999"'`)).toBeUndefined();
+});
+
+test("checking out an existing remote branch to review claims nothing", () => {
+	expect(
+		bash("git checkout -b 156-ownership origin/156-ownership"),
+	).toBeUndefined();
+	expect(bash("git checkout -b 156-ownership origin/main")?.issue).toBe(156);
+});
+
+test("a PR claims only from a Closes line in its body", () => {
+	const pr = (extra: string) => bash(`gh pr create ${extra}`);
+	expect(pr("--body 'Follow-up to fixed #100. Closes #156'")?.issue).toBe(156);
+	expect(pr("--title 'fix #3 regression' --body 'Closes #156'")?.issue).toBe(
+		156,
+	);
+	expect(pr("--title 'fix #3 regression' --fill")).toBeUndefined();
+	expect(pr("--title 'Fixes #3' --body 'no refs'")).toBeUndefined();
+	expect(
+		pr("--body 'Follow-up to fixed #100.' --title 'Closes #3'"),
+	).toBeUndefined();
+	expect(
+		bash("gh pr create --body \"$(cat <<'EOF'\nSummary\nCloses #156\nEOF\n)\"")
+			?.issue,
+	).toBe(156);
 });
 
 test("gh pr create with Closes #n shows a PR owner", () => {
@@ -69,7 +104,7 @@ const ev = (
 	...extra,
 });
 
-// Modelled on a real builder session: ada works in .worktrees/147 while her
+// Modelled on a real builder session: ada works in .worktrees/147 while their
 // messages mention neighbouring issues.
 test("a builder in .worktrees/147 stays on #147 whatever its messages mention", () => {
 	const model = buildModel(
@@ -135,4 +170,16 @@ test("the collector journals owns and locks the member against prose", () => {
 	const owned = out.events.find((e) => e.owns !== undefined);
 	expect(owned?.owns).toBe(147);
 	expect(owned?.ownedBy).toBe("worktree");
+});
+
+test("a leave clears the owner, so a respawn starts fresh", () => {
+	const model = buildModel(
+		[
+			ev(1, "tool", "edit", { target: "Edit", owns: 147, ownedBy: "worktree" }),
+			ev(2, "leave", "ada left"),
+			ev(3, "spawn", "teammate ada joined", { who: "lead", target: "ada" }),
+		],
+		T + 10_000,
+	);
+	expect(model.teammates.ada?.owned).toBeUndefined();
 });

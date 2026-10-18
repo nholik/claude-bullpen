@@ -1124,7 +1124,6 @@ export function register(on: On) {
 				record($, "tool", e.agentId, describeTool(String(e.tool), args), {
 					target: String(e.tool),
 					text: toolText(args),
-					owns: ownershipOf(String(e.tool), args),
 				}),
 			)
 			.catch(() => {});
@@ -1138,6 +1137,25 @@ export function register(on: On) {
 							target: String(e.tool),
 							text: toolText(args),
 							outcome,
+						}),
+					)
+					.catch(() => {});
+			// An owner is claimed only once the call went through: a denied call
+			// changed nothing.
+			const owns = ownershipOf(String(e.tool), args);
+			const denied =
+				!!result &&
+				typeof result === "object" &&
+				"deny" in result &&
+				result.deny !== undefined;
+			if (owns && !denied)
+				void producers
+					.track(
+						record($, "tool", e.agentId, `owns #${owns.issue}`, {
+							target: String(e.tool),
+							text: "",
+							owns,
+							attribute: false,
 						}),
 					)
 					.catch(() => {});

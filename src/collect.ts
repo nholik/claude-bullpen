@@ -106,7 +106,12 @@ function touched(
 		name: patch.name ?? prev?.name ?? (id === LEAD ? LEAD : id.slice(0, 8)),
 		status: patch.status ?? prev?.status ?? "running",
 		issue: patch.issue ?? prev?.issue,
-		owned: patch.issue === undefined ? prev?.owned : patch.owned,
+		owned:
+			(patch.status ?? prev?.status) === "gone"
+				? undefined
+				: patch.issue === undefined
+					? prev?.owned
+					: patch.owned,
 		agentType: patch.agentType ?? prev?.agentType,
 		color: prev?.color ?? Object.keys(all).length,
 		lastActiveAt: at,
