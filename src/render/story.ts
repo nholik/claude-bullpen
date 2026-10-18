@@ -1,6 +1,7 @@
 import type { BullpenEvent, GithubSource, Profile } from "../../types";
 import { nextIssue } from "../events";
 import { attributableRefs, isKickback, isReviewer } from "../model/detect";
+import { claimOwner, type OwnSource } from "../ownership";
 import { colorFor, colorIndex, roleFor } from "../profile";
 import { fit, glyphLines, type Line, textLine, wrapText } from "./lines";
 
@@ -17,21 +18,34 @@ export function storyFor(
 	github: GithubSource,
 ): Story {
 	const assigned = new Map<string, number>();
+	const owned = new Map<string, OwnSource>();
 	const selected: BullpenEvent[] = [];
 	for (const event of events) {
 		const name =
 			event.kind === "spawn" ? (event.target ?? event.who) : event.who;
 		const previous = assigned.get(name);
+		// A claim-only event sets the owner and is no step of the story.
+		if (event.owns !== undefined && event.ownedBy) {
+			if (
+				claimOwner(owned.get(name), { issue: event.owns, by: event.ownedBy })
+			) {
+				assigned.set(name, event.owns);
+				owned.set(name, event.ownedBy);
+			}
+			continue;
+		}
 		const current =
 			event.kind === "spawn"
 				? (previous ?? event.issues[0])
 				: event.kind === "leave" || event.kind === "answer"
 					? previous
-					: nextIssue(
-							event.kind,
-							previous,
-							attributableRefs(event, event.issues),
-						);
+					: owned.has(name)
+						? previous
+						: nextIssue(
+								event.kind,
+								previous,
+								attributableRefs(event, event.issues),
+							);
 		if (current !== undefined) assigned.set(name, current);
 		if (event.issues.includes(issue) || current === issue) selected.push(event);
 	}

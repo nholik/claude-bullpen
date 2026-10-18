@@ -7,6 +7,7 @@ import type { BullpenEventKind, Member, MemberStatus } from "../types";
 import { DEMO_PREFIX } from "./demo";
 import { issueRefs, nextIssue } from "./events";
 import { type BullpenEvent, JOURNAL_VERSION } from "./journal";
+import { claimOwner, type Own, type OwnSource } from "./ownership";
 
 export const LEAD = "lead";
 
@@ -42,6 +43,7 @@ export type MemberPatch = {
 	agentType?: string;
 	status?: MemberStatus;
 	issue?: number;
+	owned?: OwnSource;
 };
 
 /** An agent as `$.agent.list()` reports it, reduced to what reconcile reads. */
@@ -68,6 +70,8 @@ export type CollectOp =
 			/** Extra text scanned for issue refs alongside `detail`. */
 			text?: string;
 			confirmedCloses?: number[];
+			/** The owner this call shows (worktree, branch or PR). */
+			owns?: Own;
 			outcome?: "ok" | "error";
 			replyTo?: number;
 			/** On `spawn`: the agent type the target was spawned as. */
@@ -85,6 +89,11 @@ export type CollectOp =
 	/** Rebuilds the reduced team state from the event window; no member change. */
 	| { op: "rebuild" };
 
+/** An `Own` as the journal stores it: only worktree and PR sources are observed. */
+function ownedBy(own: Own): "worktree" | "pr" {
+	return own.by === "pr" ? "pr" : "worktree";
+}
+
 function touched(
 	all: Record<string, Member>,
 	id: string,
@@ -97,6 +106,12 @@ function touched(
 		name: patch.name ?? prev?.name ?? (id === LEAD ? LEAD : id.slice(0, 8)),
 		status: patch.status ?? prev?.status ?? "running",
 		issue: patch.issue ?? prev?.issue,
+		owned:
+			(patch.status ?? prev?.status) === "gone"
+				? undefined
+				: patch.issue === undefined
+					? prev?.owned
+					: patch.owned,
 		agentType: patch.agentType ?? prev?.agentType,
 		color: prev?.color ?? Object.keys(all).length,
 		lastActiveAt: at,
@@ -122,6 +137,7 @@ function reconciled(
 			name: agent.name ?? prev?.name ?? agent.description,
 			status: agent.status === "running" ? "running" : "idle",
 			issue: prev?.issue,
+			owned: prev?.owned,
 			agentType: prev?.agentType,
 			color: prev?.color ?? Object.keys(next).length,
 			lastActiveAt: prev?.lastActiveAt ?? at,
@@ -174,9 +190,22 @@ export function applyBatch(
 				);
 				break;
 			case "event": {
+				// A claim-only event is journaled when it changes the owner, so
+				// repeated writes in one worktree add nothing.
+				if (op.owns) {
+					const id = op.agentId ?? LEAD;
+					const claim =
+						id !== LEAD ? claimOwner(all[id]?.owned, op.owns) : undefined;
+					const current = all[id];
+					if (
+						!claim ||
+						(claim.issue === current?.issue && claim.by === current.owned)
+					)
+						break;
+				}
 				const id = op.agentId ?? LEAD;
 				const issues = issueRefs(
-					op.kind === "tool" && op.target === "Bash"
+					op.owns || (op.kind === "tool" && op.target === "Bash")
 						? (op.text ?? "")
 						: `${op.detail} ${op.text ?? ""}`,
 				);
@@ -191,16 +220,32 @@ export function applyBatch(
 					issues,
 					outcome: op.outcome,
 					replyTo: op.replyTo,
+					...(op.owns
+						? { owns: op.owns.issue, ownedBy: ownedBy(op.owns) }
+						: {}),
 					...(op.agentType ? { agentType: op.agentType } : {}),
 					...(op.confirmedCloses
 						? { confirmedCloses: op.confirmedCloses }
 						: {}),
 				});
-				const issue =
-					op.attribute && op.kind !== "leave" && op.kind !== "answer"
+				// An explicit owner wins; prose can't move a member off it. The lead
+				// reads and reviews worktrees, so it never takes one.
+				const claim =
+					id !== LEAD && op.owns
+						? claimOwner(all[id]?.owned, op.owns)
+						: undefined;
+				const issue = claim
+					? claim.issue
+					: op.attribute &&
+							!all[id]?.owned &&
+							op.kind !== "leave" &&
+							op.kind !== "answer"
 						? nextIssue(op.kind, all[id]?.issue, issues)
 						: undefined;
-				const patch = issue === undefined ? {} : { issue };
+				const patch =
+					issue === undefined
+						? {}
+						: { issue, owned: claim?.by ?? all[id]?.owned };
 				all = { ...all, [id]: touched(all, id, patch, op.at) };
 				break;
 			}

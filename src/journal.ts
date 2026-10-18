@@ -68,6 +68,10 @@ export const BullpenEventSchema = object({
 	confirmedCloses: optional(array(pipe(number(), integer(), minValue(1)))),
 	outcome: optional(picklist(["ok", "error"])),
 	replyTo: optional(number()),
+	/** The issue this call shows its agent owns (worktree path, new branch, PR). */
+	owns: optional(pipe(number(), integer(), minValue(1))),
+	/** What `owns` came from. */
+	ownedBy: optional(picklist(["worktree", "pr"])),
 });
 
 export type BullpenEvent = InferOutput<typeof BullpenEventSchema>;

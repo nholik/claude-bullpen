@@ -68,6 +68,7 @@ import {
 } from "../src/model";
 import { briefIssue, confirmedToolCloses } from "../src/model/detect";
 import { createMotion, motionFor } from "../src/motion";
+import { type Own, ownershipOf } from "../src/ownership";
 import {
 	DEFAULT_PROFILE,
 	parseProfile,
@@ -666,6 +667,7 @@ async function record(
 		confirmedCloses?: number[];
 		outcome?: "ok" | "error";
 		agentType?: string;
+		owns?: Own;
 	} = {},
 ) {
 	collectorOf($).push({
@@ -679,6 +681,7 @@ async function record(
 		confirmedCloses: extra.confirmedCloses,
 		outcome: extra.outcome,
 		agentType: extra.agentType,
+		owns: extra.owns,
 		attribute: extra.attribute ?? true,
 	});
 }
@@ -1149,6 +1152,25 @@ export function register(on: On) {
 							target: String(e.tool),
 							text: toolText(args),
 							outcome,
+						}),
+					)
+					.catch(() => {});
+			// An owner is claimed only once the call went through: a denied or
+			// failed call changed nothing.
+			const owns = ownershipOf(String(e.tool), args);
+			const failed =
+				!!result &&
+				typeof result === "object" &&
+				(("deny" in result && result.deny !== undefined) ||
+					("isError" in result && result.isError === true));
+			if (owns && !failed)
+				void producers
+					.track(
+						record($, "tool", e.agentId, `owns #${owns.issue}`, {
+							target: String(e.tool),
+							text: "",
+							owns,
+							attribute: false,
 						}),
 					)
 					.catch(() => {});

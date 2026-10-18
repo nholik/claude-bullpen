@@ -10,6 +10,7 @@ import type {
 	TeamSnapshot,
 } from "../../types";
 import { nextIssue } from "../events";
+import { claimOwner } from "../ownership";
 import {
 	attributableRefs,
 	closedIssues,
@@ -130,6 +131,7 @@ function step(
 		color: prev?.color ?? Object.keys(teammates).length,
 		status: prev?.status ?? "running",
 		issue: prev?.issue,
+		owned: prev?.owned,
 		lastActiveAt: Math.max(prev?.lastActiveAt ?? e.at, e.at),
 		trail: prev?.trail ?? [],
 		goneAt: prev?.goneAt,
@@ -158,6 +160,25 @@ export function applyEvent(
 			issueStarted[issue] = e.at;
 	};
 
+	// A claim-only event sets the owner and nothing else: it is no step, no
+	// activity and no progress, so it never replaces the real edit or command
+	// in the card.
+	if (e.owns !== undefined && e.ownedBy) {
+		const prev = teammates[e.who];
+		const claim = isLead(e.who, options)
+			? undefined
+			: claimOwner(prev?.owned, { issue: e.owns, by: e.ownedBy });
+		if (!claim) return state;
+		teammates[e.who] = step(teammates, e.who, e, {
+			issue: claim.issue,
+			owned: claim.by,
+			lastActiveAt: prev?.lastActiveAt ?? e.at,
+		});
+		take(claim.issue);
+		issueActive[claim.issue] = e.at;
+		return { ...state, teammates, issueStarted, issueActive };
+	}
+
 	// A spawn brings in `target` (a teammate joining reports itself, with no
 	// target). Its brief's first issue is the newcomer's, if it has none yet.
 	const trailStep = {
@@ -183,9 +204,25 @@ export function applyEvent(
 	const actor = teammates[e.who];
 	const known = isKnown(e.kind);
 	let issue = actor?.issue;
-	if (spawned === e.who) issue = actor?.issue ?? refs[0];
-	else if (known && e.kind !== "leave" && e.kind !== "answer")
+	let owned = actor?.owned;
+	const claim =
+		e.owns !== undefined && e.ownedBy && !isLead(e.who, options)
+			? claimOwner(actor?.owned, { issue: e.owns, by: e.ownedBy })
+			: undefined;
+	if (claim) {
+		issue = claim.issue;
+		owned = claim.by;
+	} else if (spawned === e.who) {
+		issue = actor?.issue ?? refs[0];
+	} else if (
+		known &&
+		!actor?.owned &&
+		e.kind !== "leave" &&
+		e.kind !== "answer"
+	)
 		issue = nextIssue(e.kind, actor?.issue, attributableRefs(e, refs));
+	// A respawn under the same name starts without its predecessor's owner.
+	if (e.kind === "leave") owned = undefined;
 	let status = actor?.status ?? "running";
 	if (known) status = e.kind === "turn-end" ? "idle" : "running";
 	// A typed leave event is the journal evidence that a member departed.
@@ -201,6 +238,7 @@ export function applyEvent(
 		agentId: e.agentId ?? actor?.agentId,
 		status,
 		issue,
+		owned,
 		trail: keepLast(actor?.trail ?? [], trailStep, TRAIL_LENGTH),
 		goneAt: status === "gone" ? (actor?.goneAt ?? e.at) : undefined,
 		turns: (actor?.turns ?? 0) + (e.kind === "turn-start" ? 1 : 0),
