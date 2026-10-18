@@ -97,7 +97,7 @@ const CLOSED = new RegExp(
 );
 
 // A table cell holding a ref, `| #114 (merged) |`: a report row, not a claim.
-const REPORT_CELL = /\|[^|\n]*#\d{1,7}\b[^|\n]*\|/;
+const REPORT_CELL = /\|[^|\n]*#\d{1,7}\b[^|\n]*\|/g;
 // A ref the text itself calls settled: "#114 (merged)", "#12 closed".
 const SETTLED_REF =
 	/#(\d{1,7})\b\s*\(?\s*(?:merged|closed|shipped|done|✓)(?![\w-])/gi;
@@ -105,33 +105,51 @@ const SETTLED_REF =
 /**
  * The refs of a message that can say what its sender is working on. A report
  * table of PRs lists work, it doesn't claim it, and a ref the message calls
- * merged or closed is not open work. Drops both.
+ * merged or closed is not open work. Drops refs found only in table cells or
+ * settled cues; a ref also named outside them stays.
  */
 export function ownedRefs(detail: string, refs: readonly number[]): number[] {
-	if (!refs.length || REPORT_CELL.test(detail)) return [];
-	const settled = new Set(
-		[...detail.matchAll(SETTLED_REF)].map((m) => Number(m[1])),
+	if (!refs.length) return [];
+	const outside = detail.replace(REPORT_CELL, " ");
+	const inCells = outside !== detail;
+	const named = new Set(
+		[...outside.matchAll(/#(\d{1,7})\b/g)].map((m) => Number(m[1])),
 	);
-	return refs.filter((n) => !settled.has(n));
+	const settled = new Set(
+		[...outside.matchAll(SETTLED_REF)].map((m) => Number(m[1])),
+	);
+	return refs.filter((n) => !settled.has(n) && (!inCells || named.has(n)));
 }
 
-const DONE_REPORT = /\b(?:done|complete[d]?|finished|all set)\b/i;
+// Words that make a "done" conditional, future, blocked or negated.
+const NOT_YET =
+	/\b(?:must|needs?|should|shall|will|would|could|can|before|until|once|unless|if|when|after|blocked|waiting|pending|yet|not|never|no|to be)\b|n't\b/i;
+// A report that the sender's own work is finished, as the clause's predicate.
+const DONE_CLAUSE = new RegExp(
+	[
+		/^\W*(?:done|finished|complete[d]?|all set)\b/,
+		/\b(?:done|finished|complete[d]?|all set)\W*$/,
+		/\bPR\s+(?:is\s+)?(?:up|opened|open)\b/,
+		/\b(?:opened|pushed)\s+(?:the\s+)?PR\b/,
+	]
+		.map((r) => r.source)
+		.join("|"),
+	"i",
+);
 
 /**
  * Whether a message reports its sender's work finished ("Worktree prune
- * done."), so a turn-end after it is a finish, not a stall. Questions and
- * negations ("not done yet") don't count.
+ * done.", "Done: removed 6 worktrees", "PR is up"), so a turn-end after it is a
+ * finish, not a stall. Conservative: a missed done is a false stuck, a false
+ * done hides a real stall, so questions, negations and any modal, conditional
+ * or blocked wording ("must be completed before", "blocked until #12 is done")
+ * don't count.
  */
 export function isDoneReport(detail: string): boolean {
 	if (detail.includes("?")) return false;
-	const m = DONE_REPORT.exec(detail);
-	if (!m) return false;
-	const clauseStart = Math.max(
-		detail.lastIndexOf(".", m.index),
-		detail.lastIndexOf(";", m.index),
-		detail.lastIndexOf("\n", m.index),
-	);
-	return !NEGATED.test(detail.slice(clauseStart + 1, m.index));
+	const clauses = detail.split(/[.;\n!]+/);
+	if (clauses.some((c) => NOT_YET.test(c))) return false;
+	return clauses.some((c) => DONE_CLAUSE.test(c));
 }
 
 /**

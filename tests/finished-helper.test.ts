@@ -80,6 +80,9 @@ test("ownedRefs drops report rows and refs the message calls settled", () => {
 	expect(ownedRefs("#114 (merged), now on #115", [114, 115])).toEqual([115]);
 	expect(ownedRefs("#12 closed; taking #13", [12, 13])).toEqual([13]);
 	expect(ownedRefs("anything", [])).toEqual([]);
+	expect(ownedRefs("| #114 (merged) |; now taking #115", [114, 115])).toEqual([
+		115,
+	]);
 });
 
 test("isDoneReport takes finished reports, not questions or negations", () => {
@@ -88,4 +91,16 @@ test("isDoneReport takes finished reports, not questions or negations", () => {
 	expect(isDoneReport("Not done yet, still checking")).toBe(false);
 	expect(isDoneReport("Are you done with #5?")).toBe(false);
 	expect(isDoneReport("Working on #5")).toBe(false);
+	expect(isDoneReport("Done: removed 6 worktrees")).toBe(true);
+	expect(isDoneReport("PR is up: https://example.test/pull/9")).toBe(true);
+});
+
+test("isDoneReport rejects conditional, future and blocked wording", () => {
+	for (const t of [
+		"Setup must be completed before I can continue",
+		"Will be done once CI passes",
+		"Blocked until #12 is done",
+		"Not done yet",
+	])
+		expect(isDoneReport(t)).toBe(false);
 });
