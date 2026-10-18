@@ -418,7 +418,6 @@ let lastBeatAt = 0;
 let lastTimerStartAt = 0;
 let lastEnsureAt = 0;
 let recheckTimer: Timer | undefined;
-let recheckDueAt = 0;
 const ENSURE_MS = 2000;
 const BEAT_GRACE_MS = 5000;
 /** When state last gained events, and when viewTime last ticked. */
@@ -872,10 +871,10 @@ async function ensureLive($: $, rearm = true) {
 		// aged out: look once more just past it. One pending recheck at most, and
 		// the recheck itself never arms another (ticks beat every second).
 		const delay = recheckDelay(at, lastBeatAt, lastTimerStartAt, BEAT_GRACE_MS);
-		// A recheck long overdue was itself cancelled by a reload: replace it.
-		const overdue = at > recheckDueAt + BEAT_GRACE_MS;
-		if (delay !== undefined && (!recheckTimer || overdue)) {
-			recheckDueAt = at + delay;
+		// A reload may have killed the pending wait without clearing the handle,
+		// so never trust it: cancel (harmless on a dead handle) and replace.
+		if (delay !== undefined) {
+			recheckTimer?.cancel();
 			recheckTimer = $.clock.after(delay, () => {
 				recheckTimer = undefined;
 				lastEnsureAt = 0;
@@ -941,7 +940,6 @@ export function register(on: On) {
 		viewTimer = undefined;
 		recheckTimer?.cancel();
 		recheckTimer = undefined;
-		recheckDueAt = 0;
 		reconcileTimer?.cancel();
 		reconcileTimer = undefined;
 		pollLoop?.cancel();
