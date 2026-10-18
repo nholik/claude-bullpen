@@ -78,7 +78,7 @@ export function paneView(
 			footer: glyphLines(
 				[
 					...footer(github, columns),
-					textLine("a answer · s shipping · t talk (toggle)", columns),
+					textLine("a: answer · s: shipping · t: talk (toggle)", columns),
 				],
 				profile.glyphs,
 			),
@@ -91,7 +91,7 @@ export function paneView(
 	);
 	const bottom = [
 		...footer(github, columns),
-		textLine("a answer · s shipping · t talk (toggle)", columns),
+		textLine("a: answer · s: shipping · t: talk (toggle)", columns),
 	].slice(0, Math.max(0, rows - heading.length - 1));
 	const available = Math.max(0, rows - heading.length - bottom.length - 1);
 	const studio =
