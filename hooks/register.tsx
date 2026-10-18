@@ -4,6 +4,7 @@ import type {
 	ElementConstructor,
 	EngineInterface,
 	FsEntry,
+	InputProps,
 	On,
 	RenderChildren,
 	TextProps,
@@ -86,7 +87,6 @@ import type { BullpenEventKind, Member, Profile } from "../types";
 
 const PANE = "bullpen";
 const STORY = "bullpen-story";
-const ANSWER = "bullpen-answer";
 const replay = atom({ plugin: "bullpen", key: "replay" } as const, null);
 const decision = atom({ plugin: "bullpen", key: "decision" } as const, null);
 const decisionDraft = atom(
@@ -239,13 +239,17 @@ async function openDecision($: $, from?: string, at?: number) {
 		await update($, decisionDraft, () => "");
 		await update($, decisionStatus, () => "");
 	}
-	return $.ui.open({
-		id: ANSWER,
-		title: `Answer ${ask.from}`,
-		columns: 72,
-		rows: 18,
-		focus: true,
-	});
+	await update($, focus, () => "answer");
+	return openPane($);
+}
+
+/** `a`: open the answer view for the oldest open ask, or leave it. */
+async function toggleAnswer($: $) {
+	if ((await read($, focus)) === "answer") {
+		await update($, focus, () => "");
+		return;
+	}
+	await openDecision($);
 }
 
 async function submitDecision($: $, text: string) {
@@ -874,6 +878,60 @@ async function openPane($: $) {
 	return $.ui.open({ id: PANE, title: "Bullpen", columns: 160, rows: 40 });
 }
 
+/** The answer view's controls under the question: input, send, status. */
+function answerForm(
+	$: $,
+	ui: {
+		Box: ElementConstructor<BoxProps>;
+		Text: ElementConstructor<TextProps>;
+		Button: ElementConstructor<ButtonProps>;
+		Input: ElementConstructor<InputProps>;
+	},
+	columns: number,
+	config: Profile,
+	draft: string,
+	status: string,
+) {
+	const { Box, Text, Button, Input } = ui;
+	const safe = (s: string) =>
+		glyphLines([[{ text: s }]], config.glyphs)[0]?.[0]?.text ?? "";
+	return (
+		<Box flexDirection="column">
+			<Input
+				key="human-answer"
+				label="Your answer"
+				placeholder="Give the agent your decision or direction"
+				rows={3}
+				value={draft}
+				autoFocus
+				onInput={(value) => {
+					void update($, decisionDraft, () => value);
+				}}
+				onSubmit={async (value) => {
+					await update($, decisionDraft, () => value);
+					await submitDecision($, value);
+				}}
+			/>
+			<Button
+				key="send-answer"
+				onPress={async () => {
+					await submitDecision($, await read($, decisionDraft));
+				}}
+			>
+				Send answer
+			</Button>
+			{renderLines(Text, wrapText(safe(status), columns), { Box, Button }, $)}
+			<Button
+				key="answer-back"
+				plain
+				onPress={() => void update($, focus, () => "")}
+			>
+				Back to Bullpen
+			</Button>
+		</Box>
+	);
+}
+
 export function register(on: On) {
 	on("ui.close", async (_$, e, next) => {
 		if (e.id === PANE) {
@@ -1159,7 +1217,9 @@ export function register(on: On) {
 
 	on("ui.render", { component: "Pane", requestId: PANE }, async ($, e) => {
 		void ensureLive($).catch(() => {});
-		const { Box, Text, Button } = $.ui.resolve(e);
+		const ui = $.ui.resolve(e);
+		const { Box, Text, Button } = ui;
+		const Input = "Input" in ui ? ui.Input : undefined;
 		const snapshot = await readScene($);
 		const list = Object.values(snapshot.members);
 		const log = snapshot.events;
@@ -1176,12 +1236,23 @@ export function register(on: On) {
 				list.flatMap((m) => (m.agentType ? [[m.name, m.agentType]] : [])),
 			),
 		});
+		const openAsks = model.asks.filter((a) => a.open).length;
 		const columns = Math.max(20, Math.min(512, e.props.bodyColumns ?? 60));
 
 		await read($, viewTime);
 		const focused = await read($, focus);
 		const wallNow = await now($);
+		if (focused === "answer" && e.surface === "mobile")
+			return (
+				<Text>
+					Answer this decision in the terminal or desktop Bullpen pane.
+				</Text>
+			);
+		const selected = focused === "answer" ? await read($, decision) : null;
+		const draft = await read($, decisionDraft);
+		const status = await read($, decisionStatus);
 		const view = paneView(model, list, columns, e.props.scroll.bodyRows, at, {
+			ask: selected ?? undefined,
 			mode: (await read($, replay))
 				? "replay"
 				: snapshot.readOnly
@@ -1269,17 +1340,29 @@ export function register(on: On) {
 					)}
 				</Box>
 				{renderLines(Text, view.regions, { Box, Button }, $)}
+				{focused === "answer" &&
+					Input &&
+					answerForm(
+						$,
+						{ Box, Text, Button, Input },
+						columns,
+						config,
+						draft,
+						status,
+					)}
 				{renderLines(Text, view.footer.slice(0, -1), { Box, Button }, $)}
 				<Box>
-					<Button
-						key="answer"
-						plain
-						hotkey="a"
-						onPress={() => void openDecision($)}
-					>
-						answer
-					</Button>
-					<Text dimColor> · </Text>
+					{(openAsks > 0 || focused === "answer") && (
+						<Button
+							key="answer"
+							plain
+							hotkey="a"
+							onPress={() => void toggleAnswer($)}
+						>
+							{focused === "answer" ? "back" : `answer (${openAsks})`}
+						</Button>
+					)}
+					{(openAsks > 0 || focused === "answer") && <Text dimColor> · </Text>}
 					<Button
 						key="shipping-focus"
 						plain
@@ -1298,72 +1381,6 @@ export function register(on: On) {
 						{focused === "talk" ? "back" : "messages"}
 					</Button>
 				</Box>
-			</Box>
-		);
-	});
-
-	on("ui.render", { component: "Pane", requestId: ANSWER }, async ($, e) => {
-		if (e.surface === "mobile") {
-			const { Text } = $.ui.resolve(e);
-			return (
-				<Text>
-					Answer this decision in the terminal or desktop Bullpen pane.
-				</Text>
-			);
-		}
-		const { Box, Text, Button, Input } = $.ui.resolve(e);
-		const selected = await read($, decision);
-		if (!selected) return <Text>No decision selected.</Text>;
-		const draft = await read($, decisionDraft);
-		const status = await read($, decisionStatus);
-		const config = await read($, profile);
-		const columns = Math.max(20, e.props.bodyColumns);
-		const safe = (s: string) =>
-			glyphLines([[{ text: s }]], config.glyphs)[0]?.[0]?.text ?? "";
-		return (
-			<Box flexDirection="column">
-				<Text bold>
-					{safe(
-						`${selected.from} needs your input${selected.issues.length ? ` · ${selected.issues.map((n) => `#${n}`).join(" ")}` : ""}`,
-					)}
-				</Text>
-				{renderLines(
-					Text,
-					wrapText(selected.text, columns),
-					{ Box, Button },
-					$,
-				)}
-				<Input
-					key="human-answer"
-					label="Your answer"
-					placeholder="Give the agent your decision or direction"
-					rows={3}
-					value={draft}
-					autoFocus
-					onInput={(value) => {
-						void update($, decisionDraft, () => value);
-					}}
-					onSubmit={async (value) => {
-						await update($, decisionDraft, () => value);
-						await submitDecision($, value);
-					}}
-				/>
-				<Button
-					key="send-answer"
-					onPress={async () => {
-						await submitDecision($, await read($, decisionDraft));
-					}}
-				>
-					Send answer
-				</Button>
-				{renderLines(Text, wrapText(safe(status), columns), { Box, Button }, $)}
-				<Button
-					key="answer-back"
-					plain
-					onPress={() => void $.ui.close({ id: ANSWER })}
-				>
-					Back to Bullpen
-				</Button>
 			</Box>
 		);
 	});

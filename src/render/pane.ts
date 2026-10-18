@@ -2,6 +2,7 @@ import type { GithubSource, Member, Profile } from "../../types";
 import { floorRows } from "../floor";
 import type { BullpenModel } from "../model";
 import { DEFAULT_PROFILE } from "../profile";
+import { type AnswerAsk, answerSection } from "./answer";
 import type { CardWidthTracker } from "./card-width";
 import { band, footer, header } from "./header";
 import { beside, glyphLines, type Line, textLine } from "./lines";
@@ -9,10 +10,17 @@ import { hallway, huddles } from "./regions";
 import { shippingSection } from "./shipping";
 import { teamStudioView } from "./team-studio";
 
-export type Focus = "shipping" | "talk";
+export type Focus = "shipping" | "talk" | "answer";
 
-function keys(focus: Focus | undefined): string {
-	return `a: answer · s: ${focus === "shipping" ? "back" : "shipping"} · t: ${focus === "talk" ? "back" : "messages"}`;
+/** The key hints; `a` shows only while something waits on the person or the answer view is open. */
+export function keys(focus: Focus | undefined, open: number): string {
+	const answer =
+		focus === "answer"
+			? "a: back · "
+			: open > 0
+				? `a: answer (${open}) · `
+				: "";
+	return `${answer}s: ${focus === "shipping" ? "back" : "shipping"} · t: ${focus === "talk" ? "back" : "messages"}`;
 }
 export type PaneView = {
 	header: Line[];
@@ -27,6 +35,8 @@ export type PaneOptions = {
 	github?: GithubSource;
 	profile?: Profile;
 	focus?: Focus;
+	/** The question the answer view shows; defaults to the oldest open ask. */
+	ask?: AnswerAsk;
 	seenAt?: number;
 	/** False when this surface cannot draw a Raster. */
 	raster?: boolean;
@@ -62,6 +72,9 @@ export function paneView(
 	};
 	const github = options.github ?? { filter: "", burndown: [], checkedAt: 0 };
 	const profile = options.profile ?? DEFAULT_PROFILE;
+	const openAsks = model.asks.filter((a) => a.open).sort((a, b) => a.at - b.at);
+	const ask = options.ask ?? openAsks[0];
+	const hints = keys(options.focus, openAsks.length);
 	if (columns >= 60 && rows >= 16) {
 		const view = teamStudioView(
 			model,
@@ -74,6 +87,7 @@ export function paneView(
 			options.cardWidths,
 			options.wallNow,
 			options.focus,
+			ask,
 		);
 		return {
 			header: view.header,
@@ -82,10 +96,7 @@ export function paneView(
 			sidebar: [],
 			regions: view.regions,
 			footer: glyphLines(
-				[
-					...footer(github, columns, options.mode),
-					textLine(keys(options.focus), columns),
-				],
+				[...footer(github, columns, options.mode), textLine(hints, columns)],
 				profile.glyphs,
 			),
 			band: band(model, github, profile, columns, options.seenAt ?? -1),
@@ -97,7 +108,7 @@ export function paneView(
 	);
 	const bottom = [
 		...footer(github, columns, options.mode),
-		textLine(keys(options.focus), columns),
+		textLine(hints, columns),
 	].slice(0, Math.max(0, rows - heading.length - 1));
 	const available = Math.max(0, rows - heading.length - bottom.length - 1);
 	const studio =
@@ -130,6 +141,7 @@ export function paneView(
 	if (studio) regions = hallway(model, profile, columns, room, now);
 	else if (options.focus === "shipping")
 		regions = shippingSection(model, github, profile, columns, room, now);
+	else if (options.focus === "answer") regions = answerSection(ask, columns);
 	else if (options.focus === "talk")
 		regions = hallway(model, profile, columns, room, now);
 	else {
