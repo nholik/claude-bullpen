@@ -84,3 +84,27 @@ test("the persisted fold finds a profile-only reviewer's kickback", () => {
 	expect(without.state.kickbacks.length).toBe(0);
 	expect(applyEvent(EMPTY_TEAM, message, { roles }).kickbacks.length).toBe(1);
 });
+
+for (const role of ["reviewer", "designer"]) {
+	test(`a profile role of ${role} is a reviewer everywhere`, () => {
+		const custom: Profile = {
+			...DEFAULT_PROFILE,
+			roles: { inspector: { role } },
+		};
+		const model = buildModel(journal, T + 3000);
+		expect(issueStatus(model, 7, custom, T + 3000).label).toBe("IN REVIEW");
+		const story = storyFor(7, journal, {
+			filter: "",
+			checkedAt: 0,
+			burndown: [],
+		});
+		const text = storyLines(story, custom, 160, 20)
+			.flat()
+			.map((s) => s.text)
+			.join(" ");
+		expect(text).toContain("kickback");
+		const message = journal[2] as BullpenEvent;
+		const roles = { vale: role };
+		expect(applyEvent(EMPTY_TEAM, message, { roles }).kickbacks.length).toBe(1);
+	});
+}

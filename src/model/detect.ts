@@ -79,9 +79,13 @@ export function isKickback(text: string, reviewer: boolean): boolean {
 	});
 }
 
-/** Roles whose failures send work back, by team name when no role is given. */
+/**
+ * Roles whose failures send work back and who finish by reporting a verdict
+ * (gate, ux, reviewer, designer), by team name when no role is given.
+ */
 export function isReviewer(name: string, role: string | undefined): boolean {
-	return /^(gate|ux)/i.test(role ?? name);
+	const label = role ?? name;
+	return /^(gate|ux)/i.test(label) || /reviewer|designer/i.test(label);
 }
 
 const CLOSED = new RegExp(
