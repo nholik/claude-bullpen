@@ -1172,10 +1172,7 @@ export function register(on: On) {
 		const at = snapshot.now;
 		const model = sceneModel(snapshot, {
 			github: source,
-			roles: roleNames(
-				config,
-				list.map((m) => m.name),
-			),
+			roles: roleNames(config, list),
 			present: Object.fromEntries(list.map((m) => [m.name, m.status])),
 			agentTypes: Object.fromEntries(
 				list.flatMap((m) => (m.agentType ? [[m.name, m.agentType]] : [])),
@@ -1438,10 +1435,7 @@ export function register(on: On) {
 		const { Box, Text, Button } = $.ui.resolve(e);
 		const model = sceneModel(snapshot, {
 			github: snapshot.github,
-			roles: roleNames(
-				await read($, profile),
-				list.map((m) => m.name),
-			),
+			roles: roleNames(await read($, profile), list),
 			present: Object.fromEntries(
 				Object.values(snapshot.members).map((m) => [m.name, m.status]),
 			),

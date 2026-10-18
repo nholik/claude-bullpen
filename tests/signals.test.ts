@@ -502,7 +502,9 @@ test("a reviewer known only through the profile's roles is not a waiting builder
 	// Unknown to the model, it reads as a builder waiting on review.
 	expect(card({}).includes("waiting on review")).toBe(true);
 	// Known through the profile, it is a finished reviewer.
-	const roles = roleNames(profile, [who]);
+	const roles = roleNames(profile, [
+		{ name: who, agentType: "general-purpose" },
+	]);
 	expect(roles).toEqual({ [who]: "reviewer" });
 	expect(
 		buildModel(events, idle, { agentTypes, roles }).stuck?.[who],
@@ -531,9 +533,35 @@ test("an idle profile-role reviewer on an issue with no PR is done, not stuck or
 		...DEFAULT_PROFILE,
 		roles: { Checker: { role: "reviewer" } },
 	};
-	const roles = roleNames(profile, [who, "builder"]);
+	const roles = roleNames(profile, [{ name: who }, { name: "builder" }]);
 	expect(roles).toEqual({ [who]: "reviewer" });
 	const known = build(roles);
 	expect(known.stuck?.[who]).toBeUndefined();
 	expect(known.morale.factors.idle).not.toContain(who);
+});
+
+test("roleNames resolves by name, mixed case and agent type", () => {
+	const profile = {
+		...DEFAULT_PROFILE,
+		roles: {
+			exact: { role: "designer" },
+			Mixed: { role: "reviewer" },
+			"general-purpose": { role: "reviewer" },
+			colorOnly: {},
+		},
+	};
+	expect(
+		roleNames(profile, [
+			{ name: "exact" },
+			{ name: "mixed" },
+			{ name: "anon", agentType: "General-Purpose" },
+			{ name: "colorOnly", agentType: "general-purpose" },
+			{ name: "builder", agentType: "builder" },
+		]),
+	).toEqual({
+		exact: "designer",
+		mixed: "reviewer",
+		anon: "reviewer",
+		colorOnly: "reviewer",
+	});
 });

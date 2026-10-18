@@ -1,7 +1,7 @@
 import type { GithubSource, Profile } from "../../types";
 import type { BullpenModel, Teammate } from "../model";
 import { activeTime, flowSummary, waitingOn } from "../model/signals";
-import { colorFor, colorIndex, roleFor, roleLabel } from "../profile";
+import { colorFor, colorIndex, memberRole, roleLabel } from "../profile";
 import { activityPhrase } from "./activity";
 import {
 	type CardWidthTracker,
@@ -58,7 +58,7 @@ function workstation(
 		member.agentType,
 	);
 	const role = roleLabel(member.name, member.agentType, profile);
-	const waiting = waitingOn(model, member, roleFor(member.name, profile)?.role);
+	const waiting = waitingOn(model, member, memberRole(member, profile));
 	const feel = moodFor({
 		status: member.status,
 		away: member.away,

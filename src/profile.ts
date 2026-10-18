@@ -232,15 +232,26 @@ export function roleFor(name: string, profile: Profile): Role | undefined {
 	return undefined;
 }
 
-/** Team name → declared role for each name that has one, matched like `roleFor` (the model's `roles` option). */
+/** The role the profile declares for a teammate: by name, then by agent type (case-insensitive). */
+export function memberRole(
+	member: { name: string; agentType?: string },
+	profile: Profile,
+): string | undefined {
+	return (
+		roleFor(member.name, profile)?.role ??
+		(member.agentType ? roleFor(member.agentType, profile)?.role : undefined)
+	);
+}
+
+/** Team name → declared role for each member that has one (the model's `roles` option). */
 export function roleNames(
 	profile: Profile,
-	names: readonly string[],
+	members: readonly { name: string; agentType?: string }[],
 ): Record<string, string> {
 	const out: Record<string, string> = {};
-	for (const name of names) {
-		const role = roleFor(name, profile)?.role;
-		if (role !== undefined) out[name] = role;
+	for (const member of members) {
+		const role = memberRole(member, profile);
+		if (role !== undefined) out[member.name] = role;
 	}
 	return out;
 }
