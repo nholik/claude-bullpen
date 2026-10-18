@@ -9,7 +9,11 @@ import { hallway, huddles } from "./regions";
 import { shippingSection } from "./shipping";
 import { teamStudioView } from "./team-studio";
 
-export type Focus = "floor" | "huddles" | "shipping" | "talk";
+export type Focus = "shipping" | "talk";
+
+function keys(focus: Focus | undefined): string {
+	return `a: answer · s: ${focus === "shipping" ? "back" : "shipping"} · t: ${focus === "talk" ? "back" : "messages"}`;
+}
 export type PaneView = {
 	header: Line[];
 	floorRows: number;
@@ -58,13 +62,7 @@ export function paneView(
 	};
 	const github = options.github ?? { filter: "", burndown: [], checkedAt: 0 };
 	const profile = options.profile ?? DEFAULT_PROFILE;
-	if (
-		options.focus !== "huddles" &&
-		options.focus !== "shipping" &&
-		options.focus !== "talk" &&
-		columns >= 60 &&
-		rows >= 16
-	) {
+	if (columns >= 60 && rows >= 16) {
 		const view = teamStudioView(
 			model,
 			github,
@@ -75,6 +73,7 @@ export function paneView(
 			options.mode,
 			options.cardWidths,
 			options.wallNow,
+			options.focus,
 		);
 		return {
 			header: view.header,
@@ -83,10 +82,7 @@ export function paneView(
 			sidebar: [],
 			regions: view.regions,
 			footer: glyphLines(
-				[
-					...footer(github, columns),
-					textLine("a: answer · s: shipping · t: talk (toggle)", columns),
-				],
+				[...footer(github, columns), textLine(keys(options.focus), columns)],
 				profile.glyphs,
 			),
 			band: band(model, github, profile, columns, options.seenAt ?? -1),
@@ -98,7 +94,7 @@ export function paneView(
 	);
 	const bottom = [
 		...footer(github, columns),
-		textLine("a: answer · s: shipping · t: talk (toggle)", columns),
+		textLine(keys(options.focus), columns),
 	].slice(0, Math.max(0, rows - heading.length - 1));
 	const available = Math.max(0, rows - heading.length - bottom.length - 1);
 	const studio =
@@ -109,22 +105,13 @@ export function paneView(
 		profile.glyphs !== "ascii";
 	const floorColumns = studio ? Math.floor((columns - 3) * 0.64) : columns;
 	const floorHeight =
-		options.raster === false ||
-		options.focus === "huddles" ||
-		options.focus === "shipping" ||
-		options.focus === "talk"
+		options.raster === false || options.focus
 			? 0
 			: profile.glyphs === "ascii"
 				? Math.min(1, available)
-				: options.focus === "floor"
-					? available
-					: studio
-						? Math.max(0, available - 6)
-						: Math.min(
-								available,
-								floorRows(columns),
-								Math.max(1, available - 7),
-							);
+				: studio
+					? Math.max(0, available - 6)
+					: Math.min(available, floorRows(columns), Math.max(1, available - 7));
 	const room = Math.max(0, available - floorHeight);
 	const sidebar = studio
 		? huddles(
@@ -140,11 +127,9 @@ export function paneView(
 	if (studio) regions = hallway(model, profile, columns, room, now);
 	else if (options.focus === "shipping")
 		regions = shippingSection(model, github, profile, columns, room, now);
-	else if (options.focus === "huddles")
-		regions = huddles(model, github, profile, columns, room, now);
 	else if (options.focus === "talk")
 		regions = hallway(model, profile, columns, room, now);
-	else if (options.focus !== "floor" || options.raster === false) {
+	else {
 		if (columns >= 60) {
 			const left = Math.floor((columns - 3) * 0.6);
 			regions = beside(
