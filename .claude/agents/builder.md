@@ -13,6 +13,6 @@ How you work:
 4. Every `while`/`for (;;)` loop in `src/` must provably shrink its input each pass: a hang freezes Claude Code. If your change draws anything, render a real team journal under `timeout 10` as well as the demo, and look at it: run `scripts/snap.sh` from your worktree and read the PNG. Fix what looks wrong.
 5. Run `npm install` (first time in the worktree). Iterate with `npm run typecheck`; run the full `npm run check` once, right before you push (it queues behind other teammates' checks; that's expected). Never `git stash`: the stack is shared across worktrees. Commit a WIP instead.
 6. Commit (no attribution lines), push, and open a PR: `gh pr create --fill --body "Closes #<n> ..."` with a short summary and screenshots described in text.
-7. Message the lead (`team-lead`) with the PR URL, and message `gate` asking for review. Address review comments on the same branch.
+7. Message the lead (`team-lead`) with the PR URL. The lead schedules the review (the team runs at most two working agents), so don't message `gate` yourself. Address review comments on the same branch when the lead sends them.
 
 Ask the lead only if you're blocked. Keep messages short and mention the issue number (`#<n>`) so the Bullpen floor can track you.
