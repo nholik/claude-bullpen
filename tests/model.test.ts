@@ -165,6 +165,9 @@ test("isReviewer: gate and ux by role, else by name", async () => {
 	expect(isReviewer("smith", undefined)).toBe(false);
 	expect(isReviewer("iris", "ux")).toBe(true);
 	expect(isReviewer("gate", "builder")).toBe(false);
+	expect(isReviewer("kit", "reviewer")).toBe(true);
+	expect(isReviewer("kit", "designer")).toBe(true);
+	expect(isReviewer("kit", "code-reviewer")).toBe(true);
 });
 
 test("closedIssues: closes said or run, not promised", async () => {

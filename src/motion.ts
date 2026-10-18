@@ -2,7 +2,7 @@ import type { BullpenEvent, Member, Profile } from "../types";
 import { createTweens, easeInOutCubic, lerpPoint, type Point } from "./anim";
 import { drawFloor, type FloorEffects, layout } from "./floor";
 import { applyEvent, EMPTY_TEAM, type TeamState } from "./model";
-import { colorFor } from "./profile";
+import { colorFor, roleNames } from "./profile";
 
 export type MotionSpec = {
 	id: string;
@@ -46,18 +46,12 @@ export function motionFor(
 	profile: Profile,
 ): { specs: MotionSpec[]; closed: number[] } {
 	let state = EMPTY_TEAM;
+	const roles = roleNames(profile, members);
 	const specs: MotionSpec[] = [];
 	for (const [index, event] of events.entries()) {
 		if (event.at > now) break;
 		const before = state;
-		state = applyEvent(state, event, {
-			roles: Object.fromEntries(
-				Object.entries(profile.roles).map(([name, r]) => [
-					name,
-					r.role ?? name,
-				]),
-			),
-		});
+		state = applyEvent(state, event, { roles });
 		if (
 			!profile.animations ||
 			now - event.at > 2500 ||

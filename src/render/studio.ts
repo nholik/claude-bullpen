@@ -2,7 +2,7 @@ import type { Profile } from "../../types";
 import type { BullpenModel } from "../model";
 import { isReviewer } from "../model/detect";
 import { STALL_MS } from "../model/morale";
-import { roleFor } from "../profile";
+import { memberRole } from "../profile";
 
 /** Shared by the floor and cards: color always accompanies a written state. */
 export const STUDIO = {
@@ -34,8 +34,7 @@ export function issueStatus(
 	if (
 		members.some(
 			(m) =>
-				m?.status === "running" &&
-				isReviewer(m.name, roleFor(m.name, profile)?.role),
+				m?.status === "running" && isReviewer(m.name, memberRole(m, profile)),
 		)
 	)
 		return { label: "IN REVIEW", color: STUDIO.lavender, step: 2 };

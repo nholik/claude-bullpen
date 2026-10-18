@@ -6,7 +6,12 @@
 import type { BullpenEvent, TeamSnapshot } from "../../types";
 import { readJournal, STATE_EVENTS } from "../journal";
 import pinJournal from "./pin";
-import { applyEvent, reduceEvents, type TeamState } from "./team";
+import {
+	applyEvent,
+	type ModelOptions,
+	reduceEvents,
+	type TeamState,
+} from "./team";
 
 /**
  * Fingerprint of the reducer: FNV-1a over the JSON of the state it reduces the
@@ -38,8 +43,11 @@ export const MODEL_VERSION: string = fingerprintOf(
 export type Stamp = string | number;
 
 /** The state from scratch: the last `STATE_EVENTS` events, oldest first. */
-export function rebuildState(events: readonly BullpenEvent[]): TeamState {
-	return reduceEvents(events.slice(-STATE_EVENTS));
+export function rebuildState(
+	events: readonly BullpenEvent[],
+	options: ModelOptions = {},
+): TeamState {
+	return reduceEvents(events.slice(-STATE_EVENTS), options);
 }
 
 /**
@@ -51,11 +59,12 @@ export function ensureState(
 	stamped: Stamp,
 	events: readonly BullpenEvent[],
 	force = false,
+	options: ModelOptions = {},
 ): { state: TeamSnapshot; version: string; rebuilt: boolean } {
 	if (state && stamped === MODEL_VERSION && !force)
 		return { state, version: MODEL_VERSION, rebuilt: false };
 	return {
-		state: rebuildState(events),
+		state: rebuildState(events, options),
 		version: MODEL_VERSION,
 		rebuilt: true,
 	};
@@ -64,7 +73,9 @@ export function ensureState(
 /**
  * The state after a batch: `ensureState` first, then `added` folded onto the
  * result, so a batch arriving in the same pass as a rebuild isn't lost.
- * `events` is the window before `added`.
+ * `events` is the window before `added`. `options.roles` are the roles at the
+ * time of the fold: a kickback is found when its message is folded, so a role
+ * the profile gains later applies to later messages only (older ones age out).
  */
 export function foldBatch(
 	state: TeamSnapshot | null,
@@ -72,11 +83,15 @@ export function foldBatch(
 	events: readonly BullpenEvent[],
 	added: readonly BullpenEvent[],
 	force = false,
+	options: ModelOptions = {},
 ): { state: TeamSnapshot; version: string; rebuilt: boolean } {
-	const out = ensureState(state, stamped, events, force);
+	const out = ensureState(state, stamped, events, force, options);
 	return {
 		...out,
-		state: added.reduce((acc, event) => applyEvent(acc, event), out.state),
+		state: added.reduce(
+			(acc, event) => applyEvent(acc, event, options),
+			out.state,
+		),
 	};
 }
 

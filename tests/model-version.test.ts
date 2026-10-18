@@ -40,6 +40,8 @@ test("MODEL_VERSION fingerprints the reducer's output for the pin journal", asyn
 	expect(Object.keys(state.ship.paths).length).toBeGreaterThan(0);
 	expect(state.closes.length).toBeGreaterThan(0);
 	expect(state.kickbacks.length).toBeGreaterThan(0);
+	// A reviewer known only by a role-like agent type: a trim would go unnoticed.
+	expect(state.kickbacks.some((k) => k.from === "code-reviewer")).toBe(true);
 	expect(state.asks.some((a) => a.open)).toBe(true);
 	expect(Object.values(state.teammates).some((t) => t.owned)).toBe(true);
 	expect(MODEL_VERSION).toBe(fingerprintOf(state));

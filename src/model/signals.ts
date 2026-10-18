@@ -7,10 +7,7 @@ const MINUTE = 60_000;
 
 /** Reviewers and designers finish by reporting a verdict; idle afterwards is done. */
 export function isVerdictRole(t: Teammate, role: string | undefined): boolean {
-	return (
-		isReviewer(t.name, role ?? t.agentType) ||
-		/designer|reviewer/i.test(role ?? t.agentType ?? "")
-	);
+	return isReviewer(t.name, role ?? t.agentType);
 }
 
 /**
