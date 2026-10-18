@@ -82,6 +82,7 @@ import {
 	roleNames,
 	withMemberColors,
 } from "../src/profile";
+import { readReady, readyArgv } from "../src/ready";
 import {
 	createCardWidthTrackers,
 	TWEEN_REDRAW_MS,
@@ -373,19 +374,39 @@ async function waitingDecisions($: $) {
 		await read($, decisionsHandled),
 	);
 }
+/** Merge-ready PRs from the last good poll, listed after the decisions. */
+async function readyPrs($: $) {
+	return (await readScene($)).github.ready ?? [];
+}
+async function needsLength($: $) {
+	return (await waitingDecisions($)).length + (await readyPrs($)).length;
+}
 async function moveNeeds($: $, by: number) {
-	const length = (await waitingDecisions($)).length;
+	const length = await needsLength($);
 	await update($, needsCursor, (at) => moveCursor(at, by, length));
 }
-/** The selected decision, or none when the queue emptied under the cursor. */
+/** The selected decision or ready PR, or none when the queue emptied under the cursor. */
 async function selectedNeed($: $) {
 	const queue = await waitingDecisions($);
-	return queue[Math.min(await read($, needsCursor), queue.length - 1)];
+	const ready = await readyPrs($);
+	const at = Math.min(
+		await read($, needsCursor),
+		queue.length + ready.length - 1,
+	);
+	const pr = ready[at - queue.length];
+	return pr ? { pr } : queue[at] ? { decision: queue[at] } : undefined;
 }
 /** `d`: take the selected decision off the queue, journalling a reply that names it. */
 async function dismissNeed($: $) {
-	const item = await selectedNeed($);
-	if (!item) return;
+	const selected = await selectedNeed($);
+	if (!selected) return;
+	if (!selected.decision) {
+		$.ui.toast(
+			"A merge-ready PR leaves the queue when it merges or its head moves.",
+		);
+		return;
+	}
+	const item = selected.decision;
 	// The instant UI echo; the journalled reply is what survives a resume.
 	await update($, decisionsHandled, (ids) => [...ids, item.id]);
 	if (!(await readScene($)).readOnly)
@@ -393,14 +414,27 @@ async function dismissNeed($: $) {
 			attribute: false,
 			answered: [item.id],
 		});
-	const length = (await waitingDecisions($)).length;
+	const length = await needsLength($);
 	await update($, needsCursor, (at) => moveCursor(at, 0, length));
 	if (!length) await update($, focus, () => "");
 }
 /** Enter: quote the selected decision into the prompt, never submitting, and leave the pane. It stays queued until the prompt is submitted. */
 async function replyToNeed($: $) {
-	const item = await selectedNeed($);
-	if (!item) return;
+	const selected = await selectedNeed($);
+	if (!selected) return;
+	if (selected.pr) {
+		// The human merges: copy the link, never put "merge" in the prompt.
+		const copied = await $.ui
+			.copy({ text: selected.pr.url })
+			.catch(() => undefined);
+		$.ui.toast(
+			copied?.isCopied
+				? `Copied the link to #${selected.pr.number}.`
+				: `#${selected.pr.number}: ${selected.pr.url}`,
+		);
+		return;
+	}
+	const item = selected.decision;
 	const draft = await $.prompt.read().catch(() => undefined);
 	const gap = draft?.text && !draft.text.endsWith("\n") ? "\n" : "";
 	const filled = await $.prompt.fill({
@@ -420,7 +454,7 @@ async function replyToNeed($: $) {
 }
 async function focusRegion($: $, region: Focus | "") {
 	if (region === "needs" && (await read($, focus)) !== "needs") {
-		if (!(await waitingDecisions($)).length) {
+		if (!(await needsLength($))) {
 			$.ui.toast("Nothing is waiting on you.");
 			return;
 		}
@@ -662,7 +696,7 @@ async function pollGithub($: $, generation = pollGeneration) {
 	const result = await $.process
 		.run(issueListArgv(prev.filter))
 		.then(readIssueList, runFailure);
-	let { repo, host, burndown, workspace, prs } = prev;
+	let { repo, host, burndown, workspace, prs, ready } = prev;
 	if (!workspace)
 		workspace = (await $.session.cwd().catch(() => ""))
 			.split(/[\\/]/)
@@ -725,6 +759,14 @@ async function pollGithub($: $, generation = pollGeneration) {
 					}
 				}
 				prs = [...updated.values()].slice(-40);
+				// One batched query for the merge-ready queue; a failed run keeps the last list.
+				const fresh = await $.process
+					.run(readyArgv(repoName, hostname), { timeoutMs: 10_000 })
+					.then(
+						(run) => readReady(run, at),
+						() => undefined,
+					);
+				if (fresh) ready = fresh;
 			}
 		}
 	} catch (error) {
@@ -742,6 +784,7 @@ async function pollGithub($: $, generation = pollGeneration) {
 		burndown,
 		checkedAt: at,
 		prs,
+		ready,
 	}));
 	return result.status === "ok";
 }
@@ -1267,6 +1310,7 @@ export function register(on: On) {
 		// Decisions the person dismissed or acted on are off every view.
 		const queue = waiting(model.decisions, await read($, decisionsHandled));
 		model.decisions = queue;
+		const needsCount = queue.length + (source.ready?.length ?? 0);
 		const first = queue[0];
 		if (first && config.animations)
 			followPulse($, wallNow, NEEDS_PULSE_MS - (at - first.at));
@@ -1427,17 +1471,17 @@ export function register(on: On) {
 						</Button>
 					)}
 					{focused === "needs" && <Text dimColor> · </Text>}
-					{(queue.length > 0 || focused === "needs") && (
+					{(needsCount > 0 || focused === "needs") && (
 						<Button
 							key="needs-focus"
 							plain
 							hotkey="n"
 							onPress={() => void focusRegion($, "needs")}
 						>
-							{focused === "needs" ? "back" : `needs you (${queue.length})`}
+							{focused === "needs" ? "back" : `needs you (${needsCount})`}
 						</Button>
 					)}
-					{queue.length > 0 && focused !== "needs" && <Text dimColor> · </Text>}
+					{needsCount > 0 && focused !== "needs" && <Text dimColor> · </Text>}
 					{focused !== "needs" && (
 						<Button
 							key="shipping-focus"

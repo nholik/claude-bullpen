@@ -343,7 +343,9 @@ export function teamStudioView(
 			text(`${model.shipped} shipped this session `, STUDIO.muted),
 			columns,
 		),
-		...(focus === "needs" ? [] : needsYou(model.decisions, columns, now)),
+		...(focus === "needs"
+			? []
+			: needsYou(model.decisions, columns, now, github.ready)),
 		fit(
 			text(` FLOW · ${flow.text}`, flow.pressure ? STUDIO.amber : STUDIO.mint),
 			columns,
@@ -360,7 +362,14 @@ export function teamStudioView(
 						room,
 					)
 				: focus === "needs"
-					? needsSection(model.decisions, columns, now, cursor, room)
+					? needsSection(
+							model.decisions,
+							columns,
+							now,
+							cursor,
+							room,
+							github.ready,
+						)
 					: [
 							section("MESSAGES / hallway", columns),
 							...(model.hallway.length

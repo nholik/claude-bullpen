@@ -18,7 +18,7 @@ export type Focus = "shipping" | "talk" | "needs";
  */
 export function keys(focus: Focus | undefined, waiting: number): string {
 	if (focus === "needs")
-		return "j/k: move · enter: reply · d: dismiss · n: back";
+		return "j/k: move · enter: reply or copy PR link · d: dismiss · n: back";
 	const needs = waiting > 0 ? `n: needs you (${waiting}) · ` : "";
 	return `${needs}s: ${focus === "shipping" ? "back" : "shipping"} · t: ${focus === "talk" ? "back" : "messages"}`;
 }
@@ -72,7 +72,10 @@ export function paneView(
 	};
 	const github = options.github ?? { filter: "", burndown: [], checkedAt: 0 };
 	const profile = options.profile ?? DEFAULT_PROFILE;
-	const hints = keys(options.focus, model.decisions.length);
+	const hints = keys(
+		options.focus,
+		model.decisions.length + (github.ready?.length ?? 0),
+	);
 	if (columns >= 60 && rows >= 16) {
 		const view = teamStudioView(
 			model,
@@ -146,6 +149,7 @@ export function paneView(
 			now,
 			options.cursor ?? 0,
 			room,
+			github.ready,
 		);
 	else if (options.focus === "talk")
 		regions = hallway(model, profile, columns, room, now);

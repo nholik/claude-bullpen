@@ -1,3 +1,4 @@
+import type { ReadyPr } from "../../types";
 import { mix } from "../color";
 import { SHOWN } from "../decisions";
 import type { Decision } from "../model/types";
@@ -32,6 +33,7 @@ export function needsYou(
 	queue: readonly Decision[],
 	columns: number,
 	now = 0,
+	ready: readonly ReadyPr[] = [],
 ): Line[] {
 	const lines: Line[] = queue.slice(0, SHOWN).map((d, i) =>
 		fit(
@@ -50,7 +52,48 @@ export function needsYou(
 		lines.push(
 			textLine(` +${queue.length - SHOWN} more · n lists them`, columns),
 		);
+	if (ready.length)
+		lines.push(
+			fit(
+				[
+					{
+						text: ` ✓ ${ready.length} merge-ready · n lists ${ready.length === 1 ? "it" : "them"}`,
+						fg: STUDIO.mint,
+						bg: STUDIO.panel,
+					},
+				],
+				columns,
+			),
+		);
 	return lines;
+}
+
+/** One merge-ready PR: number and title, the three marks, and what Enter does. */
+function readyBlock(pr: ReadyPr, i: number, on: boolean, columns: number) {
+	const wide = Math.max(1, columns - 3);
+	const color = on ? STUDIO.mint : STUDIO.muted;
+	return [
+		fit(
+			[
+				{ text: on ? " ▌ " : "   ", fg: STUDIO.mint, bold: true },
+				{ text: `${i + 1} · merge-ready · #${pr.number}`, fg: STUDIO.muted },
+			],
+			columns,
+		),
+		...wrapText(pr.title, wide).map((line) => [
+			{ text: "   " },
+			...line.map((seg) => ({ ...seg, fg: color, bold: on })),
+		]),
+		fit(
+			[
+				{ text: "   " },
+				{ text: "gate ✓  codex ✓  ci ✓", fg: STUDIO.mint },
+				{ text: on ? " · enter: copy PR link" : "", fg: STUDIO.muted },
+			],
+			columns,
+		),
+		text("", STUDIO.muted),
+	];
 }
 
 /** One decision as it reads in the `n` view; `on` marks the selected one. */
@@ -98,14 +141,21 @@ export function needsSection(
 	now: number,
 	cursor: number,
 	room = Number.POSITIVE_INFINITY,
+	ready: readonly ReadyPr[] = [],
 ): Line[] {
-	if (!queue.length)
+	const total = queue.length + ready.length;
+	if (!total)
 		return [
 			section("NEEDS YOU", columns),
 			textLine("Nothing is waiting on you.", columns),
 		];
-	const at = Math.min(Math.max(0, cursor), queue.length - 1);
-	const blocks = queue.map((d, i) => block(d, i, i === at, columns, now));
+	const at = Math.min(Math.max(0, cursor), total - 1);
+	const blocks = [
+		...queue.map((d, i) => block(d, i, i === at, columns, now)),
+		...ready.map((pr, i) =>
+			readyBlock(pr, queue.length + i, queue.length + i === at, columns),
+		),
+	];
 	// Start at the cursor and take earlier decisions while they still fit with
 	// it, so the selected one is always on screen; then fill below.
 	let first = at;
@@ -122,7 +172,7 @@ export function needsSection(
 		used += after;
 	}
 	return [
-		section(`NEEDS YOU / ${at + 1} of ${queue.length}`, columns),
+		section(`NEEDS YOU / ${at + 1} of ${total}`, columns),
 		...blocks.slice(first, last).flat(),
 	];
 }

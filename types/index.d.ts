@@ -125,6 +125,16 @@ export type GhResult =
 /** Open and closed counts at one poll. */
 export type BurndownPoint = { at: number; open: number; closed: number };
 
+/** An open PR the gate passed on its current head, with Codex and CI clear. */
+export type ReadyPr = {
+	number: number;
+	title: string;
+	url: string;
+	/** The head sha the gate passed; a push changes it and the PR leaves the queue. */
+	head: string;
+	checkedAt: number;
+};
+
 export type GithubSource = {
 	/** The last poll's result; absent before the first poll. */
 	result?: GhResult;
@@ -138,6 +148,8 @@ export type GithubSource = {
 	burndown: BurndownPoint[];
 	checkedAt: number;
 	/** Authoritative states of PRs referenced by the observed team. */
+	/** PRs ready for the human to merge, from the last good poll. */
+	ready?: ReadyPr[];
 	prs?: {
 		number: number;
 		state: "OPEN" | "CLOSED" | "MERGED";
