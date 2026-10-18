@@ -1433,9 +1433,16 @@ export function register(on: On) {
 		);
 		if (e.props.hasSurvey || list.length === 0) return next(e);
 		const { Box, Text, Button } = $.ui.resolve(e);
+		const config =
+			(await read($, demoStart)) >= 0
+				? demoProfile(await read($, profile))
+				: withMemberColors(
+						await read($, profile),
+						Object.values(snapshot.members),
+					);
 		const model = sceneModel(snapshot, {
 			github: snapshot.github,
-			roles: roleNames(await read($, profile), list),
+			roles: roleNames(config, list),
 			present: Object.fromEntries(
 				Object.values(snapshot.members).map((m) => [m.name, m.status]),
 			),
@@ -1443,12 +1450,7 @@ export function register(on: On) {
 		const line = band(
 			model,
 			snapshot.github,
-			(await read($, demoStart)) >= 0
-				? demoProfile(await read($, profile))
-				: withMemberColors(
-						await read($, profile),
-						Object.values(snapshot.members),
-					),
+			config,
 			e.props.bodyColumns,
 			await read($, seenAt),
 		);
