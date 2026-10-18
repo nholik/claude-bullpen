@@ -52,12 +52,13 @@ export function needsYou(
 		lines.push(
 			textLine(` +${queue.length - SHOWN} more · n lists them`, columns),
 		);
-	if (ready.length)
+	const mergeable = ready.filter((pr) => !pr.codexPending).length;
+	if (mergeable)
 		lines.push(
 			fit(
 				[
 					{
-						text: ` ✓ ${ready.length} merge-ready · n lists ${ready.length === 1 ? "it" : "them"}`,
+						text: ` ✓ ${mergeable} merge-ready · n lists ${mergeable === 1 ? "it" : "them"}`,
 						fg: STUDIO.mint,
 						bg: STUDIO.panel,
 					},
@@ -68,15 +69,22 @@ export function needsYou(
 	return lines;
 }
 
-/** One merge-ready PR: number and title, the three marks, and what Enter does. */
+/**
+ * One merge-ready PR: number and title, the three marks, and what Enter does.
+ * While Codex is still reviewing the head the row waits: a muted `…` for codex.
+ */
 function readyBlock(pr: ReadyPr, i: number, on: boolean, columns: number) {
 	const wide = Math.max(1, columns - 3);
-	const color = on ? STUDIO.mint : STUDIO.muted;
+	const waiting = pr.codexPending === true;
+	const color = on && !waiting ? STUDIO.mint : STUDIO.muted;
 	return [
 		fit(
 			[
 				{ text: on ? " ▌ " : "   ", fg: STUDIO.mint, bold: true },
-				{ text: `${i + 1} · merge-ready · #${pr.number}`, fg: STUDIO.muted },
+				{
+					text: `${i + 1} · ${waiting ? "waiting on codex" : "merge-ready"} · #${pr.number}`,
+					fg: STUDIO.muted,
+				},
 			],
 			columns,
 		),
@@ -87,7 +95,10 @@ function readyBlock(pr: ReadyPr, i: number, on: boolean, columns: number) {
 		fit(
 			[
 				{ text: "   " },
-				{ text: "gate ✓  codex ✓  ci ✓", fg: STUDIO.mint },
+				{
+					text: waiting ? "gate ✓  codex …  ci ✓" : "gate ✓  codex ✓  ci ✓",
+					fg: waiting ? STUDIO.muted : STUDIO.mint,
+				},
 				{ text: on ? " · enter: copy PR link" : "", fg: STUDIO.muted },
 			],
 			columns,

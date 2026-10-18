@@ -17,8 +17,12 @@ function pr(
 		head?: string;
 		tip?: string;
 		mergeable?: string;
+		merge?: string;
+		draft?: boolean;
+		/** Codex's summary comment; null for none. Defaults to completed on the head. */
+		codex?: ReturnType<typeof codexSummary> | null;
 		ci?: string | null;
-		comments?: (string | { body: string; by: string })[];
+		comments?: (string | { body: string; by: string; login?: string })[];
 		threads?: Thread[];
 		moreThreads?: boolean;
 		title?: string;
@@ -30,7 +34,9 @@ function pr(
 		title: over.title ?? `Change number ${number}`,
 		url: `${URL}/${number}`,
 		headRefOid: head,
+		isDraft: over.draft ?? false,
 		mergeable: over.mergeable ?? "MERGEABLE",
+		mergeStateStatus: over.merge ?? "CLEAN",
 		commits: {
 			nodes: [
 				{
@@ -43,10 +49,22 @@ function pr(
 			],
 		},
 		comments: {
-			nodes: (over.comments ?? [`Gate: PASS ${head}\nChecked.`]).map((c) =>
+			nodes: [
+				...(over.comments ?? [`Gate: PASS ${head}\nChecked.`]),
+				...(over.codex === null
+					? []
+					: [over.codex ?? codexSummary(head, "completed")]),
+			].map((c) =>
 				typeof c === "string"
-					? { body: c, authorAssociation: "OWNER" }
-					: { body: c.body, authorAssociation: c.by },
+					? { body: c, authorAssociation: "OWNER", author: { login: "owner" } }
+					: {
+							body: c.body,
+							authorAssociation: c.by,
+							author:
+								c.login === undefined
+									? { login: "someone" }
+									: { login: c.login },
+						},
 			),
 		},
 		reviewThreads: {
@@ -59,6 +77,13 @@ function pr(
 		},
 	};
 }
+
+/** Codex's summary comment, as the connector bot posts it (`sha` null: no review yet). */
+export const codexSummary = (sha: string | null, status: string | null) => ({
+	body: `<!-- codex-pull-request-review-summary -->\n<!-- codex-review-state:v1 ${JSON.stringify({ code_review: { commit_sha: sha, has_any_findings: false, has_unresolved_findings: false, status }, security_review: { commit_sha: null, has_any_findings: null, has_unresolved_findings: null, status: null } })} -->\n\n## Codex Review Summary\n`,
+	by: "NONE",
+	login: "chatgpt-codex-connector",
+});
 
 const wrap = (nodes: unknown[]) =>
 	JSON.stringify({ data: { repository: { pullRequests: { nodes } } } });
@@ -103,6 +128,23 @@ export const MIXED = wrap([
 			`Gate: PASS ${HEAD}\nok`,
 		],
 	}),
+]);
+
+/** One PR per Codex, draft and merge-state case; see tests/ready.test.ts. */
+export const TRUTH = wrap([
+	pr(215, { codex: codexSummary(HEAD, "in_progress") }),
+	pr(216, { codex: codexSummary(OLD, "completed") }),
+	pr(217, { draft: true }),
+	pr(218, { merge: "BLOCKED" }),
+	// A human quoting the marker is not Codex.
+	pr(219, { codex: { ...codexSummary(HEAD, "completed"), login: "someone" } }),
+	pr(220, { codex: null }),
+	pr(221, { merge: "BEHIND" }),
+	pr(222, {
+		codex: codexSummary(HEAD, "completed"),
+		threads: [{ isResolved: false, isOutdated: false, body: BADGE("P1") }],
+	}),
+	pr(223, { codex: codexSummary(HEAD, "completed") }),
 ]);
 
 export const NO_PRS = wrap([]);

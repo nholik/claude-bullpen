@@ -4,7 +4,7 @@
 import type { GithubSource, Profile } from "../../types";
 import type { BullpenModel, ShipPath } from "../model";
 import { colorFor, colorIndex } from "../profile";
-import { age, section, text } from "./layout";
+import { section, text } from "./layout";
 import { fit, type Line, textLine, width } from "./lines";
 import { STUDIO } from "./studio";
 

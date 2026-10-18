@@ -17,7 +17,6 @@ import {
 	isAsk,
 	isKickback,
 	isReviewer,
-	ownedRefs,
 	withdrawsAsk,
 } from "./detect";
 import { applyShip, EMPTY_SHIP, type ShipState } from "./ship";

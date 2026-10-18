@@ -3,7 +3,7 @@
 // ready for the human to merge. Pure; the hook layer runs the command.
 
 import type { ReadyPr } from "../types";
-import type { RunOutput } from "./github";
+import { POLL_MS, type RunOutput } from "./github";
 import {
 	array,
 	boolean,
@@ -24,7 +24,7 @@ const COMMENTS = 20;
 /** Longest title kept, in characters. */
 const TITLE = 120;
 
-const QUERY = `query($owner:String!,$name:String!){repository(owner:$owner,name:$name){pullRequests(states:OPEN,first:${PRS},orderBy:{field:UPDATED_AT,direction:DESC}){nodes{number title url headRefOid mergeable commits(last:1){nodes{commit{oid statusCheckRollup{state}}}} comments(last:${COMMENTS}){nodes{body authorAssociation}} reviewThreads(last:${THREADS}){pageInfo{hasPreviousPage} nodes{isResolved isOutdated comments(first:1){nodes{body}}}}}}}}`;
+const QUERY = `query($owner:String!,$name:String!){repository(owner:$owner,name:$name){pullRequests(states:OPEN,first:${PRS},orderBy:{field:UPDATED_AT,direction:DESC}){nodes{number title url headRefOid isDraft mergeable mergeStateStatus commits(last:1){nodes{commit{oid statusCheckRollup{state}}}} comments(last:${COMMENTS}){nodes{body authorAssociation author{login}}} reviewThreads(last:${THREADS}){pageInfo{hasPreviousPage} nodes{isResolved isOutdated comments(first:1){nodes{body}}}}}}}}`;
 
 /** One read-only call for every open PR's gate comment, threads, checks and mergeability. */
 export function readyArgv(repo: string, host: string): string[] {
@@ -47,7 +47,13 @@ export function readyArgv(repo: string, host: string): string[] {
 const Body = looseObject({ body: string() });
 const Bodies = looseObject({ nodes: array(Body) });
 const Comments = looseObject({
-	nodes: array(looseObject({ body: string(), authorAssociation: string() })),
+	nodes: array(
+		looseObject({
+			body: string(),
+			authorAssociation: string(),
+			author: optional(nullable(looseObject({ login: string() }))),
+		}),
+	),
 });
 
 const PrSchema = looseObject({
@@ -55,7 +61,9 @@ const PrSchema = looseObject({
 	title: string(),
 	url: string(),
 	headRefOid: string(),
+	isDraft: boolean(),
 	mergeable: string(),
+	mergeStateStatus: string(),
 	commits: looseObject({
 		nodes: array(
 			looseObject({
@@ -93,6 +101,18 @@ const ResponseSchema = looseObject({
 const TRUSTED = ["OWNER", "MEMBER", "COLLABORATOR"];
 const GATE = /^Gate:\s*(\S.*)$/;
 const GATE_PASS = /^Gate: PASS ([0-9a-f]{40})\s*$/;
+/**
+ * Codex's summary comment is posted by its connector bot. graphql names a bot
+ * without the `[bot]` suffix REST adds; both are accepted.
+ */
+const CODEX_BOT = /^chatgpt-codex-connector(\[bot\])?$/;
+const CODEX_STATE = /<!-- codex-review-state:v1 (\{.*?\}) -->/;
+const CodexState = looseObject({
+	code_review: looseObject({
+		commit_sha: nullable(string()),
+		status: nullable(string()),
+	}),
+});
 /** Codex's inline findings carry a severity badge: `![P1 Badge](...)`. */
 const BADGE = /\bP[01] Badge\b/;
 
@@ -112,6 +132,39 @@ export function gatePassed(
 		const first = comment.body.replace(/\r/g, "").split("\n", 1)[0] ?? "";
 		if (!GATE.test(first)) continue;
 		return GATE_PASS.exec(first)?.[1] === head;
+	}
+	return false;
+}
+
+/**
+ * True when the newest summary comment from the Codex connector bot carries a
+ * `codex-review-state:v1` marker whose code review is `completed` on exactly
+ * `head`. No marker, an older sha or a review still running is not reviewed;
+ * a marker quoted by anyone else is ignored.
+ */
+export function codexReviewed(
+	comments: readonly {
+		body: string;
+		author?: { login: string } | null | undefined;
+	}[],
+	head: string,
+): boolean {
+	// Each pass moves `i` toward 0, so the walk ends.
+	for (let i = comments.length - 1; i >= 0; i--) {
+		const comment = comments[i];
+		if (!comment?.author || !CODEX_BOT.test(comment.author.login)) continue;
+		const marker = CODEX_STATE.exec(comment.body)?.[1];
+		if (!marker) continue;
+		let json: unknown;
+		try {
+			json = JSON.parse(marker);
+		} catch {
+			continue;
+		}
+		const state = safeParse(CodexState, json);
+		if (!state.success) continue;
+		const review = state.output.code_review;
+		return review.commit_sha === head && review.status === "completed";
 	}
 	return false;
 }
@@ -141,7 +194,12 @@ export function openCodexFindings(
 /**
  * The PRs ready to merge in `gh api graphql` output, or undefined if the output
  * isn't that. Anything unknown (no checks, a long thread list we could not read
- * whole, a mergeability GitHub has not computed) counts as not ready.
+ * whole, a mergeability GitHub has not computed) counts as not ready. A PR that
+ * is ready but for Codex still reviewing the head is kept, flagged
+ * `codexPending`, so the queue can show it waiting; it is not merge-ready.
+ * `mergeStateStatus` must be CLEAN: mergeable, required checks and reviews
+ * satisfied. That excludes BLOCKED, BEHIND, DIRTY, UNSTABLE, HAS_HOOKS and
+ * DRAFT (also checked through `isDraft`).
  */
 export function parseReady(
 	stdout: string,
@@ -159,6 +217,8 @@ export function parseReady(
 	for (const pr of parsed.output.data.repository.pullRequests.nodes) {
 		const tip = pr.commits.nodes[0]?.commit;
 		if (
+			pr.isDraft ||
+			pr.mergeStateStatus !== "CLEAN" ||
 			pr.mergeable !== "MERGEABLE" ||
 			tip?.oid !== pr.headRefOid ||
 			tip.statusCheckRollup?.state !== "SUCCESS" ||
@@ -167,7 +227,9 @@ export function parseReady(
 			!gatePassed(pr.comments.nodes, pr.headRefOid)
 		)
 			continue;
+		const codexPending = !codexReviewed(pr.comments.nodes, pr.headRefOid);
 		ready.push({
+			...(codexPending ? { codexPending } : {}),
 			number: pr.number,
 			title: pr.title.replace(/\s+/g, " ").trim().slice(0, TITLE),
 			url: pr.url,
@@ -184,4 +246,15 @@ export function readReady(
 	checkedAt: number,
 ): ReadyPr[] | undefined {
 	return run.exitCode === 0 ? parseReady(run.stdout, checkedAt) : undefined;
+}
+
+/** The ready list is good for this many polls; older means polling has failed. */
+export const READY_TTL_MS = 3 * POLL_MS;
+
+/** The ready list when its newest check is recent enough to trust, else none. */
+export function freshReady(
+	ready: readonly ReadyPr[] | undefined,
+	now: number,
+): ReadyPr[] | undefined {
+	return ready?.filter((pr) => now - pr.checkedAt <= READY_TTL_MS);
 }
