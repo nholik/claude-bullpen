@@ -4,6 +4,7 @@ import { activeTime, flowSummary, waitingOn } from "../model/signals";
 import { colorFor, colorIndex, memberRole, roleLabel } from "../profile";
 import { messageKey } from "../scroll";
 import { activityPhrase } from "./activity";
+import { type AnswerAsk, answerSection } from "./answer";
 import {
 	type CardWidthTracker,
 	cardsPerRow,
@@ -256,7 +257,8 @@ export function teamStudioView(
 	mode: "live" | "demo" | "replay" = "live",
 	cardWidths?: CardWidthTracker,
 	wallNow = now,
-	focus?: "shipping" | "talk",
+	focus?: "shipping" | "talk" | "answer",
+	ask?: AnswerAsk,
 ): { header: Line[]; regions: Line[] } {
 	const urgency = (m: Teammate) =>
 		model.asks.some((a) => a.open && a.from === m.name)
@@ -329,12 +331,14 @@ export function teamStudioView(
 						0,
 						room,
 					)
-				: [
-						section("MESSAGES / hallway", columns),
-						...(model.hallway.length
-							? allMessages(model.hallway, profile, columns)
-							: [textLine("The hallway is quiet.", columns)]),
-					];
+				: focus === "answer"
+					? answerSection(ask, columns)
+					: [
+							section("MESSAGES / hallway", columns),
+							...(model.hallway.length
+								? allMessages(model.hallway, profile, columns)
+								: [textLine("The hallway is quiet.", columns)]),
+						];
 		return {
 			header: glyphLines(header, profile.glyphs),
 			regions: glyphLines(

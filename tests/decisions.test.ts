@@ -23,9 +23,9 @@ const pane = {
 	plugin: "bullpen",
 	surface: "terminal" as const,
 	component: "Pane" as const,
-	requestId: "bullpen-answer",
+	requestId: "bullpen",
 	props: {
-		title: "Answer gate",
+		title: "Bullpen",
 		isFocused: true,
 		placement: "dock" as const,
 		bodyColumns: 72,

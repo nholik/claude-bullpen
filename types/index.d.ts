@@ -237,7 +237,7 @@ declare module "claude-code" {
 			profile: Profile;
 			github: GithubSource;
 			hallwaySeenAt: number;
-			focus: "" | "shipping" | "talk";
+			focus: "" | "shipping" | "talk" | "answer";
 			viewTime: number;
 			storyIssue: number;
 			demoStart: number;
