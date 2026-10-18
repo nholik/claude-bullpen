@@ -65,6 +65,7 @@ for (let i = 0; i < args.length; i += 2) {
 		!key ||
 		![
 			"--cols",
+			"--focus",
 			"--rows",
 			"--at",
 			"--frames",
@@ -110,6 +111,7 @@ const profile = demoProfile({
 });
 const columns = number("--cols", 160, 20, 512);
 const rows = number("--rows", 48, 8, 200);
+const focus = options.get("--focus");
 const journalDir = options.get("--journal");
 const at = number("--at", journalDir ? 2 : 12, 0, 86400) * 1000;
 const frames = number("--frames", 1, 1, 1000);
@@ -181,6 +183,7 @@ for (let frame = 0; frame < frames; frame++) {
 		profile: profile,
 		mode: team ? "replay" : "demo",
 		cardWidths,
+		focus: focus === "shipping" || focus === "talk" ? focus : undefined,
 	});
 	if (options.has("--story")) {
 		const issue = number("--story", 204, 1, 9999999);

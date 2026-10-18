@@ -17,7 +17,7 @@ test("all pane focus modes and stories are deterministic across widths and demo 
 			const model = buildModel(demo.events, at);
 			const github = demoGithubAt(elapsed);
 			const profile = demoProfile(DEFAULT_PROFILE);
-			for (const focus of [undefined, "floor", "huddles", "talk"] as const) {
+			for (const focus of [undefined, "shipping", "talk"] as const) {
 				const render = () =>
 					paneView(model, Object.values(demo.members), columns, 32, at, {
 						github,

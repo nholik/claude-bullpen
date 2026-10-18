@@ -71,7 +71,7 @@ test("every region and focus mode stays inside pane dimensions", () => {
 	const model = buildModel(events, 2000);
 	for (const columns of [20, 47, 48, 60, 72, 80, 100, 110, 160])
 		for (const rows of [8, 24, 48])
-			for (const focus of [undefined, "floor", "huddles", "talk"] as const) {
+			for (const focus of [undefined, "shipping", "talk"] as const) {
 				const view = paneView(model, [], columns, rows, 2000, { focus });
 				const lines = [
 					...view.header,
@@ -100,9 +100,28 @@ test("glyph overviews work without Raster while narrow layouts reclaim floor spa
 		expect(other.regions.length >= terminal.regions.length).toBe(true);
 		const focused = paneView(model, [], columns, 24, 2000, {
 			raster: false,
-			focus: "floor",
+			focus: "talk",
 		});
 		expect(focused.floorRows).toBe(0);
 		expect(focused.regions.length > 0).toBe(true);
+	}
+});
+
+test("focused views keep the Studio header and name the way back", () => {
+	const model = buildModel(events, 2000);
+	const text = (lines: { text: string }[][]) =>
+		lines.map((l) => l.map((s) => s.text).join("")).join("\n");
+	for (const columns of [72, 110, 160]) {
+		const main = paneView(model, [], columns, 30, 2000);
+		expect(text(main.footer)).toContain("s: shipping · t: messages");
+		for (const [focus, back] of [
+			["shipping", "s: back · t: messages"],
+			["talk", "s: shipping · t: back"],
+		] as const) {
+			const view = paneView(model, [], columns, 30, 2000, { focus });
+			expect(text(view.header)).toContain("BULLPEN / TEAM STUDIO");
+			expect(text(view.footer)).toContain(back);
+			expect(view.regions.length).toBeLessThanOrEqual(30);
+		}
 	}
 });

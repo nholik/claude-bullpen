@@ -190,6 +190,33 @@ function workstation(
 	];
 }
 
+/** Hallway messages as a sender/time row, up to two wrapped lines and a gap. */
+function messageLines(
+	messages: BullpenModel["hallway"],
+	profile: Profile,
+	columns: number,
+	maxLines = 2,
+): Line[] {
+	return messages.flatMap((message) => {
+		const wrapped = wrapText(message.text, columns);
+		const body = wrapped.slice(0, maxLines);
+		if (wrapped.length > maxLines && body.length)
+			body.push([...(body.pop() ?? []), { text: "…", fg: STUDIO.muted }]);
+		return [
+			align(
+				text(
+					`${message.from} → ${message.to}`,
+					colorFor(message.from, profile, colorIndex(message.from)),
+				),
+				text(clock(message.at).slice(0, 5), STUDIO.muted),
+				columns,
+			),
+			...body,
+			[],
+		];
+	});
+}
+
 /** A people-first terminal view: measured text and symbols, not an office illustration. */
 export function teamStudioView(
 	model: BullpenModel,
@@ -201,6 +228,7 @@ export function teamStudioView(
 	mode: "live" | "demo" | "replay" = "live",
 	cardWidths?: CardWidthTracker,
 	wallNow = now,
+	focus?: "shipping" | "talk",
 ): { header: Line[]; regions: Line[] } {
 	const urgency = (m: Teammate) =>
 		model.asks.some((a) => a.open && a.from === m.name)
@@ -264,6 +292,30 @@ export function teamStudioView(
 		),
 	];
 	const room = Math.max(0, rows - header.length);
+	if (focus) {
+		// A focused list fills the body under the same header.
+		const body =
+			focus === "shipping"
+				? shippingSection(model, github, profile, columns, room, now)
+				: [
+						section("MESSAGES / hallway", columns),
+						...(model.hallway.length
+							? messageLines(
+									model.hallway.slice(-Math.max(1, Math.floor((room - 1) / 4))),
+									profile,
+									columns,
+									6,
+								)
+							: [textLine("The hallway is quiet.", columns)]),
+					];
+		return {
+			header: glyphLines(header, profile.glyphs),
+			regions: glyphLines(
+				body.slice(0, room).map((line) => fit(line, columns)),
+				profile.glyphs,
+			),
+		};
+	}
 	const leftWidth = columns >= 110 ? Math.floor((columns - 3) * 0.68) : columns;
 	const rightWidth = columns - leftWidth - 3;
 	const compact = columns < 110;
@@ -365,20 +417,7 @@ export function teamStudioView(
 		const history = model.hallway.slice(
 			-Math.max(1, Math.floor((room - 10) / 4)),
 		);
-		for (const message of history) {
-			right.push(
-				align(
-					text(
-						`${message.from} → ${message.to}`,
-						colorFor(message.from, profile, colorIndex(message.from)),
-					),
-					text(clock(message.at).slice(0, 5), STUDIO.muted),
-					rightWidth,
-				),
-			);
-			right.push(...wrapText(message.text, rightWidth).slice(0, 2));
-			right.push([]);
-		}
+		right.push(...messageLines(history, profile, rightWidth));
 		if (!history.length)
 			right.push(
 				textLine(

@@ -1247,7 +1247,7 @@ export function register(on: On) {
 						hotkey="s"
 						onPress={() => void focusRegion($, "shipping")}
 					>
-						shipping
+						{focused === "shipping" ? "back" : "shipping"}
 					</Button>
 					<Text dimColor> · </Text>
 					<Button
@@ -1256,7 +1256,7 @@ export function register(on: On) {
 						hotkey="t"
 						onPress={() => void focusRegion($, "talk")}
 					>
-						talk (toggle)
+						{focused === "talk" ? "back" : "messages"}
 					</Button>
 				</Box>
 			</Box>
