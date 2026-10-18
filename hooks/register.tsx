@@ -57,6 +57,7 @@ import {
 	STATE_EVENTS,
 	toLine,
 } from "../src/journal";
+import { recheckDelay } from "../src/liveness";
 import {
 	type BullpenModel,
 	buildModel,
@@ -416,6 +417,8 @@ let lastClockMs = 0;
 let lastBeatAt = 0;
 let lastTimerStartAt = 0;
 let lastEnsureAt = 0;
+let recheckTimer: Timer | undefined;
+let recheckDueAt = 0;
 const ENSURE_MS = 2000;
 const BEAT_GRACE_MS = 5000;
 /** When state last gained events, and when viewTime last ticked. */
@@ -864,6 +867,21 @@ async function ensureLive($: $) {
 	const viewDead =
 		!viewTimer || at - Math.max(lastBeatAt, lastTimerStartAt) > BEAT_GRACE_MS;
 	if (viewDead) startTimers($);
+	else {
+		// Beating inside the grace may be a cancelled timer that has not yet
+		// aged out: look once more just past it. One pending recheck at most.
+		const delay = recheckDelay(at, lastBeatAt, lastTimerStartAt, BEAT_GRACE_MS);
+		// A recheck long overdue was itself cancelled by a reload: replace it.
+		const overdue = at > recheckDueAt + BEAT_GRACE_MS;
+		if (delay !== undefined && (!recheckTimer || overdue)) {
+			recheckDueAt = at + delay;
+			recheckTimer = $.clock.after(delay, () => {
+				recheckTimer = undefined;
+				lastEnsureAt = 0;
+				void ensureLive($).catch(() => {});
+			});
+		}
+	}
 	if (!pollLoop || pollLoop.stalled(at))
 		startPolling($, (await read($, profile)).issues.pollSeconds);
 }

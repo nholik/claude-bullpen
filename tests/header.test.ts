@@ -104,6 +104,22 @@ test("the footer says why there is no GitHub data", () => {
 	const fresh = { filter: "", checkedAt: 0, burndown: [] };
 	expect(text(fresh)).toContain("waiting for first poll");
 	expect(text({ ...fresh, checkedAt: 5 })).toContain("no result yet");
+	// A full page whose count searches failed has issues but no exact counts.
+	const capped = Array.from({ length: 200 }, (_, i) => ({
+		number: i + 1,
+		title: "t",
+		state: "open" as const,
+		labels: [],
+		assignees: [],
+	}));
+	expect(
+		text({
+			...fresh,
+			checkedAt: 5,
+			result: { status: "ok", issues: capped },
+			burndown: [{ at: 0, open: 3, closed: 1 }],
+		}),
+	).toContain("exact counts unavailable");
 	expect(text(fresh, "demo")).toContain("paused in demo");
 	expect(text(fresh, "replay")).toContain("paused in replay");
 	expect(

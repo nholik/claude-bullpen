@@ -128,7 +128,8 @@ export function footer(
 	columns: number,
 	mode: "live" | "demo" | "replay" = "live",
 ): Line[] {
-	if (github.result?.status !== "ok")
+	// A full issue page whose count searches failed has no trustworthy burndown.
+	if (github.result?.status !== "ok" || !exactCounts(github.result))
 		return [
 			textLine(
 				`burndown · no GitHub data · ${noDataReason(github, mode)}`,
