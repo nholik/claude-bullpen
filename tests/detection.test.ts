@@ -142,6 +142,7 @@ test("a spawn brief assigns one issue, ignoring quoted examples and round lists"
 		["Work on #13 and leave a comment on #13 when done.", 13],
 		["Your issue is #13 (#12 is someone else's).", 13],
 		["Work on #13 (not #12)", 13],
+		["Compare #13 (not #12), then work on #14.", 14],
 	] as const)
 		expect(briefIssue(brief)).toBe(expected);
 });
@@ -181,6 +182,11 @@ test("only executed gh commands count, not quoted or heredoc text", () => {
 	expect(mergedPrs("git push | cat\ngh pr merge 6")).toEqual([6]);
 	expect(ghTargets("cat <<EOF\nx\nEOF\ngh issue view 9")).toEqual([9]);
 	expect(mergedPrs("wc -w <<< hello\ngh pr merge 5")).toEqual([5]);
+	// Only `<<-` lets tabs indent the terminator; spaces never do.
+	expect(mergedPrs("cat <<EOF\n  EOF\ngh pr merge 5\nEOF")).toEqual([]);
+	expect(mergedPrs("cat <<EOF\n\tEOF\ngh pr merge 5\nEOF")).toEqual([]);
+	expect(mergedPrs("cat <<-EOF\n\tEOF\ngh pr merge 5")).toEqual([5]);
+	expect(mergedPrs("cat <<-EOF\n  EOF\ngh pr merge 5\nEOF")).toEqual([]);
 	// An unterminated heredoc ends the scan instead of looping.
 	expect(mergedPrs("cat <<EOF\ngh pr merge 5")).toEqual([]);
 });
