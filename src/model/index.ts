@@ -32,9 +32,11 @@ export {
 export type * from "./types";
 export {
 	ensureState,
+	fingerprintOf,
 	foldBatch,
 	MODEL_VERSION,
 	rebuildState,
+	type Stamp,
 	stateFor,
 } from "./version";
 

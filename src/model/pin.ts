@@ -1,7 +1,8 @@
-// A small frozen journal that pins the reducer's output (tests/model-version
-// .test.ts). Unlike demo.ts it is not edited for the UI, so a fingerprint bump
-// means the reducer changed. Holds an ask, a reply, a review verdict and a PR
-// announcement. JSONL in a string because tests may import only code files.
+// A small frozen journal whose reduced state fingerprints the reducer
+// (`MODEL_VERSION`, version.ts). Unlike demo.ts it is not edited for the UI.
+// Holds an ask, a reply, a review verdict and a PR announcement. JSONL in a
+// string because a mod may import only code files. Editing it changes the
+// version, which only costs one rebuild.
 
 export default `
 {"version":1,"at":1792245600000,"kind":"spawn","who":"lead","target":"ada","detail":"teammate ada joined","issues":[7]}

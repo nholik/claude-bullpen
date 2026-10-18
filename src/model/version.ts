@@ -4,18 +4,38 @@
 // the version that reduced it; a mismatch rebuilds it from the event window.
 
 import type { BullpenEvent, TeamSnapshot } from "../../types";
-import { STATE_EVENTS } from "../journal";
+import { readJournal, STATE_EVENTS } from "../journal";
+import pinJournal from "./pin";
 import { applyEvent, reduceEvents, type TeamState } from "./team";
 
 /**
- * Bump whenever a change to the reducer (`team.ts`, `ship.ts`, and the
- * `detect.ts` functions they call) changes what it produces for the same
- * events. A parser that runs only when recording (`toolText`, `briefIssue`) does
- * not count: it shapes new events, and stored ones keep their refs.
- * `tests/model-version.test.ts` pins the reducer's output for the fixtures to
- * this number and fails when the output moves without a bump.
+ * Fingerprint of the reducer: FNV-1a over the JSON of the state it reduces the
+ * frozen `pin` journal to. Any change to the reducer (`team.ts`, `ship.ts`,
+ * `detect.ts`) that moves that output changes the version, so nobody bumps it by
+ * hand. A parser that runs only when recording (`toolText`, `briefIssue`) does
+ * not count: it shapes new events, and stored ones keep their refs. Rules the
+ * pin journal doesn't exercise aren't noticed; extend the journal when adding one.
  */
-export const MODEL_VERSION = 5;
+export function fingerprintOf(state: TeamState): string {
+	const text = JSON.stringify(state);
+	let h = 0x811c9dc5;
+	for (let i = 0; i < text.length; i++) {
+		h ^= text.charCodeAt(i);
+		h = Math.imul(h, 0x01000193) >>> 0;
+	}
+	return `r${h.toString(16)}`;
+}
+
+/**
+ * The version stamped on stored state, computed once per module load. Older
+ * builds stamped a number, which never equals this string and so rebuilds.
+ */
+export const MODEL_VERSION: string = fingerprintOf(
+	reduceEvents(readJournal(pinJournal).events),
+);
+
+/** A stored stamp: the fingerprint, or a number from builds that bumped by hand. */
+export type Stamp = string | number;
 
 /** The state from scratch: the last `STATE_EVENTS` events, oldest first. */
 export function rebuildState(events: readonly BullpenEvent[]): TeamState {
@@ -28,10 +48,10 @@ export function rebuildState(events: readonly BullpenEvent[]): TeamState {
  */
 export function ensureState(
 	state: TeamSnapshot | null,
-	stamped: number,
+	stamped: Stamp,
 	events: readonly BullpenEvent[],
 	force = false,
-): { state: TeamSnapshot; version: number; rebuilt: boolean } {
+): { state: TeamSnapshot; version: string; rebuilt: boolean } {
 	if (state && stamped === MODEL_VERSION && !force)
 		return { state, version: MODEL_VERSION, rebuilt: false };
 	return {
@@ -48,11 +68,11 @@ export function ensureState(
  */
 export function foldBatch(
 	state: TeamSnapshot | null,
-	stamped: number,
+	stamped: Stamp,
 	events: readonly BullpenEvent[],
 	added: readonly BullpenEvent[],
 	force = false,
-): { state: TeamSnapshot; version: number; rebuilt: boolean } {
+): { state: TeamSnapshot; version: string; rebuilt: boolean } {
 	const out = ensureState(state, stamped, events, force);
 	return {
 		...out,
@@ -67,7 +87,7 @@ export function foldBatch(
  */
 export function stateFor(
 	state: TeamSnapshot | null,
-	stamped: number,
+	stamped: Stamp,
 	events: readonly BullpenEvent[],
 ): TeamSnapshot {
 	return state && stamped === MODEL_VERSION ? state : rebuildState(events);
