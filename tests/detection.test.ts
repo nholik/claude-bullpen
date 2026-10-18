@@ -199,6 +199,10 @@ test("issue comment and api comment bodies mention issues without owning them", 
 			'gh api repos/o/r/issues/62/comments -f body="#9" && gh issue view 14',
 		),
 	).toEqual([14]);
+	for (const flag of ["-X POST", "--method POST"])
+		expect(
+			refs(`gh api ${flag} repos/o/r/issues/62/comments -f body="see #9"`),
+		).toEqual([]);
 	// Other issue verbs are unchanged.
 	expect(refs("gh issue view 14")).toEqual([14]);
 });

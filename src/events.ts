@@ -104,7 +104,9 @@ export function toolText(args: Record<string, unknown>): string {
 				)
 				// An issue comment keeps its target (`ghTargets`), not the body's mentions.
 				.map((part) => part.replace(/^(gh\s+issue\s+comment\s+).*$/s, "$1"))
-				.map((part) => part.replace(/^(gh\s+api\s+\S*\/comments\b).*$/s, "$1"))
+				.map((part) =>
+					part.replace(/^(gh\s+api\b.*?\S*\/comments\b).*$/s, "$1"),
+				)
 				.map((part) => part.replace(/^(gh\s+pr\s+\w+\s+)#(\d+)/, "$1$2"))
 				.join(" ")
 		: argText(args);
