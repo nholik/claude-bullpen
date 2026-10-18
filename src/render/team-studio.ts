@@ -217,6 +217,34 @@ function messageLines(
 	});
 }
 
+/** The newest messages that fit `rows` (oldest first); a cut-off oldest one ends in "…". */
+export function newestMessages(
+	messages: BullpenModel["hallway"],
+	profile: Profile,
+	columns: number,
+	rows: number,
+): Line[] {
+	const picked: Line[][] = [];
+	let left = Math.max(0, rows);
+	for (let i = messages.length - 1; i >= 0 && left > 1; i--) {
+		const message = messages[i];
+		if (!message) continue;
+		const block = messageLines([message], profile, columns, 6);
+		if (block.length <= left) {
+			picked.unshift(block);
+			left -= block.length;
+			continue;
+		}
+		// Keep the header and as much text as fits, then stop.
+		const cut = block.slice(0, left);
+		const last = cut.pop() ?? [];
+		cut.push([...last, { text: "…", fg: STUDIO.muted }]);
+		picked.unshift(cut);
+		break;
+	}
+	return picked.flat();
+}
+
 /** A people-first terminal view: measured text and symbols, not an office illustration. */
 export function teamStudioView(
 	model: BullpenModel,
@@ -300,12 +328,7 @@ export function teamStudioView(
 				: [
 						section("MESSAGES / hallway", columns),
 						...(model.hallway.length
-							? messageLines(
-									model.hallway.slice(-Math.max(1, Math.floor((room - 1) / 4))),
-									profile,
-									columns,
-									6,
-								)
+							? newestMessages(model.hallway, profile, columns, room - 1)
 							: [textLine("The hallway is quiet.", columns)]),
 					];
 		return {

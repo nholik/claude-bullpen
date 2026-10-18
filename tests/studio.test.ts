@@ -8,6 +8,7 @@ import { DEFAULT_PROFILE, mergeProfiles, parseProfile } from "../src/profile";
 import { width } from "../src/render/lines";
 import { paneView } from "../src/render/pane";
 import { issueStatus } from "../src/render/studio";
+import { newestMessages } from "../src/render/team-studio";
 
 test("legacy style settings are ignored without losing terminal preferences", () => {
 	for (const style of ["studio", "operations", "unknown"]) {
@@ -268,4 +269,26 @@ test("narrow Studio fills spare rows with the hallway", () => {
 	const at = rows.findIndex((r) => r.includes("HALLWAY"));
 	expect(at).toBeGreaterThan(-1);
 	expect(rows[at + 1]?.includes("→")).toBe(true);
+});
+
+test("the messages view keeps the newest messages and fits its rows", () => {
+	const long = "word ".repeat(80);
+	const messages = Array.from({ length: 12 }, (_, i) => ({
+		from: "a",
+		to: "b",
+		text: i === 11 ? `newest ${long}` : `m${i} ${long}`,
+		at: 1000 * i,
+	}));
+	const profile = DEFAULT_PROFILE;
+	for (const [columns, rows] of [
+		[72, 11],
+		[110, 31],
+		[160, 31],
+	] as const) {
+		const lines = newestMessages(messages as never, profile, columns, rows);
+		const flat = lines.map((l) => l.map((s) => s.text).join(""));
+		expect(lines.length <= rows).toBe(true);
+		expect(flat.some((t) => t.includes("newest"))).toBe(true);
+		expect(flat.some((t) => t.includes("m0 "))).toBe(false);
+	}
 });
