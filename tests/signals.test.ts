@@ -45,16 +45,6 @@ test("each stuck rule has a visible reason, and success clears repeated command 
 		],
 		[
 			[
-				event("message", 0, {
-					target: "lead",
-					detail: "#12 please review https://github.com/o/r/pull/22",
-				}),
-			],
-			15 * minute,
-			"review waiting 15m",
-		],
-		[
-			[
 				event("tool", 0),
 				event("message", 1, {
 					who: "gate",
@@ -214,9 +204,8 @@ test("stall timers honor their thresholds and messages do not count as tool prog
 		event("tool", 14 * minute),
 	];
 	expect(buildModel(review, 15 * minute - 1).stuck?.builder).toBeUndefined();
-	expect(buildModel(review, 15 * minute).stuck?.builder).toBe(
-		"review waiting 15m",
-	);
+	// A slow review is not the builder's stall.
+	expect(buildModel(review, 20 * minute).stuck?.builder).toBeUndefined();
 	expect(
 		buildModel([event("turn-end", 0, { issues: [] })], 20 * minute).stuck,
 	).toEqual({});
@@ -327,4 +316,155 @@ test("denied, interrupted, and background commands never report a successful com
 		expect(toolOutcome(result)).toBeUndefined();
 	expect(toolOutcome({ isError: true, result: "failure" })).toBe("error");
 	expect(toolOutcome({ result: { interrupted: false } })).toBe("ok");
+});
+
+test("idle reviewers and builders with an open PR are waiting, not stuck", () => {
+	const view = (events: BullpenEvent[], now: number) => {
+		const model = buildModel(events, now);
+		const text = teamStudioView(
+			model,
+			{ filter: "", burndown: [], checkedAt: 0 },
+			DEFAULT_PROFILE,
+			110,
+			32,
+			now,
+		)
+			.regions.flat()
+			.map((s) => s.text)
+			.join("");
+		return { model, text };
+	};
+	const idle = 20 * minute;
+	const announce = event("message", 1, {
+		target: "lead",
+		detail: "#12 PR is up: https://github.com/o/r/pull/30. Check is green.",
+	});
+	const ask = event("message", 2, {
+		target: "gate",
+		detail: "#12: please review PR https://github.com/o/r/pull/30",
+	});
+	const done = event("turn-end", 3);
+
+	// Builder with no PR is still stuck.
+	expect(buildModel([event("tool", 0), done], idle).stuck?.builder).toBe(
+		"idle with open work 19m",
+	);
+
+	// PR announced, then in review: waiting on review.
+	const reviewing = view([announce, ask, done], idle);
+	expect(reviewing.model.stuck?.builder).toBeUndefined();
+	expect(reviewing.text).toContain("waiting on review");
+	expect(reviewing.text).not.toContain("stuck");
+	expect(flowSummary(reviewing.model, [], idle).text).not.toContain("stall");
+
+	// Approved: waiting on a human merge.
+	const approved = view(
+		[
+			announce,
+			ask,
+			event("message", 3, {
+				who: "gate",
+				target: "lead",
+				detail: "PR #30 (#12) PASS",
+			}),
+			event("turn-end", 4),
+		],
+		idle,
+	);
+	expect(approved.model.stuck?.builder).toBeUndefined();
+	expect(approved.text).toContain("waiting on merge");
+
+	// A reviewer or designer that finished is done, however the role is named.
+	for (const [who, role] of [
+		["gate", undefined],
+		["ux121", undefined],
+		["checker", "reviewer"],
+		["mock", "designer"],
+	] as const) {
+		const model = buildModel(
+			[event("tool", 0, { who }), event("turn-end", 1, { who })],
+			idle,
+			role ? { roles: { [who]: role } } : {},
+		);
+		expect(model.stuck?.[who]).toBeUndefined();
+	}
+});
+
+test("running teammates keep their running mood; idle bounced builders wait longer", () => {
+	const text = (events: BullpenEvent[], now: number, width = 110) => {
+		const model = buildModel(events, now);
+		return {
+			model,
+			text: teamStudioView(
+				model,
+				{ filter: "", burndown: [], checkedAt: 0 },
+				DEFAULT_PROFILE,
+				width,
+				32,
+				now,
+			)
+				.regions.flat()
+				.map((s) => s.text)
+				.join(""),
+		};
+	};
+	const announce = event("message", 1, {
+		target: "lead",
+		detail: "#12 PR is up: https://github.com/o/r/pull/30.",
+	});
+	const ask = event("message", 2, {
+		target: "gate",
+		detail: "#12: please review PR https://github.com/o/r/pull/30",
+	});
+	const now = 3 * minute;
+
+	// A reviewer mid-review and a builder still working after the PR are heads-down.
+	const running = text(
+		[
+			announce,
+			ask,
+			event("tool", now - 1000),
+			event("tool", now - 1000, { who: "gate" }),
+		],
+		now,
+	);
+	expect(running.text).not.toContain("waiting on");
+	expect(running.text).toContain("heads-down");
+
+	// Idle builder with an open PR still waits.
+	const idle = text([announce, ask, event("turn-end", 3)], 20 * minute);
+	expect(idle.text).toContain("waiting on review");
+
+	// Idle after CHANGES: quiet for 5 minutes is not stuck, 15 is.
+	const bounced = [
+		announce,
+		ask,
+		event("message", 3, {
+			who: "gate",
+			target: "lead",
+			detail: "PR #30 (#12) CHANGES",
+		}),
+		event("turn-end", 4),
+	];
+	expect(buildModel(bounced, 8 * minute).stuck?.builder).toBeUndefined();
+	expect(buildModel(bounced, 20 * minute).stuck?.builder).toBe(
+		"idle with open work 19m",
+	);
+});
+
+test("morale does not count idle reviewers or builders waiting on a PR as idling", () => {
+	const events = [
+		event("tool", 0),
+		event("tool", 0, { who: "gate" }),
+		event("tool", 0, { who: "other", issues: [13] }),
+		event("message", 1, {
+			target: "lead",
+			detail: "#12 PR is up: https://github.com/o/r/pull/30.",
+		}),
+		event("turn-end", 2),
+		event("turn-end", 2, { who: "gate" }),
+		event("turn-end", 2, { who: "other", issues: [13] }),
+	];
+	const model = buildModel(events, 20 * minute);
+	expect(model.morale.factors.idle).toEqual(["other"]);
 });

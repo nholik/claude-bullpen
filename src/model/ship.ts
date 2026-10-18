@@ -42,10 +42,11 @@ export type ShipState = {
 export const EMPTY_SHIP: ShipState = { paths: {}, prIssue: {} };
 
 // "#44 PR: https://github.com/o/r/pull/61", "#59 PR open: .../pull/70"
-const PR_ANNOUNCE = /#(\d{1,7})\s+PR(?:\s+open)?:\s*\S*?\/pull\/(\d{1,7})/gi;
+const PR_ANNOUNCE =
+	/#(\d{1,7}):?\s+PR(?:\s+(?:open|is\s+up))?:?\s*\S*?\/pull\/(\d{1,7})/gi;
 // "#46 please review https://.../pull/62", "#44 please review PR https://.../pull/61"
 const REVIEW_ASK =
-	/#(\d{1,7})\s+(?:please\s+)?(?:re-?)?review\s+(?:PR\s+)?\S*?\/pull\/(\d{1,7})/gi;
+	/#(\d{1,7}):?\s+(?:please\s+)?(?:re-?)?review\s+(?:PR\s+)?\S*?\/pull\/(\d{1,7})/gi;
 // "PR #61 (#44) CHANGES", "PR #62 (#46): PASS", "#61 (#44) PASS now"
 const VERDICT =
 	/(?:\bPR\s+)?#(\d{1,7})\s+\(#(\d{1,7})\)\s*:?\s*(PASS|CHANGES)\b/g;

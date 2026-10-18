@@ -63,6 +63,7 @@ test("table: single events and the stage they produce", () => {
 	for (const [events, issue, stage] of [
 		[[msg("kit", `#46 PR: ${pr}/62 (table-driven tests ad…`)], 46, "pr-open"],
 		[[msg("smith", `#59 PR open: ${pr}/70. Studio header no…`)], 59, "pr-open"],
+		[[msg("kit", `#123 PR ${pr}/127 is ready`)], 123, "pr-open"],
 		[[msg("kit", `#47 please review ${pr}/67`)], 47, "in-review"],
 		[
 			[msg("gate", "PR #61 (#44) CHANGES: the PR's commit 02a59c5 c…")],
@@ -208,4 +209,15 @@ test("a long digit run in a for loop does not backtrack", () => {
 		]),
 	).toEqual({});
 	expect(Date.now() - start).toBeLessThan(500);
+});
+
+test("a reviewer mentioning a PR in passing registers no link", () => {
+	expect(
+		Object.keys(shipPaths([msg("gate", "see PR #12 for context")], [])).length,
+	).toBe(0);
+	expect(
+		Object.keys(
+			shipPaths([msg("gate", `see PR #12 for context, and ${pr}/9`)], []),
+		).length,
+	).toBe(0);
 });
