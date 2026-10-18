@@ -163,15 +163,18 @@ Token or dollar figures appear only if the engine reports them. We never estimat
 
 ## Motion rules
 
-Only three things move, and each has to earn it:
+Only four things move, and each has to earn it:
 
 1. **Needs-you pulse.** Amber, 1 Hz, for 10 s after the ask arrives.
 2. **Merge flourish.** One shot, at most 2 s, on the card face and the rail's ✓.
 3. **Snooze.** Idle z's drift one frame every 2 s.
+4. **Card resize.** When the team grows or shrinks and cards change width, the width eases over
+   about 0.4 s at no more than 10 redraws a second, then the timer stops. No bounce, no overshoot.
+   A card is never wider than 70 columns, and a small team's cards sit left-aligned.
 
 In addition, the change-glow is a decay, not an animation: it is redrawn on the existing
 1 s refresh. Nothing else moves: no marquee text, no spinners, no walking. With nothing
-changing, the timer stops. `animations: false` freezes all three at their resting frame.
+changing, the timer stops. `animations: false` freezes all four at their resting frame.
 
 ## Hallway
 

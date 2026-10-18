@@ -71,6 +71,10 @@ import {
 	parseProfile,
 	withMemberColors,
 } from "../src/profile";
+import {
+	createCardWidthTracker,
+	TWEEN_REDRAW_MS,
+} from "../src/render/card-width";
 import { band } from "../src/render/header";
 import { fit, glyphLines, type Line, wrapText } from "../src/render/lines";
 import { type Focus, paneView } from "../src/render/pane";
@@ -343,6 +347,28 @@ async function tickAnimation($: $) {
 		animationTimer?.cancel();
 		animationTimer = undefined;
 	}
+}
+/** Card widths persist between draws; a team-size change tweens them. */
+const cardWidths = createCardWidthTracker();
+let tweenTimer: Timer | undefined;
+/** Redraw at 10 Hz while card widths settle, then stop the timer. */
+function followCardTween($: $) {
+	if (!cardWidths.moving()) {
+		tweenTimer?.cancel();
+		tweenTimer = undefined;
+		return;
+	}
+	if (tweenTimer) return;
+	tweenTimer = $.clock.every(TWEEN_REDRAW_MS, () => {
+		void (async () => {
+			if (!cardWidths.moving()) {
+				tweenTimer?.cancel();
+				tweenTimer = undefined;
+			}
+			const at = await now($);
+			await update($, viewTime, () => at);
+		})().catch(() => {});
+	});
 }
 let pollLoop: PollLoop | undefined;
 let pollGeneration = 0;
@@ -763,6 +789,8 @@ export function register(on: On) {
 			animationTimer = undefined;
 			floorSize = undefined;
 			scene = undefined;
+			tweenTimer?.cancel();
+			tweenTimer = undefined;
 		}
 		return next(e);
 	});
@@ -801,6 +829,8 @@ export function register(on: On) {
 		animationTimer?.cancel();
 		animationTimer = undefined;
 		scene = undefined;
+		tweenTimer?.cancel();
+		tweenTimer = undefined;
 		viewTimer?.cancel();
 		pollLoop?.cancel();
 		pollGeneration++;
@@ -1065,7 +1095,9 @@ export function register(on: On) {
 			focus: focused || undefined,
 			raster: e.surface === "terminal",
 			seenAt: await read($, seenAt),
+			cardWidths,
 		});
+		followCardTween($);
 		const floorHeight = view.floorRows;
 		const titles =
 			source.result?.status === "ok"
