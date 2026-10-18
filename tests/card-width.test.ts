@@ -24,12 +24,15 @@ test("cards per row never exceeds the number of cards", () => {
 });
 
 test("settled widths for 1, 2 and 3 cards at 110 and 160 columns", () => {
-	expect(settledCardWidth(LEFT_110, 1)).toBe(MAX_CARD_WIDTH);
+	// 72 is only 2 over the cap: fill the region rather than leave a sliver.
+	expect(settledCardWidth(LEFT_110, 1)).toBe(72);
+	expect(settledCardWidth(77, 1)).toBe(77);
+	expect(settledCardWidth(78, 1)).toBe(MAX_CARD_WIDTH);
 	expect(settledCardWidth(LEFT_110, 2)).toBe(35);
 	expect(settledCardWidth(LEFT_160, 1)).toBe(MAX_CARD_WIDTH);
 	expect(settledCardWidth(LEFT_160, 2)).toBe(52);
 	expect(settledCardWidth(LEFT_160, 3)).toBe(34);
-	for (const left of [LEFT_110, LEFT_160, 300])
+	for (const left of [LEFT_160, 300])
 		for (const n of [1, 2, 3])
 			expect(settledCardWidth(left, n)).toBeLessThanOrEqual(MAX_CARD_WIDTH);
 });

@@ -16,13 +16,19 @@ export function cardsPerRow(across: number, shown: number): number {
 	return Math.max(1, Math.min(across, shown));
 }
 
+/** Below this many spare columns, a capped card fills its region instead. */
+const SLIVER = 8;
+
 /** The width cards settle at once nothing is moving. */
 export function settledCardWidth(leftWidth: number, perRow: number): number {
 	const n = Math.max(1, perRow);
-	return Math.min(
-		MAX_CARD_WIDTH,
-		Math.max(MIN_CARD_WIDTH, Math.floor((leftWidth - (n - 1) * CARD_GAP) / n)),
+	const fit = Math.max(
+		MIN_CARD_WIDTH,
+		Math.floor((leftWidth - (n - 1) * CARD_GAP) / n),
 	);
+	return fit > MAX_CARD_WIDTH && fit - MAX_CARD_WIDTH < SLIVER
+		? fit
+		: Math.min(MAX_CARD_WIDTH, fit);
 }
 
 export type CardWidthTracker = {
