@@ -98,6 +98,10 @@ test("asks stay open until a withdrawal, a lead reply or a leave", async () => {
 		]),
 	).toEqual([true]);
 	expect(open([ev(2, "b83", "leave", "")])).toEqual([false]);
+	for (const text of ["resolved, carrying on", "no longer blocked on #3"])
+		expect(
+			open([ev(2, "b83", "message", text, { target: "team-lead" })]),
+		).toEqual([false]);
 	expect(
 		open([
 			ev(2, "b83", "message", "never mind, nothing needed from you", {
