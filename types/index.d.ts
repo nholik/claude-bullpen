@@ -230,8 +230,8 @@ declare module "claude-code" {
 		bullpen: {
 			events: BullpenEvent[];
 			teamModel: TeamSnapshot | null;
-			/** `MODEL_VERSION` that reduced `teamModel`; 0 when never stamped. */
-			modelVersion: number;
+			/** `MODEL_VERSION` that reduced `teamModel`; 0 (or an old number) when never stamped. */
+			modelVersion: string | number;
 			members: Record<string, Member>;
 			/** `.claude/bullpen.json` merged over the defaults. */
 			profile: Profile;

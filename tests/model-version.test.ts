@@ -1,21 +1,21 @@
 import { expect, test } from "claude-code/testing";
-
 import { readJournal, STATE_EVENTS } from "../src/journal";
 import {
 	ensureState,
+	fingerprintOf,
 	foldBatch,
 	MODEL_VERSION,
 	rebuildState,
 	reduceEvents,
 	stateFor,
 } from "../src/model";
+import pinJournal from "../src/model/pin";
 import type { BullpenEvent } from "../types";
 import demoJournal from "./fixtures/demo";
-import pinJournal from "./fixtures/model-pin";
 
 const T = Date.UTC(2026, 9, 17, 14, 0, 0);
-const demo = readJournal(demoJournal).events;
 const pin = readJournal(pinJournal).events;
+const demo = readJournal(demoJournal).events;
 
 const ev = (
 	minutes: number,
@@ -33,34 +33,29 @@ const ev = (
 	...extra,
 });
 
-/** FNV-1a over the JSON text; enough to notice any change in reducer output. */
-function fingerprint(text: string): string {
-	let h = 0x811c9dc5;
-	for (let i = 0; i < text.length; i++) {
-		h ^= text.charCodeAt(i);
-		h = Math.imul(h, 0x01000193) >>> 0;
-	}
-	return h.toString(16);
-}
-
-// When this test fails, the reducer now produces different state for the same
-// events. Bump MODEL_VERSION (src/model/version.ts) and add the new
-// fingerprint here under the new number. Keep the old entries.
-const FINGERPRINTS: Record<number, string> = {
-	1: "a6d1d7d2",
-	2: "a6d1d7d2",
-	3: "a6d1d7d2",
-	4: "a6d1d7d2",
-	5: "a6d1d7d2",
-};
-
-test("reducer output is pinned to MODEL_VERSION", async () => {
+test("MODEL_VERSION fingerprints the reducer's output for the pin journal", async () => {
 	const state = reduceEvents(pin);
 	// The fixture must keep exercising the rules the version guards.
 	expect(state.asks.length).toBeGreaterThan(0);
 	expect(Object.keys(state.ship.paths).length).toBeGreaterThan(0);
-	const seen = fingerprint(JSON.stringify(state));
-	expect(FINGERPRINTS[MODEL_VERSION]).toBe(seen);
+	expect(state.closes.length).toBeGreaterThan(0);
+	expect(state.kickbacks.length).toBeGreaterThan(0);
+	expect(state.asks.some((a) => a.open)).toBe(true);
+	expect(Object.values(state.teammates).some((t) => t.owned)).toBe(true);
+	expect(MODEL_VERSION).toBe(fingerprintOf(state));
+	expect(MODEL_VERSION).toMatch(/^r[0-9a-f]+$/);
+	// Different output, different version; same output, same version.
+	expect(fingerprintOf(reduceEvents(pin.slice(1)))).not.toBe(MODEL_VERSION);
+	expect(fingerprintOf(reduceEvents([...pin]))).toBe(MODEL_VERSION);
+});
+
+test("a number stamped by an older build always rebuilds", async () => {
+	const events = demo.slice(0, 10);
+	const stored = reduceEvents(events);
+	for (const old of [0, 5, 6]) {
+		expect(ensureState(stored, old, events).rebuilt).toBe(true);
+		expect(stateFor(stored, old, events)).not.toBe(stored);
+	}
 });
 
 const staleAsk = ev(1, "b83", "message", "PR #5 is up, checks green", {
@@ -89,7 +84,7 @@ test("a state from older rules is rebuilt and drops its stale ask", async () => 
 	expect(kept.rebuilt).toBe(false);
 	expect(kept.state).toBe(stale);
 
-	const out = ensureState(stale, MODEL_VERSION - 1, events);
+	const out = ensureState(stale, "rstale", events);
 	expect(out.rebuilt).toBe(true);
 	expect(out.version).toBe(MODEL_VERSION);
 	expect(out.state.asks.filter((a) => a.open)).toEqual([]);
@@ -116,7 +111,7 @@ test("a batch added in the same pass as a rebuild survives it", async () => {
 	const before = demo.slice(0, 10);
 	const added = [ev(500, "w", "message", "#9 PASS", { issues: [9] })];
 	const stale = reduceEvents(before);
-	const out = foldBatch(stale, MODEL_VERSION - 1, before, added);
+	const out = foldBatch(stale, "rstale", before, added);
 	expect(out.rebuilt).toBe(true);
 	expect(out.state).toEqual(reduceEvents([...before, ...added]));
 	const forced = foldBatch(stale, MODEL_VERSION, before, added, true);
@@ -130,6 +125,6 @@ test("drawing reads the stored state when current and rebuilds in memory when st
 	const events = demo.slice(0, 10);
 	const stored = reduceEvents(events);
 	expect(stateFor(stored, MODEL_VERSION, events)).toBe(stored);
-	expect(stateFor(stored, MODEL_VERSION - 1, events)).toEqual(stored);
+	expect(stateFor(stored, "rstale", events)).toEqual(stored);
 	expect(stateFor(null, MODEL_VERSION, events)).toEqual(stored);
 });
