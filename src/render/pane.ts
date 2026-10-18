@@ -82,7 +82,10 @@ export function paneView(
 			sidebar: [],
 			regions: view.regions,
 			footer: glyphLines(
-				[...footer(github, columns), textLine(keys(options.focus), columns)],
+				[
+					...footer(github, columns, options.mode),
+					textLine(keys(options.focus), columns),
+				],
 				profile.glyphs,
 			),
 			band: band(model, github, profile, columns, options.seenAt ?? -1),
@@ -93,7 +96,7 @@ export function paneView(
 		Math.max(0, rows - 3),
 	);
 	const bottom = [
-		...footer(github, columns),
+		...footer(github, columns, options.mode),
 		textLine(keys(options.focus), columns),
 	].slice(0, Math.max(0, rows - heading.length - 1));
 	const available = Math.max(0, rows - heading.length - bottom.length - 1);

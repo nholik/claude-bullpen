@@ -1,5 +1,5 @@
 import type { BurndownPoint, GithubSource, Profile } from "../../types";
-import { exactCounts, headerText } from "../github";
+import { exactCounts, headerText, noDataReason } from "../github";
 import type { BullpenModel } from "../model";
 import { backlogTrend } from "../model/signals";
 import { colorFor, colorIndex } from "../profile";
@@ -123,11 +123,15 @@ export function header(
 	return lines;
 }
 
-export function footer(github: GithubSource, columns: number): Line[] {
+export function footer(
+	github: GithubSource,
+	columns: number,
+	mode: "live" | "demo" | "replay" = "live",
+): Line[] {
 	if (github.result?.status !== "ok")
 		return [
 			textLine(
-				`burndown · no GitHub data${github.result ? ` · ${github.result.message}` : ""}`,
+				`burndown · no GitHub data · ${noDataReason(github, mode)}`,
 				columns,
 			),
 		];

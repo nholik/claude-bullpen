@@ -427,3 +427,22 @@ test("a manual success resets the backed-off poll loop to the base cadence", asy
 	await settle();
 	expect(timers.at(-1)?.ms).toBe(120000);
 });
+
+test("a poll loop reports a stalled timer only when overdue and idle", async () => {
+	let clock = 1000;
+	const loop = createPollLoop({
+		baseMs: 60000,
+		poll: async () => true,
+		current: () => true,
+		now: () => clock,
+		after: () => ({ cancel() {} }),
+	});
+	loop.start();
+	for (let i = 0; i < 10; i++) await Promise.resolve();
+	// Due at 61000; the timer never fires, as after a hot reload.
+	expect(loop.stalled(61000 + 29_000)).toBe(false);
+	expect(loop.stalled(61000 + 31_000)).toBe(true);
+	clock = 0;
+	loop.cancel();
+	expect(loop.stalled(10 ** 9)).toBe(false);
+});
