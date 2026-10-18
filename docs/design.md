@@ -13,7 +13,7 @@ real terminal. Studio glyph cards are the canvas now.
 A glance answers these, in this order:
 
 1. **What needs me?** Asks, decisions and blocked work that only the human can unblock.
-2. **Who is stuck?** A teammate who is spinning, failing, idle with work open, or waiting too long.
+2. **Who is stuck?** A teammate who is spinning, failing, or idle with work open and no PR to wait on.
 3. **What is shipping?** Where each issue is on the way to done: issue, PR, review, merge.
 
 The visual pulse matters too: recent communication highlights both participants,

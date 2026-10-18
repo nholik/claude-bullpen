@@ -3,7 +3,7 @@
 import type { BullpenEvent } from "../../types";
 import { moraleOf } from "./morale";
 import { shippedIssues } from "./ship";
-import { stuckReasons } from "./signals";
+import { isVerdictRole, stuckReasons, waitingOn } from "./signals";
 import {
 	DEFAULT_LEADS,
 	huddlesOf,
@@ -140,6 +140,15 @@ export function modelOf(
 		now,
 		options.leads ?? DEFAULT_LEADS,
 		model.stuck,
+		new Set(
+			Object.values(live.teammates)
+				.filter(
+					(t) =>
+						isVerdictRole(t, options.roles?.[t.name]) ||
+						waitingOn(model, t, options.roles?.[t.name]),
+				)
+				.map((t) => t.name),
+		),
 	);
 	return model;
 }

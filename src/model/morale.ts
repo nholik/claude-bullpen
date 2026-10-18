@@ -40,6 +40,8 @@ export function moraleOf(
 	now: number,
 	leads: readonly string[],
 	reasons?: Readonly<Record<string, string>>,
+	/** Idle teammates who are done or waiting on a PR, not idling. */
+	waiting: ReadonlySet<string> = new Set(),
 ): Morale {
 	const recent = (at: number) => now - at <= RECENT_MS;
 	const closes = state.closes.filter((c) => recent(c.at)).length;
@@ -66,6 +68,7 @@ export function moraleOf(
 						(t) =>
 							t.status === "idle" &&
 							!leads.includes(t.name) &&
+							!waiting.has(t.name) &&
 							now - t.lastActiveAt > IDLE_MS,
 					)
 					.map((t) => t.name);

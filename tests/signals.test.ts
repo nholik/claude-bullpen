@@ -451,3 +451,20 @@ test("running teammates keep their running mood; idle bounced builders wait long
 		"idle with open work 19m",
 	);
 });
+
+test("morale does not count idle reviewers or builders waiting on a PR as idling", () => {
+	const events = [
+		event("tool", 0),
+		event("tool", 0, { who: "gate" }),
+		event("tool", 0, { who: "other", issues: [13] }),
+		event("message", 1, {
+			target: "lead",
+			detail: "#12 PR is up: https://github.com/o/r/pull/30.",
+		}),
+		event("turn-end", 2),
+		event("turn-end", 2, { who: "gate" }),
+		event("turn-end", 2, { who: "other", issues: [13] }),
+	];
+	const model = buildModel(events, 20 * minute);
+	expect(model.morale.factors.idle).toEqual(["other"]);
+});
