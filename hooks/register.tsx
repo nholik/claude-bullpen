@@ -1147,23 +1147,25 @@ export function register(on: On) {
 						hotkey="a"
 						onPress={() => void openDecision($)}
 					>
-						a answer ·{" "}
+						answer
 					</Button>
+					<Text dimColor> · </Text>
 					<Button
 						key="shipping-focus"
 						plain
 						hotkey="s"
 						onPress={() => void focusRegion($, "shipping")}
 					>
-						s shipping ·{" "}
+						shipping
 					</Button>
+					<Text dimColor> · </Text>
 					<Button
 						key="talk-focus"
 						plain
 						hotkey="t"
 						onPress={() => void focusRegion($, "talk")}
 					>
-						t talk (toggle)
+						talk (toggle)
 					</Button>
 				</Box>
 			</Box>
