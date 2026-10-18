@@ -93,3 +93,19 @@ test("touch keeps the agent type across later touches", async () => {
 	]);
 	expect(next.members.a1?.agentType).toBe("gate");
 });
+
+test("a reply keeps the decisions it answered", () => {
+	const out = applyBatch({}, [
+		{
+			op: "event",
+			kind: "reply",
+			at: 1,
+			detail: "dismissed",
+			attribute: false,
+			answered: ["d1-0"],
+		},
+	]);
+	expect(out.events.find((e) => e.kind === "reply")?.answered).toEqual([
+		"d1-0",
+	]);
+});

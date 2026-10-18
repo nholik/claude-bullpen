@@ -282,6 +282,13 @@ test("repliedTo never closes a decision the quote does not single out", () => {
 		{ id: "y", text: "Ship #9 today?", issues: [9] },
 	];
 	expect(repliedTo("> re #7: ship\nok", two)).toEqual(["x"]);
+	// A body quoting a decision on another issue does not fall back to #9's.
+	const nine = [
+		{ id: "n", text: "Ship #9 today?", issues: [9] },
+		{ id: "m", text: "Merge #58 now?", issues: [58] },
+	];
+	expect(repliedTo("> re #9: Merge #58 now?\nyes", nine)).toEqual([]);
+	expect(repliedTo("> re #9: ship it\nyes", nine)).toEqual(["n"]);
 	// A bare letter matching several decisions closes none; one match is fine.
 	const s = [
 		{ id: "p", text: "skip it?", issues: [] },
