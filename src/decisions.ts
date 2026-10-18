@@ -84,7 +84,8 @@ export function quotedPrefix(d: Queueable): string {
 }
 
 const QUOTE = /^> re(?: #(\d+))?: (.*)$/gm;
-const plain = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase();
+/** Case and whitespace folded: what makes two decision texts the same. */
+export const plain = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase();
 
 /**
  * The ids of the open decisions a submitted prompt quotes (`> re #N: text`, as
