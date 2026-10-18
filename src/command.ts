@@ -13,7 +13,7 @@ export function withoutCd(command: string): string {
 	return rest.trim();
 }
 
-const HEREDOC = /<<-?\s*(["']?)([A-Za-z_]\w*)\1/;
+const HEREDOC = /(?<!<)<<(?!<)-?\s*(["']?)([A-Za-z_]\w*)\1/;
 
 /**
  * The command without heredoc bodies: their lines are data (a commit message,

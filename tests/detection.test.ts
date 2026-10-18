@@ -137,6 +137,10 @@ test("a spawn brief assigns one issue, ignoring quoted examples and round lists"
 		["#12 is someone else's", undefined],
 		["#12 is someone else's. Take #14.", 14],
 		["Your issue is #13, not #12", 13],
+		["Fix #13 without stepping on another builder's files.", 13],
+		["Implement #13 so other agents can see it.", 13],
+		["Work on #13 and leave a comment on #13 when done.", 13],
+		["Your issue is #13 (#12 is someone else's).", 13],
 		["Work on #13 (not #12)", 13],
 	] as const)
 		expect(briefIssue(brief)).toBe(expected);
@@ -176,6 +180,7 @@ test("only executed gh commands count, not quoted or heredoc text", () => {
 	expect(mergedPrs("git push && gh pr merge 5; echo done")).toEqual([5]);
 	expect(mergedPrs("git push | cat\ngh pr merge 6")).toEqual([6]);
 	expect(ghTargets("cat <<EOF\nx\nEOF\ngh issue view 9")).toEqual([9]);
+	expect(mergedPrs("wc -w <<< hello\ngh pr merge 5")).toEqual([5]);
 	// An unterminated heredoc ends the scan instead of looping.
 	expect(mergedPrs("cat <<EOF\ngh pr merge 5")).toEqual([]);
 });
