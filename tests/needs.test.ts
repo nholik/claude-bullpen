@@ -267,3 +267,26 @@ test("a reply closes only the decisions it names; an old one with no ids closes 
 			.length,
 	).toBe(2);
 });
+
+test("repliedTo never closes a decision the quote does not single out", () => {
+	const both = [
+		{ id: "a", text: "Merge #58", issues: [58] },
+		{ id: "b", text: "Merge #58 now?", issues: [58] },
+	];
+	// An exact match wins over the longer or shorter neighbour.
+	expect(repliedTo("> re #58: Merge #58 now?\nyes", both)).toEqual(["b"]);
+	expect(repliedTo("> re #58: Merge #58\nyes", both)).toEqual(["a"]);
+	// An edited body narrows to #7 and leaves the decision on #9 alone.
+	const two = [
+		{ id: "x", text: "Ship it on #7?", issues: [7] },
+		{ id: "y", text: "Ship #9 today?", issues: [9] },
+	];
+	expect(repliedTo("> re #7: ship\nok", two)).toEqual(["x"]);
+	// A bare letter matching several decisions closes none; one match is fine.
+	const s = [
+		{ id: "p", text: "skip it?", issues: [] },
+		{ id: "q", text: "ship it?", issues: [] },
+	];
+	expect(repliedTo("> re: s\nok", s)).toEqual([]);
+	expect(repliedTo("> re: sk\nok", s)).toEqual(["p"]);
+});

@@ -382,11 +382,17 @@ async function selectedNeed($: $) {
 	const queue = await waitingDecisions($);
 	return queue[Math.min(await read($, needsCursor), queue.length - 1)];
 }
-/** `d`: take the selected decision off the queue for the session. */
+/** `d`: take the selected decision off the queue, journalling a reply that names it. */
 async function dismissNeed($: $) {
 	const item = await selectedNeed($);
 	if (!item) return;
+	// The instant UI echo; the journalled reply is what survives a resume.
 	await update($, decisionsHandled, (ids) => [...ids, item.id]);
+	if (!(await readScene($)).readOnly)
+		await record($, "reply", undefined, "dismissed", {
+			attribute: false,
+			answered: [item.id],
+		});
 	const length = (await waitingDecisions($)).length;
 	await update($, needsCursor, (at) => moveCursor(at, 0, length));
 	if (!length) await update($, focus, () => "");
