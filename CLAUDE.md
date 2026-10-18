@@ -68,7 +68,7 @@ node --experimental-strip-types scripts/preview.ts --cols 72 --at 80 --story 204
 
 Omit `--out` for stdout. Frames advance by 100 ms and use numbered filenames.
 To see a real team, point `--journal` at a journal directory
-(`~/.claude/bullpen/session-<id>`): it reads every `events-*.jsonl`, keeps the last
+(`~/.claude/bullpen/<session-id>`): it reads every `events-*.jsonl`, keeps the last
 `STATE_EVENTS`, derives members (running if active in the last 60 s) and renders
 `--at` seconds (default 2) after the last event, e.g.
 `timeout 10 node --experimental-strip-types scripts/preview.ts --cols 110 --journal <dir>`.
