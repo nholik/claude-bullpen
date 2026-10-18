@@ -89,8 +89,9 @@ export function argText(args: Record<string, unknown>): string {
  * (view, diff, checks, comment, review, merge...), never an issue, so its `#n`
  * is dropped whatever the verb. A `gh` verb counts only when the command
  * actually runs: shellSegments ignores quoted text and heredoc bodies, and
- * echo/printf are skipped. `#n` refs inside quoted --body text are still
- * scanned (tracked in #120).
+ * echo/printf are skipped. The body of `gh pr comment|review` (-b/--body,
+ * --body-file, heredoc) is only a mention, so those segments keep just the verb
+ * and PR number; `gh pr create` bodies stay (`Closes #n` is ownership).
  */
 export function toolText(args: Record<string, unknown>): string {
 	const command = typeof args.command === "string" ? args.command : "";
@@ -98,6 +99,9 @@ export function toolText(args: Record<string, unknown>): string {
 	const scanned = command
 		? shellSegments(command)
 				.filter((part) => !/^(?:echo|printf)\b/.test(part))
+				.map((part) =>
+					part.replace(/^(gh\s+pr\s+(?:comment|review)\s+)\S*.*$/s, "$1"),
+				)
 				.map((part) => part.replace(/^(gh\s+pr\s+\w+\s+)#(\d+)/, "$1$2"))
 				.join(" ")
 		: argText(args);

@@ -166,6 +166,24 @@ test("gh issue and pr commands name the issue they act on", () => {
 	).toEqual([]);
 });
 
+test("PR comment and review bodies mention issues without owning them", () => {
+	const refs = (command: string) => issueRefs(toolText({ command }));
+	for (const command of [
+		'gh pr comment 62 --body "see #9"',
+		"gh pr comment 62 -b 'see #9; and #10'",
+		'gh pr review 62 --approve --body "fixes #9"',
+		"gh pr comment 62 --body-file notes-#9.md",
+		"gh pr comment 62 -F - <<'EOF'\nsee #9\nEOF",
+		'git push && gh pr review 62 --comment -b "#9 #10"',
+	])
+		expect(refs(command)).toEqual([]);
+	// Other segments of the chain, and `gh pr create` bodies, still count.
+	expect(refs('gh pr comment 62 -b "see #9" && gh issue view 14')).toEqual([
+		14,
+	]);
+	expect(refs('gh pr create --title t --body "Closes #14"')).toEqual([14]);
+});
+
 test("only executed gh commands count, not quoted or heredoc text", () => {
 	for (const command of [
 		'echo "run gh pr merge 5"',
