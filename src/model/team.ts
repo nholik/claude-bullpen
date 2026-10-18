@@ -367,17 +367,25 @@ export function applyEvent(
 	};
 }
 
-/** A `decision` queues one; a `reply` (the person's prompt) answers every open one. */
+/**
+ * A `decision` queues one; a `reply` (the person's prompt) closes only the
+ * decisions it quoted (`answered`). A reply with no ids, as older journals
+ * wrote, closes nothing.
+ */
 function applyDecision(state: TeamState, e: BullpenEvent): TeamState {
-	if (e.kind === "reply")
-		return state.decisions.some((d) => d.open)
+	if (e.kind === "reply") {
+		const ids = e.answered ?? [];
+		return ids.length && state.decisions.some((d) => d.open)
 			? {
 					...state,
 					decisions: state.decisions.map((d) =>
-						d.open && d.at <= e.at ? { ...d, open: false } : d,
+						d.open && d.at <= e.at && ids.includes(d.id)
+							? { ...d, open: false }
+							: d,
 					),
 				}
 			: state;
+	}
 	// A lead restating a decision it already put is not a second one.
 	if (state.decisions.some((d) => d.open && d.text === e.detail)) return state;
 	const same = state.decisions.filter((d) => d.at === e.at).length;

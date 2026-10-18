@@ -47,6 +47,8 @@ export type BullpenEvent = {
 	ownedBy?: "worktree" | "pr";
 	/** On `decision`: the lead's words just before the decision line. */
 	context?: string;
+	/** On `reply`: ids of the decisions the prompt quoted. Older replies have none and close nothing. */
+	answered?: string[];
 };
 
 export type MemberStatus = "running" | "idle" | "gone";

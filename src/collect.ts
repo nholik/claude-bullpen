@@ -76,6 +76,8 @@ export type CollectOp =
 			replyTo?: number;
 			/** On `decision`: the lead's words before the decision line. */
 			context?: string;
+			/** On `reply`: the decisions it quoted. */
+			answered?: string[];
 			/** On `spawn`: the agent type the target was spawned as. */
 			agentType?: string;
 			/** False to leave the member's issue as it is. */
@@ -226,6 +228,7 @@ export function applyBatch(
 						? { owns: op.owns.issue, ownedBy: ownedBy(op.owns) }
 						: {}),
 					...(op.context ? { context: op.context } : {}),
+					...(op.answered ? { answered: op.answered } : {}),
 					...(op.agentType ? { agentType: op.agentType } : {}),
 					...(op.confirmedCloses
 						? { confirmedCloses: op.confirmedCloses }

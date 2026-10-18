@@ -15,8 +15,8 @@ export type DemoStep = {
 		| { kind: "say"; to: string; text: string }
 		/** The lead puts a decision to the person (a `Decision:` line). */
 		| { kind: "decide"; text: string; context: string }
-		/** The person sends a prompt, answering what is open. */
-		| { kind: "reply" }
+		/** The person sends a prompt quoting the decision put at `to` (step time, ms). */
+		| { kind: "reply"; to: number }
 		| { kind: "leave" }
 		| { kind: "advance"; ms: number };
 };
@@ -144,7 +144,7 @@ const finale: { at: number; who: string; do: DemoStep["do"] }[] = [
 			text: "#204 still blocked — need a decision?",
 		},
 	},
-	{ at: 39000, who: LEAD, do: { kind: "reply" } },
+	{ at: 39000, who: LEAD, do: { kind: "reply", to: 17000 } },
 	{
 		at: 40000,
 		who: LEAD,

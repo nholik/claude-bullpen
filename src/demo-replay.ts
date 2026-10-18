@@ -72,7 +72,13 @@ export function demoOps(step: DemoStep, at: number): CollectOp[] {
 				}),
 			];
 		case "reply":
-			return [event("reply", "replied", { attribute: false })];
+			// Decision ids are `d<at>-<n>`; the demo raises one per step time.
+			return [
+				event("reply", "replied", {
+					attribute: false,
+					answered: [`d${demoClock(act.to)}-0`],
+				}),
+			];
 		case "leave":
 			return [
 				{ op: "touch", at, id, patch: { status: "gone" } },

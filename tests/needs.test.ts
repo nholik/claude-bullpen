@@ -4,6 +4,7 @@ import {
 	moveCursor,
 	parseDecisions,
 	quotedPrefix,
+	repliedTo,
 	waiting,
 } from "../src/decisions";
 import { buildModel } from "../src/model";
@@ -79,14 +80,19 @@ test("a decision waits until the person's next prompt; a restated one is not new
 	]);
 	expect(model.decisions[0]?.context).toBe("why");
 	expect(new Set(model.decisions.map((d) => d.id)).size).toBe(2);
+	const ids = model.decisions.map((d) => d.id);
 	const answered = buildModel(
-		[...events, ev(7, "reply", "replied")],
+		[...events, ev(7, "reply", "replied", { answered: ids })],
 		T + 10_000,
 	);
 	expect(answered.decisions).toEqual([]);
 	// A decision raised after the reply is open again.
 	const next = buildModel(
-		[...events, ev(7, "reply", "replied"), ev(9, "decision", "and this?")],
+		[
+			...events,
+			ev(7, "reply", "replied", { answered: ids }),
+			ev(9, "decision", "and this?"),
+		],
 		T + 10_000,
 	);
 	expect(next.decisions.map((d) => d.text)).toEqual(["and this?"]);
@@ -201,13 +207,63 @@ test("Enter leaves the decision queued; the submit's reply closes it, an abandon
 	expect(waiting(queued.decisions, []).length).toBe(1);
 	// Abandoning the draft records nothing: still queued.
 	expect(buildModel(asked, T + 60_000).decisions.length).toBe(1);
-	// Submitting records a reply, which closes it even for a dismissed decision.
+	// Submitting records a reply naming it, which closes it even if dismissed.
 	const submitted = buildModel(
-		[...asked, ev(10, "reply", "replied")],
+		[
+			...asked,
+			ev(10, "reply", "replied", {
+				answered: queued.decisions.map((d) => d.id),
+			}),
+		],
 		T + 20_000,
 	);
 	expect(submitted.decisions).toEqual([]);
 	const [d] = queued.decisions;
 	expect(waiting(queued.decisions, [d?.id ?? ""])).toEqual([]);
 	expect(queued.decisions.length).toBe(1);
+});
+
+const open = [
+	{ id: "d1-0", text: "skip or fix #204?", issues: [204] },
+	{ id: "d2-0", text: "merge #58 now?", issues: [58] },
+];
+
+test("repliedTo finds the decisions a prompt quotes", () => {
+	// One quote, as Enter fills it.
+	expect(repliedTo("> re #204: skip or fix #204?\nfix it", open)).toEqual([
+		"d1-0",
+	]);
+	// Two quotes.
+	expect(
+		repliedTo(
+			"> re #58: merge #58 now?\nyes\n> re #204: skip or fix #204?\nskip",
+			open,
+		),
+	).toEqual(["d2-0", "d1-0"]);
+	// An edited quote body still names its issue, when only one decision has it.
+	expect(repliedTo("> re #58: merge it now, maybe\nyes", open)).toEqual([
+		"d2-0",
+	]);
+	// No quote: a question about something else closes nothing.
+	expect(repliedTo("what's #60 doing?", open)).toEqual([]);
+	// A quote of a decision no longer open (not in the list) closes nothing.
+	expect(repliedTo("> re #99: gone already?\nok", open)).toEqual([]);
+	expect(repliedTo("> re #204: skip or fix #204?", [])).toEqual([]);
+});
+
+test("a reply closes only the decisions it names; an old one with no ids closes none", () => {
+	const events = [
+		ev(0, "decision", "skip or fix #204?"),
+		ev(1, "decision", "merge #58 now?"),
+	];
+	const [a] = buildModel(events, T + 5000).decisions;
+	const model = buildModel(
+		[...events, ev(10, "reply", "replied", { answered: [a?.id ?? ""] })],
+		T + 20_000,
+	);
+	expect(model.decisions.map((d) => d.text)).toEqual(["merge #58 now?"]);
+	expect(
+		buildModel([...events, ev(10, "reply", "replied")], T + 20_000).decisions
+			.length,
+	).toBe(2);
 });

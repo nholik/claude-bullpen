@@ -83,6 +83,35 @@ export function quotedPrefix(d: Queueable): string {
 	return `> re${ref}: ${d.text}\n`;
 }
 
+const QUOTE = /^> re(?: #(\d+))?: (.*)$/gm;
+const plain = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase();
+
+/**
+ * The ids of the open decisions a submitted prompt quotes (`> re #N: text`, as
+ * Enter fills it). A quote matches a decision whose text it equals or starts
+ * with (or that starts with it); an edited body falls back to the quote's issue
+ * ref when that names exactly one open decision. An unquoted prompt answers none.
+ */
+export function repliedTo(
+	text: string,
+	open: readonly { id: string; text: string; issues: readonly number[] }[],
+): string[] {
+	const ids: string[] = [];
+	for (const m of text.matchAll(QUOTE)) {
+		const body = plain(m[2] ?? "");
+		const ref = m[1] ? Number(m[1]) : undefined;
+		const byText = open.filter((d) => {
+			const t = plain(d.text);
+			return body !== "" && (t.startsWith(body) || body.startsWith(t));
+		});
+		const byRef =
+			ref === undefined ? [] : open.filter((d) => d.issues[0] === ref);
+		const found = byText.length ? byText : byRef.length === 1 ? byRef : [];
+		for (const d of found) if (!ids.includes(d.id)) ids.push(d.id);
+	}
+	return ids;
+}
+
 /** Moves a cursor by `by`, kept inside a list of `length`. */
 export function moveCursor(cursor: number, by: number, length: number): number {
 	return length < 1 ? 0 : Math.min(length - 1, Math.max(0, cursor + by));

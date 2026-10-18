@@ -42,9 +42,13 @@ test("MODEL_VERSION fingerprints the reducer's output for the pin journal", asyn
 	expect(state.kickbacks.length).toBeGreaterThan(0);
 	// A reviewer known only by a role-like agent type: a trim would go unnoticed.
 	expect(state.kickbacks.some((k) => k.from === "code-reviewer")).toBe(true);
-	// Two decisions closed by a reply; the one raised after it stays open.
-	expect(state.decisions.filter((d) => !d.open).length).toBe(2);
+	// A reply closes only the decision it quoted; the other, and one raised
+	// after it, stay open.
+	expect(state.decisions.filter((d) => !d.open).map((d) => d.text)).toEqual([
+		"Ship the cache per session or wait for review?",
+	]);
 	expect(state.decisions.filter((d) => d.open).map((d) => d.text)).toEqual([
+		"Cut the second flag?",
 		"Merge #58 now?",
 	]);
 	expect(state.asks.some((a) => a.open)).toBe(true);

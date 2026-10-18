@@ -75,6 +75,7 @@ export const BullpenEventSchema = object({
 	/** What `owns` came from. */
 	ownedBy: optional(picklist(["worktree", "pr"])),
 	context: optional(string()),
+	answered: optional(array(string())),
 });
 
 export type BullpenEvent = InferOutput<typeof BullpenEventSchema>;

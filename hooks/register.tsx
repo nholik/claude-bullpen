@@ -25,6 +25,7 @@ import {
 	moveCursor,
 	parseDecisions,
 	quotedPrefix,
+	repliedTo,
 	waiting,
 } from "../src/decisions";
 import { DEMO_PREFIX, DEMO_SCRIPT, demoClock } from "../src/demo";
@@ -621,6 +622,7 @@ async function record(
 		agentType?: string;
 		owns?: Own;
 		context?: string;
+		answered?: string[];
 	} = {},
 ) {
 	collectorOf($).push({
@@ -636,6 +638,7 @@ async function record(
 		agentType: extra.agentType,
 		owns: extra.owns,
 		context: extra.context,
+		answered: extra.answered,
 		attribute: extra.attribute ?? true,
 	});
 }
@@ -1104,10 +1107,16 @@ export function register(on: On) {
 			void producers
 				.track(
 					(async () => {
-						// Open ones, dismissed or not: the reply answers all of them.
-						if (sceneModel(await readScene($)).decisions.length)
+						// The live decisions, not the demo's or a replay's. A prompt
+						// closes only the ones it quotes; the rest stay open.
+						const open = (await currentModel($)).decisions.filter(
+							(d) => d.open,
+						);
+						const answered = repliedTo(e.text, open);
+						if (answered.length)
 							await record($, "reply", undefined, "replied", {
 								attribute: false,
+								answered,
 							});
 					})(),
 				)
