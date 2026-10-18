@@ -11,10 +11,12 @@ import type {
 } from "../../types";
 import { nextIssue } from "../events";
 import {
+	attributableRefs,
 	closedIssues,
 	isAsk,
 	isKickback,
 	isReviewer,
+	ownedRefs,
 	withdrawsAsk,
 } from "./detect";
 import { applyShip, EMPTY_SHIP, type ShipState } from "./ship";
@@ -183,7 +185,7 @@ export function applyEvent(
 	let issue = actor?.issue;
 	if (spawned === e.who) issue = actor?.issue ?? refs[0];
 	else if (known && e.kind !== "leave" && e.kind !== "answer")
-		issue = nextIssue(e.kind, actor?.issue, refs);
+		issue = nextIssue(e.kind, actor?.issue, attributableRefs(e, refs));
 	let status = actor?.status ?? "running";
 	if (known) status = e.kind === "turn-end" ? "idle" : "running";
 	// A typed leave event is the journal evidence that a member departed.

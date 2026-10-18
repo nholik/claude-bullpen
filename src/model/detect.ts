@@ -96,6 +96,45 @@ const CLOSED = new RegExp(
 	"gi",
 );
 
+// A table cell holding a ref, `| #114 (merged) |`: a report row, not a claim.
+const REPORT_CELL = /\|[^|\n]*#\d{1,7}\b[^|\n]*\|/g;
+// A ref the text itself calls settled: "#114 (merged)", "#12 closed".
+const SETTLED_REF =
+	/#(\d{1,7})\b\s*\(?\s*(?:merged|closed|shipped|done|✓)(?![\w-])/gi;
+
+/**
+ * The refs of a message that can say what its sender is working on. A report
+ * table of PRs lists work, it doesn't claim it, and a ref the message calls
+ * merged or closed is not open work. Drops refs found only in table cells or
+ * settled cues; a ref also named outside them stays.
+ */
+export function ownedRefs(detail: string, refs: readonly number[]): number[] {
+	if (!refs.length) return [];
+	const outside = detail.replace(REPORT_CELL, " ");
+	const inCells = outside !== detail;
+	const named = new Set(
+		[...outside.matchAll(/#(\d{1,7})\b/g)].map((m) => Number(m[1])),
+	);
+	const settled = new Set(
+		[...outside.matchAll(SETTLED_REF)].map((m) => Number(m[1])),
+	);
+	return refs.filter((n) => !settled.has(n) && (!inCells || named.has(n)));
+}
+
+/**
+ * The refs of an event that can say what its sender is working on. The
+ * SendMessage tool call carries the same text as the message event that
+ * follows it, which `ownedRefs` filters, so the call moves no one.
+ */
+export function attributableRefs(
+	e: { kind: string; target?: string; detail: string },
+	refs: readonly number[],
+): number[] {
+	if (e.kind === "message") return ownedRefs(e.detail, refs);
+	if (e.kind === "tool" && e.target === "SendMessage") return [];
+	return [...refs];
+}
+
 /**
  * Issues a message explicitly confirms closed:
  * "closed #208", "#208 shipped", "#208 ✓". Not "closes #208", a PR promising
