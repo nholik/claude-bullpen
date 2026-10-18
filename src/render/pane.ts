@@ -29,6 +29,8 @@ export type PaneOptions = {
 	mode?: "live" | "demo" | "replay";
 	/** Keeps card widths between draws so a resize can tween. */
 	cardWidths?: CardWidthTracker;
+	/** The real clock, for the card tween; `now` may be replayed. */
+	wallNow?: number;
 };
 export function paneView(
 	model: BullpenModel,
@@ -72,6 +74,7 @@ export function paneView(
 			now,
 			options.mode,
 			options.cardWidths,
+			options.wallNow,
 		);
 		return {
 			header: view.header,

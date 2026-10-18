@@ -27,7 +27,8 @@ export function settledCardWidth(leftWidth: number, perRow: number): number {
 
 export type CardWidthTracker = {
 	/**
-	 * The width to draw at `now`, never more than `settled`, so the cards always
+	 * The width to draw at `now` (the real clock, not the scene's, which replay
+	 * clamps), never more than `settled`, so the cards always
 	 * fit their row. When a change in `perRow` makes cards wider (the team
 	 * shrank) they ease from the width on screen; when it makes them narrower
 	 * (the team grew) they snap. A change in `settled` alone (the pane was
@@ -40,8 +41,12 @@ export type CardWidthTracker = {
 		now: number,
 		animations: boolean,
 	): number;
-	/** True while the last sample was mid-tween: the caller keeps redrawing. */
-	moving(): boolean;
+	/**
+	 * True while a tween is still inside its duration on the real clock, whether
+	 * or not anything sampled since: a detached surface or a pane gone compact
+	 * stops being "moving" on time.
+	 */
+	moving(now: number): boolean;
 };
 
 export function createCardWidthTracker(): CardWidthTracker {
@@ -76,7 +81,7 @@ export function createCardWidthTracker(): CardWidthTracker {
 				tween = undefined;
 			return width;
 		},
-		moving: () => tween !== undefined,
+		moving: (now) => tween !== undefined && now - tween.startAt < TWEEN_MS,
 	};
 }
 
@@ -92,7 +97,8 @@ export function createCardWidthTrackers() {
 			}
 			return tracker;
 		},
-		anyMoving: () => [...trackers.values()].some((t) => t.moving()),
+		anyMoving: (now: number) =>
+			[...trackers.values()].some((t) => t.moving(now)),
 		clear: () => trackers.clear(),
 	};
 }

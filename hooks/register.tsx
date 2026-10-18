@@ -352,8 +352,8 @@ async function tickAnimation($: $) {
 const cardWidths = createCardWidthTrackers();
 let tweenTimer: Timer | undefined;
 /** Redraw at 10 Hz while card widths settle, then stop the timer. */
-function followCardTween($: $) {
-	if (!cardWidths.anyMoving()) {
+function followCardTween($: $, wallNow: number) {
+	if (!cardWidths.anyMoving(wallNow)) {
 		tweenTimer?.cancel();
 		tweenTimer = undefined;
 		return;
@@ -361,11 +361,11 @@ function followCardTween($: $) {
 	if (tweenTimer) return;
 	tweenTimer = $.clock.every(TWEEN_REDRAW_MS, () => {
 		void (async () => {
-			if (!cardWidths.anyMoving()) {
+			const at = await now($);
+			if (!cardWidths.anyMoving(at)) {
 				tweenTimer?.cancel();
 				tweenTimer = undefined;
 			}
-			const at = await now($);
 			await update($, viewTime, () => at);
 		})().catch(() => {});
 	});
@@ -1086,6 +1086,7 @@ export function register(on: On) {
 
 		await read($, viewTime);
 		const focused = await read($, focus);
+		const wallNow = await now($);
 		const view = paneView(model, list, columns, e.props.scroll.bodyRows, at, {
 			mode: (await read($, replay))
 				? "replay"
@@ -1098,8 +1099,9 @@ export function register(on: On) {
 			raster: e.surface === "terminal",
 			seenAt: await read($, seenAt),
 			cardWidths: cardWidths.for(e.surface),
+			wallNow,
 		});
-		followCardTween($);
+		followCardTween($, wallNow);
 		const floorHeight = view.floorRows;
 		const titles =
 			source.result?.status === "ok"

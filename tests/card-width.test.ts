@@ -37,9 +37,9 @@ test("settled widths for 1, 2 and 3 cards at 110 and 160 columns", () => {
 test("the first draw and a pure resize snap", () => {
 	const tracker = createCardWidthTracker();
 	expect(tracker.sample(1, 70, 1000, true)).toBe(70);
-	expect(tracker.moving()).toBe(false);
+	expect(tracker.moving(1000)).toBe(false);
 	expect(tracker.sample(1, 60, 1100, true)).toBe(60);
-	expect(tracker.moving()).toBe(false);
+	expect(tracker.moving(1100)).toBe(false);
 });
 
 test("cards ease wider when the team shrinks, and snap narrower when it grows", () => {
@@ -47,10 +47,10 @@ test("cards ease wider when the team shrinks, and snap narrower when it grows", 
 	tracker.sample(2, 35, 1000, true);
 	// Growing 2 -> 3 cards: never wider than what fits the row, no tween.
 	expect(tracker.sample(3, 23, 2000, true)).toBe(23);
-	expect(tracker.moving()).toBe(false);
+	expect(tracker.moving(2000)).toBe(false);
 	// Shrinking 3 -> 1: ease from 23 up to 70, monotonic and capped.
 	expect(tracker.sample(1, 70, 3000, true)).toBe(23);
-	expect(tracker.moving()).toBe(true);
+	expect(tracker.moving(3000)).toBe(true);
 	const samples: number[] = [];
 	for (let t = 3000; t <= 3000 + TWEEN_MS; t += 100)
 		samples.push(tracker.sample(1, 70, t, true));
@@ -62,7 +62,7 @@ test("cards ease wider when the team shrinks, and snap narrower when it grows", 
 	expect((samples[1] ?? 0) - (samples[0] ?? 0)).toBeLessThan(
 		(samples[2] ?? 0) - (samples[1] ?? 0),
 	);
-	expect(tracker.moving()).toBe(false);
+	expect(tracker.moving(3000 + TWEEN_MS)).toBe(false);
 	expect(tracker.sample(1, 70, 9000, true)).toBe(70);
 });
 
@@ -80,16 +80,16 @@ test("animations off snaps every change", () => {
 	const tracker = createCardWidthTracker();
 	tracker.sample(3, 23, 0, false);
 	expect(tracker.sample(1, 70, 1000, false)).toBe(70);
-	expect(tracker.moving()).toBe(false);
+	expect(tracker.moving(1000)).toBe(false);
 	expect(tracker.sample(3, 23, 1010, false)).toBe(23);
-	expect(tracker.moving()).toBe(false);
+	expect(tracker.moving(1010)).toBe(false);
 });
 
 test("time running backwards snaps instead of replaying a tween", () => {
 	const tracker = createCardWidthTracker();
 	tracker.sample(3, 23, 5000, true);
 	expect(tracker.sample(1, 70, 100, true)).toBe(70);
-	expect(tracker.moving()).toBe(false);
+	expect(tracker.moving(100)).toBe(false);
 });
 
 test("the Studio never wraps a card to a new row mid-tween", () => {
@@ -145,10 +145,30 @@ test("surfaces keep separate trackers and the set stays moving until all settle"
 	set.for("desktop").sample(1, 70, 0, true);
 	expect(set.for("terminal").sample(1, 70, 1000, true)).toBe(23);
 	expect(set.for("desktop").sample(1, 70, 1000, true)).toBe(70);
-	expect(set.anyMoving()).toBe(true);
+	expect(set.anyMoving(1000)).toBe(true);
 	expect(set.for("terminal").sample(1, 70, 1500, true)).toBe(70);
 	expect(set.for("desktop").sample(1, 70, 1500, true)).toBe(70);
-	expect(set.anyMoving()).toBe(false);
+	expect(set.anyMoving(1500)).toBe(false);
 	set.clear();
-	expect(set.anyMoving()).toBe(false);
+	expect(set.anyMoving(1500)).toBe(false);
+});
+
+test("moving is time-based: it ends on the real clock without another sample", () => {
+	// A surface that detaches, or a pane gone compact or empty, never samples again.
+	const set = createCardWidthTrackers();
+	set.for("desktop").sample(3, 23, 0, true);
+	set.for("desktop").sample(1, 70, 1000, true);
+	expect(set.anyMoving(1000)).toBe(true);
+	expect(set.anyMoving(1000 + TWEEN_MS - 1)).toBe(true);
+	expect(set.anyMoving(1000 + TWEEN_MS)).toBe(false);
+});
+
+test("a replay whose scene time stops still settles, because the tween follows the real clock", () => {
+	// The pane passes the real clock to sample(); the scene's clamped time never reaches it.
+	const tracker = createCardWidthTracker();
+	tracker.sample(3, 23, 5000, true);
+	expect(tracker.sample(1, 70, 6000, true)).toBe(23);
+	expect(tracker.moving(6100)).toBe(true);
+	expect(tracker.sample(1, 70, 6000 + TWEEN_MS, true)).toBe(70);
+	expect(tracker.moving(6000 + TWEEN_MS)).toBe(false);
 });

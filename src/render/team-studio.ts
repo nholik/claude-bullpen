@@ -200,6 +200,7 @@ export function teamStudioView(
 	now: number,
 	mode: "live" | "demo" | "replay" = "live",
 	cardWidths?: CardWidthTracker,
+	wallNow = now,
 ): { header: Line[]; regions: Line[] } {
 	const urgency = (m: Teammate) =>
 		model.asks.some((a) => a.open && a.from === m.name)
@@ -281,7 +282,7 @@ export function teamStudioView(
 	const cardWidth =
 		compact || !cardWidths || !shown.length
 			? settled
-			: cardWidths.sample(perRow, settled, now, profile.animations);
+			: cardWidths.sample(perRow, settled, wallNow, profile.animations);
 	const left: Line[] = shippingSection(
 		model,
 		github,
