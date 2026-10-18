@@ -13,13 +13,37 @@ export function withoutCd(command: string): string {
 	return rest.trim();
 }
 
+const HEREDOC = /(?<!<)<<(?!<)-?\s*(["']?)([A-Za-z_]\w*)\1/;
+
+/**
+ * The command without heredoc bodies: their lines are data (a commit message,
+ * a script piped to a tool), not commands. Walks the lines once, so it always
+ * ends.
+ */
+function withoutHeredocs(command: string): string {
+	const kept: string[] = [];
+	let end: string | undefined;
+	for (const line of command.split("\n")) {
+		if (end !== undefined) {
+			if (line.trim() === end) end = undefined;
+			continue;
+		}
+		kept.push(line);
+		const m = HEREDOC.exec(line);
+		// A `<<` after an unclosed quote is text, not a redirection.
+		const quotes = m ? line.slice(0, m.index).match(/["']/g)?.length : 0;
+		if (m?.[2] && !((quotes ?? 0) % 2)) end = m[2];
+	}
+	return kept.join("\n");
+}
+
 /** The chain's segments, minus env assignments and output plumbing. */
 export function shellSegments(command: string): string[] {
 	const parts: string[] = [];
 	let part = "",
 		quote = "",
 		escaped = false;
-	for (const ch of withoutCd(command).replace(/…$/, "")) {
+	for (const ch of withoutHeredocs(withoutCd(command)).replace(/…$/, "")) {
 		if (escaped) {
 			part += ch;
 			escaped = false;

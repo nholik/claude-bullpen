@@ -1,4 +1,5 @@
 import { expect, test } from "claude-code/testing";
+import { mergedPrs } from "../src/command";
 import { issueRefs, toolText } from "../src/events";
 import { readJournal, toLine } from "../src/journal";
 import { buildModel } from "../src/model";
@@ -129,6 +130,18 @@ test("a spawn brief assigns one issue, ignoring quoted examples and round lists"
 		["No refs at all", undefined],
 		["Do not work on #12", undefined],
 		["Do not work on #12. Work on #14.", 14],
+		["Don't touch #12. Work on #14.", 14],
+		["Not #12", undefined],
+		["Leave #12 alone", undefined],
+		["Leave #12 alone. Your issue is #14.", 14],
+		["#12 is someone else's", undefined],
+		["#12 is someone else's. Take #14.", 14],
+		["Your issue is #13, not #12", 13],
+		["Fix #13 without stepping on another builder's files.", 13],
+		["Implement #13 so other agents can see it.", 13],
+		["Work on #13 and leave a comment on #13 when done.", 13],
+		["Your issue is #13 (#12 is someone else's).", 13],
+		["Work on #13 (not #12)", 13],
 	] as const)
 		expect(briefIssue(brief)).toBe(expected);
 });
@@ -150,4 +163,34 @@ test("gh issue and pr commands name the issue they act on", () => {
 	expect(
 		issueRefs(toolText({ command: "gh pr comment #62 --body hi" })),
 	).toEqual([]);
+});
+
+test("only executed gh commands count, not quoted or heredoc text", () => {
+	for (const command of [
+		'echo "run gh pr merge 5"',
+		'git commit -m "gh pr merge 5"',
+		'git commit -m "x\ngh pr merge 5"',
+		"git commit -F - <<'EOF'\nmerge it\ngh pr merge 5\nEOF",
+		"cat <<EOF\ngh issue close 8\nEOF",
+	]) {
+		expect(mergedPrs(command)).toEqual([]);
+		expect(ghTargets(command)).toEqual([]);
+	}
+	expect(mergedPrs("cat <<EOF\nx\nEOF\ngh pr merge 5")).toEqual([5]);
+	expect(mergedPrs("git push && gh pr merge 5; echo done")).toEqual([5]);
+	expect(mergedPrs("git push | cat\ngh pr merge 6")).toEqual([6]);
+	expect(ghTargets("cat <<EOF\nx\nEOF\ngh issue view 9")).toEqual([9]);
+	expect(mergedPrs("wc -w <<< hello\ngh pr merge 5")).toEqual([5]);
+	// An unterminated heredoc ends the scan instead of looping.
+	expect(mergedPrs("cat <<EOF\ngh pr merge 5")).toEqual([]);
+});
+
+test("non-ownership gh pr verbs do not attribute their PR number", () => {
+	for (const verb of ["comment", "view", "diff", "checks", "review"])
+		expect(
+			issueRefs(toolText({ command: `gh pr ${verb} #62 --repo a/b` })),
+		).toEqual([]);
+	expect(
+		issueRefs(toolText({ command: "git push && gh issue edit 12 --title x" })),
+	).toEqual([12]);
 });
