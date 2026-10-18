@@ -84,6 +84,7 @@ import { fit, glyphLines, type Line, wrapText } from "../src/render/lines";
 import { type Focus, paneView } from "../src/render/pane";
 import { storyFor, storyLines } from "../src/render/story";
 import { replayAt } from "../src/replay";
+import { atTail, type RowStart, reanchor, rowStarts } from "../src/scroll";
 import { join } from "../src/vendor/pathe.js";
 import type { BullpenEventKind, Member, Profile } from "../types";
 
@@ -449,13 +450,20 @@ async function tick($: $) {
 }
 const focus = atom({ plugin: "bullpen", key: "focus" } as const, "");
 const viewTime = atom({ plugin: "bullpen", key: "viewTime" } as const, 0);
+/** Pin the talk list to its newest message; the engine keeps up as it grows. */
+function followTail($: $) {
+	void $.ui.scroll({ in: PANE, to: "end" }).catch(() => {});
+}
 async function focusRegion($: $, region: Focus | "") {
 	await update($, focus, (current) => (current === region ? "" : region));
-	if (region === "talk") {
+	if (region === "talk" && (await read($, focus)) === "talk") {
 		const at = await now($);
 		await update($, seenAt, () => at);
+		followTail($);
 	}
 }
+/** The talk list as last drawn: where each message starts, and the tree's height. */
+let talkLayout: { starts: RowStart[]; rows: number } | undefined;
 const seenAt = atom({ plugin: "bullpen", key: "hallwaySeenAt" } as const, -1);
 
 function renderLines(
@@ -469,7 +477,7 @@ function renderLines(
 ) {
 	const { Box, Button } = ui;
 	return lines.map((line, index) => (
-		<Box>
+		<Box key={line[0]?.key}>
 			{line.map((seg, j) => {
 				const text = (
 					<Text
@@ -893,7 +901,14 @@ async function ensureLive($: $, rearm = true) {
 async function openPane($: $) {
 	const at = (await readScene($)).now;
 	await update($, seenAt, () => at);
-	return $.ui.open({ id: PANE, title: "Bullpen", columns: 160, rows: 40 });
+	const opened = await $.ui.open({
+		id: PANE,
+		title: "Bullpen",
+		columns: 160,
+		rows: 40,
+	});
+	if ((await read($, focus)) === "talk") followTail($);
+	return opened;
 }
 
 export function register(on: On) {
@@ -1200,6 +1215,23 @@ export function register(on: On) {
 		return result;
 	});
 
+	// The person's scroll in the talk list: back at the bottom, follow new messages again.
+	on(
+		"ui.scroll",
+		{ component: "Pane", requestId: PANE },
+		async ($, e, next) => {
+			const result = await next(e);
+			try {
+				if (
+					e.origin.kind === "person" &&
+					(await read($, focus)) === "talk" &&
+					atTail(e.offset, e.bodyRows, e.contentRows)
+				)
+					followTail($);
+			} catch {}
+			return result;
+		},
+	);
 	on("ui.render", { component: "Pane", requestId: PANE }, async ($, e) => {
 		void ensureLive($).catch(() => {});
 		const { Box, Text, Button } = $.ui.resolve(e);
@@ -1240,6 +1272,28 @@ export function register(on: On) {
 			wallNow,
 		});
 		followCardTween($, wallNow);
+		if (focused === "talk") {
+			// Once the hallway is full each arrival drops its oldest message from
+			// the top; a window scrolled up keeps its row, so put it back on its message.
+			const starts = rowStarts(view.regions, view.header.length);
+			const key = talkLayout
+				? reanchor(
+						talkLayout.starts,
+						starts,
+						e.props.scroll.offset,
+						e.props.scroll.bodyRows,
+						talkLayout.rows,
+					)
+				: undefined;
+			talkLayout = {
+				starts,
+				rows: view.header.length + view.regions.length + view.footer.length,
+			};
+			if (key)
+				void $.ui
+					.scroll({ in: PANE, to: { key }, block: "start" })
+					.catch(() => {});
+		} else talkLayout = undefined;
 		const floorHeight = view.floorRows;
 		const titles =
 			source.result?.status === "ok"
