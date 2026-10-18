@@ -49,6 +49,7 @@ function fingerprint(text: string): string {
 const FINGERPRINTS: Record<number, string> = {
 	1: "a6d1d7d2",
 	2: "a6d1d7d2",
+	3: "a6d1d7d2",
 };
 
 test("reducer output is pinned to MODEL_VERSION", async () => {

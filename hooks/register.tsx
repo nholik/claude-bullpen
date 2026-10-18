@@ -57,6 +57,7 @@ import {
 	STATE_EVENTS,
 	toLine,
 } from "../src/journal";
+import { recheckDelay } from "../src/liveness";
 import {
 	type BullpenModel,
 	buildModel,
@@ -70,6 +71,7 @@ import { createMotion, motionFor } from "../src/motion";
 import {
 	DEFAULT_PROFILE,
 	parseProfile,
+	roleNames,
 	withMemberColors,
 } from "../src/profile";
 import {
@@ -417,6 +419,7 @@ let lastClockMs = 0;
 let lastBeatAt = 0;
 let lastTimerStartAt = 0;
 let lastEnsureAt = 0;
+let recheckTimer: Timer | undefined;
 const ENSURE_MS = 2000;
 const BEAT_GRACE_MS = 5000;
 /** When state last gained events, and when viewTime last ticked. */
@@ -862,7 +865,7 @@ function startTimers($: $) {
  * for changed modules, so the timers can die while the pane stays open. Called
  * from render and from observers: restarts whatever has stopped beating.
  */
-async function ensureLive($: $) {
+async function ensureLive($: $, rearm = true) {
 	const at = await now($);
 	lastClockMs = at;
 	if (at - lastEnsureAt < ENSURE_MS) return;
@@ -870,6 +873,22 @@ async function ensureLive($: $) {
 	const viewDead =
 		!viewTimer || at - Math.max(lastBeatAt, lastTimerStartAt) > BEAT_GRACE_MS;
 	if (viewDead) startTimers($);
+	else if (rearm) {
+		// Beating inside the grace may be a cancelled timer that has not yet
+		// aged out: look once more just past it. One pending recheck at most, and
+		// the recheck itself never arms another (ticks beat every second).
+		const delay = recheckDelay(at, lastBeatAt, lastTimerStartAt, BEAT_GRACE_MS);
+		// A reload may have killed the pending wait without clearing the handle,
+		// so never trust it: cancel (harmless on a dead handle) and replace.
+		if (delay !== undefined) {
+			recheckTimer?.cancel();
+			recheckTimer = $.clock.after(delay, () => {
+				recheckTimer = undefined;
+				lastEnsureAt = 0;
+				void ensureLive($, false).catch(() => {});
+			});
+		}
+	}
 	if (!pollLoop || pollLoop.stalled(at))
 		startPolling($, (await read($, profile)).issues.pollSeconds);
 }
@@ -933,6 +952,8 @@ export function register(on: On) {
 		cardWidths.clear();
 		viewTimer?.cancel();
 		viewTimer = undefined;
+		recheckTimer?.cancel();
+		recheckTimer = undefined;
 		reconcileTimer?.cancel();
 		reconcileTimer = undefined;
 		pollLoop?.cancel();
@@ -1199,6 +1220,7 @@ export function register(on: On) {
 		const at = snapshot.now;
 		const model = sceneModel(snapshot, {
 			github: source,
+			roles: roleNames(config, list),
 			present: Object.fromEntries(list.map((m) => [m.name, m.status])),
 			agentTypes: Object.fromEntries(
 				list.flatMap((m) => (m.agentType ? [[m.name, m.agentType]] : [])),
@@ -1459,8 +1481,16 @@ export function register(on: On) {
 		);
 		if (e.props.hasSurvey || list.length === 0) return next(e);
 		const { Box, Text, Button } = $.ui.resolve(e);
+		const config =
+			(await read($, demoStart)) >= 0
+				? demoProfile(await read($, profile))
+				: withMemberColors(
+						await read($, profile),
+						Object.values(snapshot.members),
+					);
 		const model = sceneModel(snapshot, {
 			github: snapshot.github,
+			roles: roleNames(config, list),
 			present: Object.fromEntries(
 				Object.values(snapshot.members).map((m) => [m.name, m.status]),
 			),
@@ -1468,12 +1498,7 @@ export function register(on: On) {
 		const line = band(
 			model,
 			snapshot.github,
-			(await read($, demoStart)) >= 0
-				? demoProfile(await read($, profile))
-				: withMemberColors(
-						await read($, profile),
-						Object.values(snapshot.members),
-					),
+			config,
 			e.props.bodyColumns,
 			await read($, seenAt),
 		);
