@@ -1119,7 +1119,7 @@ export function register(on: On) {
 	});
 
 	on("ui.render", { component: "Pane", requestId: PANE }, async ($, e) => {
-		await ensureLive($).catch(() => {});
+		void ensureLive($).catch(() => {});
 		const { Box, Text, Button } = $.ui.resolve(e);
 		const snapshot = await readScene($);
 		const list = Object.values(snapshot.members);
