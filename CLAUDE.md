@@ -98,6 +98,7 @@ The team runs on one laptop. Keep it cool:
 
 - `main` is protected by convention: work on a branch `<issue>-<slug>` (e.g. `12-journal`),
   in a git worktree under `.worktrees/` (gitignored), and open a PR that says `Closes #<issue>`.
+- No stacked PRs: squash merges conflict with stacks. Start dependent work after the base PR merges.
 - On each PR the lead comments `@codex review` to get a Codex review, plus our own gate
   review; merge when both are satisfied and `npm run check` is green.
 - Review triage: fix P0/P1 findings before merging. P2+ findings become follow-up issues (link
