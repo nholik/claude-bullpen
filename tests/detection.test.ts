@@ -187,6 +187,26 @@ test("PR comment and review bodies mention issues without owning them", () => {
 	expect(refs('gh pr create --title t --body "Closes #14"')).toEqual([14]);
 });
 
+test("issue comment and api comment bodies mention issues without owning them", () => {
+	const refs = (command: string) => issueRefs(toolText({ command }));
+	expect(refs('gh issue comment 14 --body "see #9"')).toEqual([14]);
+	expect(refs("gh issue comment #14 -b 'see #9; and #10'")).toEqual([14]);
+	expect(refs('gh api repos/o/r/issues/62/comments -f body="see #9"')).toEqual(
+		[],
+	);
+	expect(
+		refs(
+			'gh api repos/o/r/issues/62/comments -f body="#9" && gh issue view 14',
+		),
+	).toEqual([14]);
+	for (const flag of ["-X POST", "--method POST"])
+		expect(
+			refs(`gh api ${flag} repos/o/r/issues/62/comments -f body="see #9"`),
+		).toEqual([]);
+	// Other issue verbs are unchanged.
+	expect(refs("gh issue view 14")).toEqual([14]);
+});
+
 test("only executed gh commands count, not quoted or heredoc text", () => {
 	for (const command of [
 		'echo "run gh pr merge 5"',

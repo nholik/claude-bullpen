@@ -8,10 +8,12 @@ import { STATE_EVENTS } from "../journal";
 import { applyEvent, reduceEvents, type TeamState } from "./team";
 
 /**
- * Bump whenever a change to the reducer (`team.ts`, `detect.ts`, `ship.ts`)
- * changes what it produces for the same events. `tests/model-version.test.ts`
- * pins the reducer's output for the fixtures to this number and fails when the
- * output moves without a bump.
+ * Bump whenever a change to the reducer (`team.ts`, `ship.ts`, and the
+ * `detect.ts` functions they call) changes what it produces for the same
+ * events. A parser that runs only when recording (`toolText`, `briefIssue`) does
+ * not count: it shapes new events, and stored ones keep their refs.
+ * `tests/model-version.test.ts` pins the reducer's output for the fixtures to
+ * this number and fails when the output moves without a bump.
  */
 export const MODEL_VERSION = 5;
 
