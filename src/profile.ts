@@ -232,11 +232,16 @@ export function roleFor(name: string, profile: Profile): Role | undefined {
 	return undefined;
 }
 
-/** Team name → declared role, for the entries that name one (the model's `roles` option). */
-export function roleNames(profile: Profile): Record<string, string> {
+/** Team name → declared role for each name that has one, matched like `roleFor` (the model's `roles` option). */
+export function roleNames(
+	profile: Profile,
+	names: readonly string[],
+): Record<string, string> {
 	const out: Record<string, string> = {};
-	for (const [name, r] of Object.entries(profile.roles))
-		if (r.role !== undefined) out[name] = r.role;
+	for (const name of names) {
+		const role = roleFor(name, profile)?.role;
+		if (role !== undefined) out[name] = role;
+	}
 	return out;
 }
 

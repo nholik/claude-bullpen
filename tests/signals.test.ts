@@ -502,10 +502,38 @@ test("a reviewer known only through the profile's roles is not a waiting builder
 	// Unknown to the model, it reads as a builder waiting on review.
 	expect(card({}).includes("waiting on review")).toBe(true);
 	// Known through the profile, it is a finished reviewer.
-	const roles = roleNames(profile);
+	const roles = roleNames(profile, [who]);
 	expect(roles).toEqual({ [who]: "reviewer" });
 	expect(
 		buildModel(events, idle, { agentTypes, roles }).stuck?.[who],
 	).toBeUndefined();
 	expect(card(roles, profile).includes("waiting on review")).toBe(false);
+});
+
+test("an idle profile-role reviewer on an issue with no PR is done, not stuck or idling", () => {
+	const idle = 20 * minute;
+	const who = "checker";
+	const events = [
+		event("tool", 0, { who }),
+		event("tool", 0, { who: "builder", agentId: "b" }),
+		event("turn-end", 1, { who }),
+	];
+	const agentTypes = { [who]: "general-purpose" };
+	const build = (roles: Record<string, string>) =>
+		buildModel(events, idle, { agentTypes, roles });
+
+	const bare = build({});
+	expect(bare.stuck?.[who]).toBe("idle with open work 19m");
+	expect(bare.morale.factors.idle).toContain(who);
+
+	// The profile key may differ in case from the teammate's name.
+	const profile = {
+		...DEFAULT_PROFILE,
+		roles: { Checker: { role: "reviewer" } },
+	};
+	const roles = roleNames(profile, [who, "builder"]);
+	expect(roles).toEqual({ [who]: "reviewer" });
+	const known = build(roles);
+	expect(known.stuck?.[who]).toBeUndefined();
+	expect(known.morale.factors.idle).not.toContain(who);
 });
