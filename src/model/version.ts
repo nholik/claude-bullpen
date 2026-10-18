@@ -5,7 +5,7 @@
 
 import type { BullpenEvent, TeamSnapshot } from "../../types";
 import { STATE_EVENTS } from "../journal";
-import { reduceEvents, type TeamState } from "./team";
+import { applyEvent, reduceEvents, type TeamState } from "./team";
 
 /**
  * Bump whenever a change to the reducer (`team.ts`, `detect.ts`, `ship.ts`)
@@ -37,4 +37,36 @@ export function ensureState(
 		version: MODEL_VERSION,
 		rebuilt: true,
 	};
+}
+
+/**
+ * The state after a batch: `ensureState` first, then `added` folded onto the
+ * result, so a batch arriving in the same pass as a rebuild isn't lost.
+ * `events` is the window before `added`.
+ */
+export function foldBatch(
+	state: TeamSnapshot | null,
+	stamped: number,
+	events: readonly BullpenEvent[],
+	added: readonly BullpenEvent[],
+	force = false,
+): { state: TeamSnapshot; version: number; rebuilt: boolean } {
+	const out = ensureState(state, stamped, events, force);
+	return {
+		...out,
+		state: added.reduce((acc, event) => applyEvent(acc, event), out.state),
+	};
+}
+
+/**
+ * The state for drawing: the stored one when current, else an in-memory
+ * rebuild. Pure, so `derive` can cache it by its sources' versions and a
+ * second read at the same versions doesn't rebuild.
+ */
+export function stateFor(
+	state: TeamSnapshot | null,
+	stamped: number,
+	events: readonly BullpenEvent[],
+): TeamSnapshot {
+	return state && stamped === MODEL_VERSION ? state : rebuildState(events);
 }

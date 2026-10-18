@@ -30,7 +30,13 @@ export {
 	withPresence,
 } from "./team";
 export type * from "./types";
-export { ensureState, MODEL_VERSION, rebuildState } from "./version";
+export {
+	ensureState,
+	foldBatch,
+	MODEL_VERSION,
+	rebuildState,
+	stateFor,
+} from "./version";
 
 /** The hallway stays awake this long after the last message. */
 export const HALLWAY_LIVE_MS = 3 * 60_000;

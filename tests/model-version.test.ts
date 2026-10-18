@@ -3,17 +3,19 @@ import { expect, test } from "claude-code/testing";
 import { readJournal, STATE_EVENTS } from "../src/journal";
 import {
 	ensureState,
+	foldBatch,
 	MODEL_VERSION,
 	rebuildState,
 	reduceEvents,
+	stateFor,
 } from "../src/model";
 import type { BullpenEvent } from "../types";
 import demoJournal from "./fixtures/demo";
-import roughJournal from "./fixtures/rough-day";
+import pinJournal from "./fixtures/model-pin";
 
 const T = Date.UTC(2026, 9, 17, 14, 0, 0);
 const demo = readJournal(demoJournal).events;
-const rough = readJournal(roughJournal).events;
+const pin = readJournal(pinJournal).events;
 
 const ev = (
 	minutes: number,
@@ -45,13 +47,15 @@ function fingerprint(text: string): string {
 // events. Bump MODEL_VERSION (src/model/version.ts) and add the new
 // fingerprint here under the new number. Keep the old entries.
 const FINGERPRINTS: Record<number, string> = {
-	1: "aeeada04",
+	1: "a6d1d7d2",
 };
 
 test("reducer output is pinned to MODEL_VERSION", async () => {
-	const seen = fingerprint(
-		JSON.stringify([reduceEvents(demo), reduceEvents(rough)]),
-	);
+	const state = reduceEvents(pin);
+	// The fixture must keep exercising the rules the version guards.
+	expect(state.asks.length).toBeGreaterThan(0);
+	expect(Object.keys(state.ship.paths).length).toBeGreaterThan(0);
+	const seen = fingerprint(JSON.stringify(state));
 	expect(FINGERPRINTS[MODEL_VERSION]).toBe(seen);
 });
 
@@ -102,4 +106,26 @@ test("a rebuild folds at most STATE_EVENTS events", async () => {
 	);
 	expect(rebuildState(many)).toEqual(reduceEvents(many.slice(-STATE_EVENTS)));
 	expect(rebuildState([])).toEqual(reduceEvents([]));
+});
+
+test("a batch added in the same pass as a rebuild survives it", async () => {
+	const before = demo.slice(0, 10);
+	const added = [ev(500, "w", "message", "#9 PASS", { issues: [9] })];
+	const stale = reduceEvents(before);
+	const out = foldBatch(stale, MODEL_VERSION - 1, before, added);
+	expect(out.rebuilt).toBe(true);
+	expect(out.state).toEqual(reduceEvents([...before, ...added]));
+	const forced = foldBatch(stale, MODEL_VERSION, before, added, true);
+	expect(forced.state).toEqual(out.state);
+	const kept = foldBatch(stale, MODEL_VERSION, before, added);
+	expect(kept.rebuilt).toBe(false);
+	expect(kept.state).toEqual(reduceEvents([...before, ...added]));
+});
+
+test("drawing reads the stored state when current and rebuilds in memory when stale", async () => {
+	const events = demo.slice(0, 10);
+	const stored = reduceEvents(events);
+	expect(stateFor(stored, MODEL_VERSION, events)).toBe(stored);
+	expect(stateFor(stored, MODEL_VERSION - 1, events)).toEqual(stored);
+	expect(stateFor(null, MODEL_VERSION, events)).toEqual(stored);
 });

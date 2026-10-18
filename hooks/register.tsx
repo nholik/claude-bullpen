@@ -9,7 +9,7 @@ import type {
 	TextProps,
 	Timer,
 } from "claude-code";
-import { atom, read, update } from "claude-code";
+import { atom, derive, read, update } from "claude-code";
 import {
 	applyBatch,
 	Batcher,
@@ -58,13 +58,12 @@ import {
 	toLine,
 } from "../src/journal";
 import {
-	applyEvent,
 	type BullpenModel,
 	buildModel,
-	ensureState,
+	foldBatch,
 	MODEL_VERSION,
 	modelOf,
-	rebuildState,
+	stateFor,
 } from "../src/model";
 import { briefIssue, confirmedToolCloses } from "../src/model/detect";
 import { createMotion, motionFor } from "../src/motion";
@@ -83,7 +82,7 @@ import { type Focus, paneView } from "../src/render/pane";
 import { storyFor, storyLines } from "../src/render/story";
 import { replayAt } from "../src/replay";
 import { join } from "../src/vendor/pathe.js";
-import type { BullpenEventKind, Member, Profile, TeamSnapshot } from "../types";
+import type { BullpenEventKind, Member, Profile } from "../types";
 
 const PANE = "bullpen";
 const STORY = "bullpen-story";
@@ -173,37 +172,35 @@ async function readScene($: $) {
 	};
 }
 
-/** The rebuild `currentModel` made for a stale state, so drawing doesn't repeat it. */
-let renderRebuild: { events: unknown; state: TeamSnapshot } | undefined;
-
 /**
  * The reduced state for drawing. Drawing can't write `$.state`, so a state
- * left stale by a hot reload is rebuilt in memory (once per event list)
- * until `ensureModel` stores the rebuild from a handler.
+ * left stale by a hot reload is rebuilt in memory, cached by the versions of
+ * its three sources, until `syncModel` stores the rebuild from the collector.
  */
+const currentState = derive(
+	[teamModel, modelVersion, events],
+	(state, stamped, list) => stateFor(state, stamped, list),
+);
+
 async function currentModel($: $) {
-	const state = await read($, teamModel);
-	if (state && (await read($, modelVersion)) === MODEL_VERSION) return state;
-	const list = await read($, events);
-	if (renderRebuild?.events !== list)
-		renderRebuild = { events: list, state: rebuildState(list) };
-	return renderRebuild.state;
+	return read($, currentState);
 }
 
 /**
- * Keeps the stored reduced state in step with the reducer: after a hot reload
- * that changed model code (or `/bullpen reload`, `force`) it is rebuilt from
- * the event window, so stale asks and ship paths don't outlive their rules.
- * Writes state, so call it from handlers and timers, never from drawing.
+ * Keeps the stored reduced state in step with the reducer and folds `added`
+ * onto it: after a hot reload that changed model code (or `/bullpen reload`,
+ * `force`) the state is rebuilt from the event window, so stale asks and ship
+ * paths don't outlive their rules. Writes state, so it runs only inside the
+ * collector's flush, where it can't race a batch.
  */
-async function ensureModel($: $, force = false) {
-	const stamped = await read($, modelVersion);
+async function syncModel($: $, added: readonly BullpenEvent[], force: boolean) {
 	const state = await read($, teamModel);
-	if (state && stamped === MODEL_VERSION && !force) return state;
-	const out = ensureState(state, stamped, await read($, events), force);
+	const stamped = await read($, modelVersion);
+	if (added.length === 0 && state && stamped === MODEL_VERSION && !force)
+		return;
+	const out = foldBatch(state, stamped, await read($, events), added, force);
 	await update($, teamModel, () => out.state);
 	await update($, modelVersion, () => out.version);
-	return out.state;
 }
 
 function sceneModel(
@@ -542,11 +539,12 @@ async function flushState($: $, ops: CollectOp[]) {
 		added = out.events;
 		return out.members;
 	});
-	if (added.length === 0) return;
-	const prior = await ensureModel($);
-	await update($, teamModel, () =>
-		added.reduce((state, event) => applyEvent(state, event), prior),
+	await syncModel(
+		$,
+		added,
+		ops.some((op) => op.op === "rebuild"),
 	);
+	if (added.length === 0) return;
 	lastActivityAt = await now($);
 	await update($, events, (list) =>
 		[...(list ?? []), ...added].slice(-STATE_EVENTS),
@@ -677,7 +675,6 @@ async function record(
 async function reconcile($: $) {
 	const listed = await $.agent.list();
 	collectorOf($).push({ op: "reconcile", at: await now($), listed });
-	await ensureModel($);
 }
 
 /** Polls `gh` for the issue list and adds a burndown point to `$.store`. */
@@ -1013,7 +1010,7 @@ export function register(on: On) {
 		}
 		if (e.args.trim() === "reload") {
 			await loadProfile($);
-			await ensureModel($, true);
+			collectorOf($).push({ op: "rebuild" });
 			return {
 				text: "Bullpen: reloaded .claude/bullpen.json and rebuilt the team state.",
 			};
