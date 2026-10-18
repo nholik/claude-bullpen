@@ -18,7 +18,7 @@ function pr(
 		tip?: string;
 		mergeable?: string;
 		ci?: string | null;
-		comments?: string[];
+		comments?: (string | { body: string; by: string })[];
 		threads?: Thread[];
 		moreThreads?: boolean;
 		title?: string;
@@ -43,10 +43,10 @@ function pr(
 			],
 		},
 		comments: {
-			nodes: (over.comments ?? [`Gate: PASS ${head}\nChecked.`]).map(
-				(body) => ({
-					body,
-				}),
+			nodes: (over.comments ?? [`Gate: PASS ${head}\nChecked.`]).map((c) =>
+				typeof c === "string"
+					? { body: c, authorAssociation: "OWNER" }
+					: { body: c.body, authorAssociation: c.by },
 			),
 		},
 		reviewThreads: {
@@ -65,7 +65,7 @@ const wrap = (nodes: unknown[]) =>
 
 export const READY_ONLY = wrap([pr(201)]);
 
-/** One PR per way of not being ready, then the ready ones (#210 and #211). */
+/** One PR per way of not being ready, then the ready ones (#210, #211 and #214). */
 export const MIXED = wrap([
 	pr(202, { comments: [`Gate: PASS ${OLD}\nChecked.`] }),
 	pr(203, { comments: ["Looks fine to me."] }),
@@ -90,6 +90,19 @@ export const MIXED = wrap([
 		comments: ["Gate: FAIL\nfirst", `Gate: PASS ${HEAD}\nsecond`, "Thanks!"],
 	}),
 	pr(212, { moreThreads: true }),
+	// An outsider's PASS after our CHANGES is not ready; our PASS after their FAIL is.
+	pr(213, {
+		comments: [
+			"Gate: CHANGES\nfix it",
+			{ body: `Gate: PASS ${HEAD}`, by: "NONE" },
+		],
+	}),
+	pr(214, {
+		comments: [
+			{ body: "Gate: FAIL", by: "FIRST_TIME_CONTRIBUTOR" },
+			`Gate: PASS ${HEAD}\nok`,
+		],
+	}),
 ]);
 
 export const NO_PRS = wrap([]);

@@ -24,7 +24,7 @@ const COMMENTS = 20;
 /** Longest title kept, in characters. */
 const TITLE = 120;
 
-const QUERY = `query($owner:String!,$name:String!){repository(owner:$owner,name:$name){pullRequests(states:OPEN,first:${PRS},orderBy:{field:UPDATED_AT,direction:DESC}){nodes{number title url headRefOid mergeable commits(last:1){nodes{commit{oid statusCheckRollup{state}}}} comments(last:${COMMENTS}){nodes{body}} reviewThreads(last:${THREADS}){pageInfo{hasPreviousPage} nodes{isResolved isOutdated comments(first:1){nodes{body}}}}}}}}`;
+const QUERY = `query($owner:String!,$name:String!){repository(owner:$owner,name:$name){pullRequests(states:OPEN,first:${PRS},orderBy:{field:UPDATED_AT,direction:DESC}){nodes{number title url headRefOid mergeable commits(last:1){nodes{commit{oid statusCheckRollup{state}}}} comments(last:${COMMENTS}){nodes{body authorAssociation}} reviewThreads(last:${THREADS}){pageInfo{hasPreviousPage} nodes{isResolved isOutdated comments(first:1){nodes{body}}}}}}}}`;
 
 /** One read-only call for every open PR's gate comment, threads, checks and mergeability. */
 export function readyArgv(repo: string, host: string): string[] {
@@ -46,6 +46,9 @@ export function readyArgv(repo: string, host: string): string[] {
 
 const Body = looseObject({ body: string() });
 const Bodies = looseObject({ nodes: array(Body) });
+const Comments = looseObject({
+	nodes: array(looseObject({ body: string(), authorAssociation: string() })),
+});
 
 const PrSchema = looseObject({
 	number: number(),
@@ -65,7 +68,7 @@ const PrSchema = looseObject({
 			}),
 		),
 	}),
-	comments: Bodies,
+	comments: Comments,
 	reviewThreads: looseObject({
 		pageInfo: looseObject({ hasPreviousPage: boolean() }),
 		nodes: array(
@@ -86,20 +89,27 @@ const ResponseSchema = looseObject({
 	}),
 });
 
+/** Only the repo's own people can speak for the gate; our gate posts as the owner. */
+const TRUSTED = ["OWNER", "MEMBER", "COLLABORATOR"];
 const GATE = /^Gate:\s*(\S.*)$/;
 const GATE_PASS = /^Gate: PASS ([0-9a-f]{40})\s*$/;
 /** Codex's inline findings carry a severity badge: `![P1 Badge](...)`. */
 const BADGE = /\bP[01] Badge\b/;
 
 /**
- * True when the newest comment that speaks for the gate (first line `Gate: ...`)
+ * True when the newest trusted comment that speaks for the gate (first line `Gate: ...`)
  * is `Gate: PASS <sha>` with exactly the PR's current head. A later FAIL or a
  * PASS for another sha means the gate has not passed this head.
  */
-export function gatePassed(bodies: readonly string[], head: string): boolean {
+export function gatePassed(
+	comments: readonly { body: string; authorAssociation: string }[],
+	head: string,
+): boolean {
 	// Each pass moves `i` toward 0, so the walk ends.
-	for (let i = bodies.length - 1; i >= 0; i--) {
-		const first = (bodies[i] ?? "").replace(/\r/g, "").split("\n", 1)[0] ?? "";
+	for (let i = comments.length - 1; i >= 0; i--) {
+		const comment = comments[i];
+		if (!comment || !TRUSTED.includes(comment.authorAssociation)) continue;
+		const first = comment.body.replace(/\r/g, "").split("\n", 1)[0] ?? "";
 		if (!GATE.test(first)) continue;
 		return GATE_PASS.exec(first)?.[1] === head;
 	}
@@ -154,10 +164,7 @@ export function parseReady(
 			tip.statusCheckRollup?.state !== "SUCCESS" ||
 			pr.reviewThreads.pageInfo.hasPreviousPage ||
 			openCodexFindings(pr.reviewThreads.nodes) > 0 ||
-			!gatePassed(
-				pr.comments.nodes.map((c) => c.body),
-				pr.headRefOid,
-			)
+			!gatePassed(pr.comments.nodes, pr.headRefOid)
 		)
 			continue;
 		ready.push({

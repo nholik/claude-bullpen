@@ -2,9 +2,12 @@ import { expect, test } from "claude-code/testing";
 import { gatePassed, parseReady, readReady, readyArgv } from "../src/ready";
 import { HEAD, MIXED, NO_PRS, OLD, READY_ONLY } from "./fixtures/ready-prs";
 
+const o = (...bodies: string[]) =>
+	bodies.map((body) => ({ body, authorAssociation: "OWNER" }));
+
 test("a PR is ready only when gate, Codex, CI and mergeability all hold on the head", () => {
 	const ready = parseReady(MIXED, 5);
-	expect(ready?.map((p) => p.number)).toEqual([210, 211]);
+	expect(ready?.map((p) => p.number)).toEqual([210, 211, 214]);
 	expect(ready?.[0]).toEqual({
 		number: 210,
 		title: "Spaced title with a newline",
@@ -28,18 +31,27 @@ test("unreadable output is undefined, not an empty queue", () => {
 });
 
 test("the newest Gate: comment decides, and only on the exact head", () => {
-	expect(gatePassed([`Gate: PASS ${HEAD}`], HEAD)).toBe(true);
-	expect(gatePassed([`Gate: PASS ${HEAD}\r\nsummary`], HEAD)).toBe(true);
-	expect(gatePassed([`Gate: PASS ${OLD}`], HEAD)).toBe(false);
-	expect(gatePassed([`Gate: PASS ${HEAD.slice(0, 7)}`], HEAD)).toBe(false);
-	expect(gatePassed([`Gate: PASS ${HEAD}`, "Gate: CHANGES"], HEAD)).toBe(false);
-	expect(gatePassed(["Gate: CHANGES", `Gate: PASS ${HEAD}`, "ok"], HEAD)).toBe(
+	expect(gatePassed(o(`Gate: PASS ${HEAD}`), HEAD)).toBe(true);
+	expect(gatePassed(o(`Gate: PASS ${HEAD}\r\nsummary`), HEAD)).toBe(true);
+	expect(gatePassed(o(`Gate: PASS ${OLD}`), HEAD)).toBe(false);
+	expect(gatePassed(o(`Gate: PASS ${HEAD.slice(0, 7)}`), HEAD)).toBe(false);
+	expect(gatePassed(o(`Gate: PASS ${HEAD}`, "Gate: CHANGES"), HEAD)).toBe(
+		false,
+	);
+	expect(gatePassed(o("Gate: CHANGES", `Gate: PASS ${HEAD}`, "ok"), HEAD)).toBe(
 		true,
 	);
 	expect(
-		gatePassed([`Not Gate: PASS ${HEAD}`, `gate: pass ${HEAD}`], HEAD),
+		gatePassed(o(`Not Gate: PASS ${HEAD}`, `gate: pass ${HEAD}`), HEAD),
 	).toBe(false);
-	expect(gatePassed([], HEAD)).toBe(false);
+	expect(gatePassed(o(), HEAD)).toBe(false);
+	const outsider = (body: string) => ({ body, authorAssociation: "NONE" });
+	expect(
+		gatePassed([...o("Gate: CHANGES"), outsider(`Gate: PASS ${HEAD}`)], HEAD),
+	).toBe(false);
+	expect(
+		gatePassed([outsider("Gate: FAIL"), ...o(`Gate: PASS ${HEAD}`)], HEAD),
+	).toBe(true);
 });
 
 test("the query is one read-only graphql call for the repo", () => {
