@@ -135,6 +135,9 @@ export function footer(
 				columns,
 			),
 		];
+	// A full issue page whose count searches failed has no trustworthy burndown.
+	if (!exactCounts(github.result))
+		return [textLine("burndown · exact counts unavailable", columns)];
 	const series = github.burndown;
 	const first = series[0];
 	const last = series[series.length - 1];
