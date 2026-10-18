@@ -1,7 +1,7 @@
 {
 	"name": "bullpen",
-	"version": "0.2.0",
-	"description": "A live TUI view of your Claude Code agent team: who is huddled on which issue, what they are saying, and how the burndown is going.",
+	"version": "0.3.0",
+	"description": "A live TUI view of your Claude Code agent team: what needs you, who is stuck and what is shipping.",
 	"types": "./types/index.d.ts",
 	"author": {
 		"name": "nholik"
