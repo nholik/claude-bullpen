@@ -1,8 +1,8 @@
 // A render budget: render code runs on the host's thread, so a slow draw
 // stalls Claude Code. Each surface is drawn for the worst-case team
-// (tests/fixtures/worst-case.ts) at three widths; the median of a few runs
+// (tests/fixtures/worst-case.ts) at four widths (48 is the stacked layout); the median of a few runs
 // must stay under its budget. The budgets are about 3-5x the baseline measured
-// on the dev laptop (in ms: pane 3-12, talk 15-34, shipping 1-2, needs about 1, band 0.06), so
+// on the dev laptop (in ms, under load: pane 5-17, talk 1-10, shipping 2-6, needs 5-8, band 0.1), so
 // they catch an order-of-magnitude regression, not noise.
 
 import { expect, test } from "claude-code/testing";
@@ -11,13 +11,17 @@ import { DEFAULT_PROFILE } from "../src/profile";
 import { band } from "../src/render/header";
 import { paneView } from "../src/render/pane";
 import type { GithubSource, Member } from "../types";
-import worst, { WORST_NAMES, WORST_NOW } from "./fixtures/worst-case";
+import worst, {
+	WORST_NAMES,
+	WORST_NOW,
+	WORST_PRESENT,
+} from "./fixtures/worst-case";
 
-const model = buildModel(worst, WORST_NOW);
+const model = buildModel(worst, WORST_NOW, { present: WORST_PRESENT });
 const members: Member[] = WORST_NAMES.map((name, color) => ({
 	id: `a-${name}`,
 	name,
-	status: "running",
+	status: WORST_PRESENT[name] ?? "running",
 	color,
 	lastActiveAt: WORST_NOW,
 }));
@@ -41,9 +45,9 @@ const SURFACES: {
 	budgetMs: number;
 }[] = [
 	{ name: "pane", draw: pane(), budgetMs: 60 },
-	{ name: "talk focus", draw: pane("talk"), budgetMs: 150 },
+	{ name: "talk focus", draw: pane("talk"), budgetMs: 40 },
 	{ name: "shipping focus", draw: pane("shipping"), budgetMs: 30 },
-	{ name: "needs focus", draw: pane("needs"), budgetMs: 5 },
+	{ name: "needs focus", draw: pane("needs"), budgetMs: 30 },
 	{
 		name: "band",
 		draw: (columns) => band(model, github, DEFAULT_PROFILE, columns, -1),
@@ -59,11 +63,18 @@ test("the fixture is the worst case it claims to be", () => {
 	expect(model.hallway.every((m) => m.text.length >= 1000)).toBe(true);
 	expect(Object.keys(model.teammates).length).toBeGreaterThanOrEqual(8);
 	expect(model.ship.length).toBe(20);
-	expect(model.decisions.length).toBeGreaterThanOrEqual(5);
+	expect(model.decisions.length).toBe(50);
+	expect(model.decisions.every((d) => d.open)).toBe(true);
+	expect(model.asks.filter((a) => a.open).length).toBeGreaterThanOrEqual(6);
+	const status = (s: string) =>
+		Object.values(model.teammates).filter((t) => t.status === s).length;
+	expect(status("idle")).toBeGreaterThanOrEqual(2);
+	expect(status("gone")).toBeGreaterThanOrEqual(2);
+	expect(model.hallway.some((m) => m.text.includes("\u200D"))).toBe(true);
 });
 
 for (const { name, draw, budgetMs } of SURFACES)
-	for (const columns of [60, 110, 160])
+	for (const columns of [48, 60, 110, 160])
 		test(`${name} renders under ${budgetMs} ms at ${columns} columns`, () => {
 			for (let i = 0; i < WARMUP; i++) draw(columns);
 			const times: number[] = [];

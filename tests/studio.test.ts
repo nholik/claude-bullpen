@@ -292,6 +292,32 @@ test("the messages view draws every kept message, taller than the window", () =>
 	}
 });
 
+test("cached message wrapping gives the same lines after a slide, a width change and a re-edit", () => {
+	const long = "word ".repeat(80);
+	const at = (i: number, text: string) => ({ from: "a", to: "b", text, at: i });
+	const all = Array.from({ length: 12 }, (_, i) =>
+		at(1000 * i, `m${i} ${long}`),
+	);
+	const flat = (ms: typeof all, columns: number) =>
+		allMessages(ms as never, DEFAULT_PROFILE, columns).map((l) =>
+			l.map((s) => s.text).join(""),
+		);
+	for (const columns of [72, 110, 72]) {
+		const first = flat(all, columns);
+		expect(flat(all, columns)).toEqual(first);
+		// The window slides: the oldest leaves, a new one arrives.
+		const slid = [...all.slice(1), at(99000, `new ${long}`)];
+		const fresh = flat(slid, columns);
+		expect(fresh.some((t) => t.includes("m0 "))).toBe(false);
+		expect(fresh.some((t) => t.includes("new "))).toBe(true);
+		// A message whose text changed under the same key is rewrapped.
+		const edited = all.map((m, i) =>
+			i === 3 ? { ...m, text: `x3 ${"y".repeat(m.text.length - 3)}` } : m,
+		);
+		expect(flat(edited, columns).some((t) => t.includes("x3 "))).toBe(true);
+	}
+});
+
 test("talk focus is not cut to the window", () => {
 	const replay = demoAt(55000);
 	const now = demoClock(55000);
