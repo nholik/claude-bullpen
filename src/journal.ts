@@ -51,6 +51,8 @@ export const BullpenEventSchema = object({
 		"tool",
 		"message",
 		"answer",
+		"decision",
+		"reply",
 		"leave",
 	]),
 	/** The loop it happened in; absent for the lead (main loop). */
@@ -72,6 +74,7 @@ export const BullpenEventSchema = object({
 	owns: optional(pipe(number(), integer(), minValue(1))),
 	/** What `owns` came from. */
 	ownedBy: optional(picklist(["worktree", "pr"])),
+	context: optional(string()),
 });
 
 export type BullpenEvent = InferOutput<typeof BullpenEventSchema>;

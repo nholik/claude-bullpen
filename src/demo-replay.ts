@@ -62,6 +62,17 @@ export function demoOps(step: DemoStep, at: number): CollectOp[] {
 				{ op: "touch", at, id, patch: { name: step.who, status: "running" } },
 				event("message", act.text, { target: act.to, text: act.text }),
 			];
+		case "decide":
+			return [
+				{ op: "touch", at, id, patch: { name: step.who, status: "running" } },
+				event("decision", act.text, {
+					text: act.text,
+					context: act.context,
+					attribute: false,
+				}),
+			];
+		case "reply":
+			return [event("reply", "replied", { attribute: false })];
 		case "leave":
 			return [
 				{ op: "touch", at, id, patch: { status: "gone" } },

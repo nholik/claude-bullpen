@@ -187,30 +187,3 @@ export function shippingSection(
 		lines.push(textLine(`+${all.length - shown.length} more issues`, columns));
 	return lines.slice(0, rows);
 }
-
-/** The lead's open asks, first under the header: at most two lines, or one calm one. */
-export function needsYou(
-	model: BullpenModel,
-	columns: number,
-	now = 0,
-): Line[] {
-	const asks = model.asks.filter((a) => a.open).sort((a, b) => a.at - b.at);
-	const lines: Line[] = asks.slice(0, 3).map((ask) =>
-		fit(
-			[
-				{
-					text: ` ! NEEDS YOU · ${ask.from} · ${age(now, ask.at)} · ${ask.text}  [answer]`,
-					fg: now - ask.at >= 600_000 ? STUDIO.coral : STUDIO.amber,
-					bg: STUDIO.panel,
-					ask: { from: ask.from, at: ask.at },
-				},
-			],
-			columns,
-		),
-	);
-	if (asks.length > 3)
-		lines.push(
-			textLine(` +${asks.length - 3} more decisions · a answers`, columns),
-		);
-	return lines;
-}

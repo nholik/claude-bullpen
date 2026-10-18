@@ -74,6 +74,8 @@ export type CollectOp =
 			owns?: Own;
 			outcome?: "ok" | "error";
 			replyTo?: number;
+			/** On `decision`: the lead's words before the decision line. */
+			context?: string;
 			/** On `spawn`: the agent type the target was spawned as. */
 			agentType?: string;
 			/** False to leave the member's issue as it is. */
@@ -223,6 +225,7 @@ export function applyBatch(
 					...(op.owns
 						? { owns: op.owns.issue, ownedBy: ownedBy(op.owns) }
 						: {}),
+					...(op.context ? { context: op.context } : {}),
 					...(op.agentType ? { agentType: op.agentType } : {}),
 					...(op.confirmedCloses
 						? { confirmedCloses: op.confirmedCloses }
@@ -239,7 +242,9 @@ export function applyBatch(
 					: op.attribute &&
 							!all[id]?.owned &&
 							op.kind !== "leave" &&
-							op.kind !== "answer"
+							op.kind !== "answer" &&
+							op.kind !== "decision" &&
+							op.kind !== "reply"
 						? nextIssue(op.kind, all[id]?.issue, issues)
 						: undefined;
 				const patch =

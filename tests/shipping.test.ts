@@ -4,7 +4,6 @@ import { DEFAULT_PROFILE } from "../src/profile";
 import { type Line, width } from "../src/render/lines";
 import { paneView } from "../src/render/pane";
 import {
-	needsYou,
 	SHIP_LINGER_MS,
 	shipChain,
 	shippingRows,
@@ -81,28 +80,6 @@ test("merges and closes count once toward shipped", () => {
 	expect(buildModel(events, clock).shipped).toBe(2);
 });
 
-test("needs-you collapses when empty and exposes separate, clickable decisions", () => {
-	const quiet = buildModel([], 0);
-	expect(needsYou(quiet, 72)).toEqual([]);
-	const model = buildModel(
-		[
-			msg(
-				"gate",
-				"lead",
-				`Should we skip or fix the flaky test? ${"x ".repeat(80)}`,
-			),
-			msg("kit", "lead", "Can you decide which PR goes first?"),
-		],
-		clock,
-	);
-	const lines = needsYou(model, 60);
-	expect(lines.length).toBeLessThanOrEqual(2);
-	expect(flat(lines[0] ?? [])).toContain("NEEDS YOU · gate");
-	expect(lines[0]?.[0]?.ask?.from).toBe("gate");
-	expect(lines[1]?.[0]?.ask?.from).toBe("kit");
-	for (const line of lines) expect(width(line)).toBeLessThanOrEqual(60);
-});
-
 test("the SHIPPING section stays inside its cells and rows at every width", () => {
 	const events: BullpenEvent[] = [];
 	for (let n = 1; n <= 12; n++)
@@ -134,9 +111,16 @@ test("the SHIPPING section stays inside its cells and rows at every width", () =
 });
 
 test("the pane leads with needs-you and carries SHIPPING instead of huddles", () => {
-	const events = [
+	const events: BullpenEvent[] = [
 		msg("kit", "lead", `#46 PR: ${pr}/62 (x)`),
-		msg("gate", "lead", "Can you decide: skip or fix the flaky test?"),
+		{
+			version: 1,
+			at: clock,
+			kind: "decision" as const,
+			who: "lead",
+			detail: "skip or fix the flaky test?",
+			issues: [],
+		},
 	];
 	const model = buildModel(events, clock);
 	for (const columns of [72, 110, 160]) {

@@ -27,6 +27,9 @@ pins in `CLAUDE_CODE_VERSION`; bump it when you move to a newer build.
   declaration; don't guess shapes. Long-form notes: the `plugin-authoring` skill.
 - Hooks are `($, e, next)`. A mod has no Node and no DOM; everything outside goes through `$`.
 - A mod and its tests may import **only their own files (relative paths) and `claude-code`**.
+- Needs-you is the human's queue: it is fed only by `Decision: <question>` lines in the lead's
+  final answer (main-loop `turn.complete`). Lead agents should end a turn with one when they need the
+  person; teammate messages never enter it, and the person's next prompt clears it.
 
 ## Architecture and conventions
 

@@ -184,7 +184,7 @@ for (let frame = 0; frame < frames; frame++) {
 		mode: team ? "replay" : "demo",
 		cardWidths,
 		focus:
-			focus === "shipping" || focus === "talk" || focus === "answer"
+			focus === "shipping" || focus === "talk" || focus === "needs"
 				? focus
 				: undefined,
 	});

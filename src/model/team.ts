@@ -21,7 +21,14 @@ import {
 	withdrawsAsk,
 } from "./detect";
 import { applyShip, EMPTY_SHIP, type ShipState } from "./ship";
-import type { Ask, HallwayMessage, Huddle, Kickback, Teammate } from "./types";
+import type {
+	Ask,
+	Decision,
+	HallwayMessage,
+	Huddle,
+	Kickback,
+	Teammate,
+} from "./types";
 
 export type ModelOptions = {
 	/** Names that mean the lead, as senders and as recipients. */
@@ -60,6 +67,8 @@ export type TeamState = {
 	issueActive: Record<number, number>;
 	hallway: HallwayMessage[];
 	asks: Ask[];
+	/** Decisions the lead put to the person, open until the person's next prompt. */
+	decisions: Decision[];
 	kickbacks: Kickback[];
 	/** Each close seen, in order; an issue appears once. */
 	closes: { issue: number; at: number }[];
@@ -73,6 +82,7 @@ export const EMPTY_TEAM: TeamState = {
 	issueActive: {},
 	hallway: [],
 	asks: [],
+	decisions: [],
 	kickbacks: [],
 	closes: [],
 	ship: EMPTY_SHIP,
@@ -151,6 +161,9 @@ export function applyEvent(
 	e: BullpenEvent,
 	options: ModelOptions = {},
 ): TeamState {
+	// The person's side of the conversation moves no teammate.
+	if (e.kind === "decision" || e.kind === "reply")
+		return applyDecision(state, e);
 	const teammates = { ...state.teammates };
 	const issueStarted = { ...state.issueStarted };
 	const issueActive = { ...state.issueActive };
@@ -347,10 +360,36 @@ export function applyEvent(
 		issueActive,
 		hallway,
 		asks,
+		decisions: state.decisions,
 		kickbacks,
 		closes,
 		ship: applyShip(state.ship, e),
 	};
+}
+
+/** A `decision` queues one; a `reply` (the person's prompt) answers every open one. */
+function applyDecision(state: TeamState, e: BullpenEvent): TeamState {
+	if (e.kind === "reply")
+		return state.decisions.some((d) => d.open)
+			? {
+					...state,
+					decisions: state.decisions.map((d) =>
+						d.open && d.at <= e.at ? { ...d, open: false } : d,
+					),
+				}
+			: state;
+	// A lead restating a decision it already put is not a second one.
+	if (state.decisions.some((d) => d.open && d.text === e.detail)) return state;
+	const same = state.decisions.filter((d) => d.at === e.at).length;
+	const decision: Decision = {
+		id: `d${e.at}-${same}`,
+		at: e.at,
+		text: e.detail,
+		context: e.context ?? "",
+		issues: e.issues ?? [],
+		open: true,
+	};
+	return { ...state, decisions: keepLast(state.decisions, decision, KEEP) };
 }
 
 /** Closes every open ask raised by `who`. */
