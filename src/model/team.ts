@@ -10,7 +10,13 @@ import type {
 	TeamSnapshot,
 } from "../../types";
 import { nextIssue } from "../events";
-import { closedIssues, isAsk, isKickback, isReviewer } from "./detect";
+import {
+	closedIssues,
+	isAsk,
+	isKickback,
+	isReviewer,
+	withdrawsAsk,
+} from "./detect";
 import { applyShip, EMPTY_SHIP, type ShipState } from "./ship";
 import type { Ask, HallwayMessage, Huddle, Kickback, Teammate } from "./types";
 
@@ -281,13 +287,19 @@ export function applyEvent(
 					? { ...ask, open: false }
 					: ask,
 			);
-		else if (isLead(e.target, options) && isAsk(e.detail))
-			asks = keepLast(
-				asks,
-				{ ...message, agentId: e.agentId, open: true },
-				KEEP,
-			);
+		else if (isLead(e.target, options)) {
+			// Only an explicit withdrawal closes it; a lead reply or answer does too.
+			if (isAsk(e.detail))
+				asks = keepLast(
+					asks,
+					{ ...message, agentId: e.agentId, open: true },
+					KEEP,
+				);
+			else if (withdrawsAsk(e.detail)) asks = closeAsksFrom(asks, e.who);
+		}
 	}
+	// Asks outlive the sender's turns (a new turn may come from anyone), not the sender.
+	if (e.kind === "leave") asks = closeAsksFrom(asks, e.who);
 
 	return {
 		teammates,
@@ -299,6 +311,13 @@ export function applyEvent(
 		closes,
 		ship: applyShip(state.ship, e),
 	};
+}
+
+/** Closes every open ask raised by `who`. */
+function closeAsksFrom(asks: Ask[], who: string): Ask[] {
+	return asks.some((a) => a.open && a.from === who)
+		? asks.map((a) => (a.open && a.from === who ? { ...a, open: false } : a))
+		: asks;
 }
 
 /** Folds a whole journal. */
