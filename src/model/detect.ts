@@ -2,11 +2,26 @@
 // Heuristics over short English text, so each errs toward not firing.
 import { shellSegments } from "../command";
 
+// Text that says nothing is wanted outweighs any "?" or "blocked" around it.
+const NOTHING_WANTED =
+	/\bnothing (is |else )?(needed|required|wanted)\b|\bnot a (request|question|blocker)\b|\bno (action|reply|answer|decision) (is )?(needed|required)\b|\bno need to (reply|respond|answer)\b/i;
+// A review verdict, in capitals so ordinary "pass" and "changes" stay words.
+const VERDICT = /\b(PASS|CHANGES)\b/;
+// Review language: "one P1 blocks the merge", "no blockers".
+const REVIEW_BLOCK =
+	/\bP[0-3]\b[^.\n]{0,40}\bblock\w*|\b(no|zero|0) blockers?\b/gi;
+// Quoted and linked text: a "?" inside it is not the sender's question.
+const QUOTED_TEXT = /`[^`]*`|"[^"\n]*"|https?:\/\/\S+/g;
+
 /** A message to the lead that wants an answer: a question or a block. */
 export function isAsk(text: string): boolean {
-	const unblocked = text.replace(/\b(not|no longer|never) block\w*/gi, "");
+	if (NOTHING_WANTED.test(text) || VERDICT.test(text)) return false;
+	const plain = text
+		.replace(QUOTED_TEXT, " ")
+		.replace(REVIEW_BLOCK, " ")
+		.replace(/\b(not|no longer|never) block\w*/gi, "");
 	return /\?|\bblock(ed|ing|er)\b|\bskip or fix\b|\bneed (you|your|a decision)\b/i.test(
-		unblocked,
+		plain,
 	);
 }
 

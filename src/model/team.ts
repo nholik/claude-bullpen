@@ -281,13 +281,21 @@ export function applyEvent(
 					? { ...ask, open: false }
 					: ask,
 			);
-		else if (isLead(e.target, options) && isAsk(e.detail))
-			asks = keepLast(
-				asks,
-				{ ...message, agentId: e.agentId, open: true },
-				KEEP,
-			);
+		else if (isLead(e.target, options)) {
+			// A later message that is not itself an ask supersedes the sender's.
+			if (isAsk(e.detail))
+				asks = keepLast(
+					asks,
+					{ ...message, agentId: e.agentId, open: true },
+					KEEP,
+				);
+			else asks = closeAsksFrom(asks, e.who);
+		}
 	}
+	// Asks outlive the turn that raised them (the sender waits idle), but not
+	// the sender starting a new turn or leaving.
+	if (e.kind === "turn-start" || e.kind === "leave")
+		asks = closeAsksFrom(asks, e.who);
 
 	return {
 		teammates,
@@ -299,6 +307,13 @@ export function applyEvent(
 		closes,
 		ship: applyShip(state.ship, e),
 	};
+}
+
+/** Closes every open ask raised by `who`. */
+function closeAsksFrom(asks: Ask[], who: string): Ask[] {
+	return asks.some((a) => a.open && a.from === who)
+		? asks.map((a) => (a.open && a.from === who ? { ...a, open: false } : a))
+		: asks;
 }
 
 /** Folds a whole journal. */

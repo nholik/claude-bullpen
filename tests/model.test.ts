@@ -63,6 +63,48 @@ test("isAsk: questions and blocks, not reports", async () => {
 	expect(isAsk("no longer blocked on #3")).toBe(false);
 });
 
+test("isAsk: status reports and verdicts are not asks", async () => {
+	expect(isAsk("#83: nothing needed from you. PR 119 is ready.")).toBe(false);
+	expect(isAsk("That last message was my status report, not a request.")).toBe(
+		false,
+	);
+	expect(isAsk("PR #121: CHANGES. One P1: the shared tracker.")).toBe(false);
+	expect(isAsk("PR #119 at 9e5cb80: PASS. No blockers.")).toBe(false);
+	expect(isAsk("One P1 blocks the merge; fixed in abc123.")).toBe(false);
+	expect(isAsk("Opened https://example.com/pr?id=3 for review")).toBe(false);
+	expect(isAsk("Ran `gh pr list --json x?` fine, all green")).toBe(false);
+	expect(isAsk("Should I merge #121 or wait for gate?")).toBe(true);
+	expect(isAsk("Blocked on the gh token, need you to log in")).toBe(true);
+});
+
+test("asks close on a non-ask follow-up, a new turn or leaving", async () => {
+	const ask = ev(1, "b83", "message", "#83 skip or fix?", {
+		target: "team-lead",
+	});
+	const open = (events: BullpenEvent[]) =>
+		reduceEvents([ask, ...events]).asks.map((a) => a.open);
+	expect(open([])).toEqual([true]);
+	// Idling after asking is the normal wait: still open.
+	expect(open([ev(2, "b83", "turn-end", "")])).toEqual([true]);
+	expect(open([ev(2, "gate", "turn-start", "")])).toEqual([true]);
+	expect(open([ev(2, "b83", "turn-start", "")])).toEqual([false]);
+	expect(open([ev(2, "b83", "leave", "")])).toEqual([false]);
+	expect(
+		open([
+			ev(2, "b83", "message", "nothing needed from you", {
+				target: "team-lead",
+			}),
+		]),
+	).toEqual([false]);
+	expect(
+		open([
+			ev(2, "b83", "message", "still stuck, need a decision", {
+				target: "team-lead",
+			}),
+		]),
+	).toEqual([true, true]);
+});
+
 test("isKickback: saying so, or a reviewer reporting failure", async () => {
 	expect(isKickback("sending it back to you", false)).toBe(true);
 	expect(isKickback("Kicking this back: lint fails", false)).toBe(true);
