@@ -390,7 +390,7 @@ async function dismissNeed($: $) {
 	await update($, needsCursor, (at) => moveCursor(at, 0, length));
 	if (!length) await update($, focus, () => "");
 }
-/** Enter: quote the selected decision into the prompt, never submitting, and leave the pane. */
+/** Enter: quote the selected decision into the prompt, never submitting, and leave the pane. It stays queued until the prompt is submitted. */
 async function replyToNeed($: $) {
 	const item = await selectedNeed($);
 	if (!item) return;
@@ -406,7 +406,8 @@ async function replyToNeed($: $) {
 		);
 		return;
 	}
-	await update($, decisionsHandled, (ids) => [...ids, item.id]);
+	// Not handled yet: the person's submit closes it (the reducer's `reply`), and an
+	// abandoned draft leaves it queued.
 	await update($, focus, () => "");
 	await $.ui.close({ id: PANE });
 }
@@ -1103,7 +1104,8 @@ export function register(on: On) {
 			void producers
 				.track(
 					(async () => {
-						if ((await waitingDecisions($)).length)
+						// Open ones, dismissed or not: the reply answers all of them.
+						if (sceneModel(await readScene($)).decisions.length)
 							await record($, "reply", undefined, "replied", {
 								attribute: false,
 							});

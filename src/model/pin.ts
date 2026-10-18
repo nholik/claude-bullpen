@@ -22,4 +22,8 @@ export default `
 {"version":1,"at":1792247900000,"kind":"message","agentId":"a-gate","who":"gate","target":"team-lead","detail":"PR #58 (#9): CHANGES, tests fail on the empty journal","issues":[9,58]}
 {"version":1,"at":1792248000000,"kind":"message","agentId":"a-ada","who":"ada","target":"team-lead","detail":"#9 blocked: skip or fix the empty-journal test?","issues":[9]}
 {"version":1,"at":1792248100000,"kind":"message","agentId":"a-code-reviewer","who":"code-reviewer","target":"team-lead","detail":"PR #60 (#11): FAIL, the empty team renders a blank card","issues":[11,60]}
+{"version":1,"at":1792248100000,"kind":"decision","who":"lead","detail":"Ship the cache per session or wait for review?","issues":[7],"context":"The reviewer has not answered and the branch is green."}
+{"version":1,"at":1792248200000,"kind":"decision","who":"lead","detail":"Cut the second flag?","issues":[9]}
+{"version":1,"at":1792248300000,"kind":"reply","who":"lead","detail":"replied","issues":[]}
+{"version":1,"at":1792248400000,"kind":"decision","who":"lead","detail":"Merge #58 now?","issues":[58],"context":"Checks are green."}
 `;

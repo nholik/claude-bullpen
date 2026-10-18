@@ -193,3 +193,21 @@ test("the pane footer offers n only while something waits, and leads with list k
 	expect(calm.footer.map(flat).join("\n")).not.toContain("needs you");
 	expect(calm.regions.map(flat).join("\n")).not.toContain("NEEDS YOU");
 });
+
+test("Enter leaves the decision queued; the submit's reply closes it, an abandoned draft does not", () => {
+	const asked = [ev(0, "decision", "skip or fix #204?", { issues: [204] })];
+	// Enter fills the prompt but marks nothing handled, so it still waits.
+	const queued = buildModel(asked, T + 5000);
+	expect(waiting(queued.decisions, []).length).toBe(1);
+	// Abandoning the draft records nothing: still queued.
+	expect(buildModel(asked, T + 60_000).decisions.length).toBe(1);
+	// Submitting records a reply, which closes it even for a dismissed decision.
+	const submitted = buildModel(
+		[...asked, ev(10, "reply", "replied")],
+		T + 20_000,
+	);
+	expect(submitted.decisions).toEqual([]);
+	const [d] = queued.decisions;
+	expect(waiting(queued.decisions, [d?.id ?? ""])).toEqual([]);
+	expect(queued.decisions.length).toBe(1);
+});

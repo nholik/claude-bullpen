@@ -79,7 +79,8 @@ for (const scenario of ["fills", "refused"] as const) {
 			{ text: "> re #1: skip or fix #1?\n", mode: "append" },
 		]);
 		if (scenario === "fills") {
-			expect(memory.decisionsHandled?.length).toBe(1);
+			// Still queued: only the submitted prompt (or d) takes it off.
+			expect(memory.decisionsHandled ?? []).toEqual([]);
 			expect(closed).toContain("bullpen");
 			expect(memory.focus).toBe("");
 		} else {
