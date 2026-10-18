@@ -8,7 +8,7 @@ import { DEFAULT_PROFILE, mergeProfiles, parseProfile } from "../src/profile";
 import { width } from "../src/render/lines";
 import { paneView } from "../src/render/pane";
 import { issueStatus } from "../src/render/studio";
-import { newestMessages } from "../src/render/team-studio";
+import { allMessages, teamStudioView } from "../src/render/team-studio";
 
 test("legacy style settings are ignored without losing terminal preferences", () => {
 	for (const style of ["studio", "operations", "unknown"]) {
@@ -271,54 +271,64 @@ test("narrow Studio fills spare rows with the hallway", () => {
 	expect(rows[at + 1]?.includes("→")).toBe(true);
 });
 
-test("the messages view keeps the newest messages and fits its rows", () => {
+test("the messages view draws every kept message, taller than the window", () => {
 	const long = "word ".repeat(80);
-	const messages = Array.from({ length: 12 }, (_, i) => ({
+	const messages = Array.from({ length: 50 }, (_, i) => ({
 		from: "a",
 		to: "b",
-		text: i === 11 ? `newest ${long}` : `m${i} ${long}`,
+		text: i === 49 ? `newest ${long}` : `m${i} ${long}`,
 		at: 1000 * i,
 	}));
-	const profile = DEFAULT_PROFILE;
-	for (const [columns, rows] of [
-		[72, 11],
-		[110, 31],
-		[160, 31],
-	] as const) {
-		const lines = newestMessages(messages as never, profile, columns, rows);
+	for (const columns of [72, 110, 160]) {
+		const lines = allMessages(messages as never, DEFAULT_PROFILE, columns);
 		const flat = lines.map((l) => l.map((s) => s.text).join(""));
-		expect(lines.length <= rows).toBe(true);
+		// Oldest and newest are both in the tree, so the engine can scroll between them.
+		expect(flat.some((t) => t.includes("m0 "))).toBe(true);
 		expect(flat.some((t) => t.includes("newest"))).toBe(true);
-		expect(flat.some((t) => t.includes("m0 "))).toBe(false);
+		expect(lines.length).toBeGreaterThan(100);
+		// Each message is at most a header, six lines and a gap.
+		expect(lines.length <= messages.length * 8).toBe(true);
+		for (const line of lines) expect(width(line) <= columns).toBe(true);
 	}
 });
 
-test("the messages view marks a cut on a full-width line, once", () => {
-	const columns = 40;
-	const full = "x".repeat(columns * 3);
-	// Header + 1 body line fit; the cut lands on a full-width wrapped line.
-	const one = [{ from: "a", to: "b", text: full, at: 0 }];
-	const cut = newestMessages(one as never, DEFAULT_PROFILE, columns, 2);
-	const rowText = cut.map((l) => l.map((s) => s.text).join(""));
-	expect(rowText[1]?.endsWith("…")).toBe(true);
-	expect(width(cut[1] ?? [])).toBeLessThanOrEqual(columns);
+test("talk focus is not cut to the window", () => {
+	const replay = demoAt(55000);
+	const now = demoClock(55000);
+	const model = buildModel(replay.events, now);
+	const view = teamStudioView(
+		model,
+		{ filter: "", burndown: [], checkedAt: 0 },
+		DEFAULT_PROFILE,
+		110,
+		12,
+		now,
+		"demo",
+		undefined,
+		now,
+		"talk",
+	);
+	const wanted = 1 + allMessages(model.hallway, DEFAULT_PROFILE, 110).length;
+	expect(view.regions.length).toBe(wanted);
+});
 
-	// The wrap already ended the message with "…" (more than six lines): no doubling.
-	const huge = [{ from: "a", to: "b", text: "word ".repeat(400), at: 0 }];
-	const marked = newestMessages(huge as never, DEFAULT_PROFILE, columns, 7);
-	for (const l of marked) {
-		expect(
-			l
-				.map((s) => s.text)
-				.join("")
-				.includes("……"),
-		).toBe(false);
-	}
-	const lastRow = marked.at(-1) ?? [];
-	expect(
-		lastRow
-			.map((s) => s.text)
-			.join("")
-			.endsWith("…"),
-	).toBe(true);
+test("a message cut at six lines keeps its marker even on a full-width line", () => {
+	const columns = 40;
+	const messages = [
+		{ from: "a", to: "b", text: "x".repeat(columns * 9), at: 0 },
+	];
+	const lines = allMessages(messages as never, DEFAULT_PROFILE, columns);
+	const rows = lines.map((l) => l.map((s) => s.text).join(""));
+	// Header, six body lines, a gap: the sixth body line ends in a single marker.
+	expect(rows.length).toBe(8);
+	expect(rows[6]?.endsWith("…")).toBe(true);
+	expect(rows[6]?.endsWith("……")).toBe(false);
+	expect(width(lines[6] ?? [])).toBeLessThanOrEqual(columns);
+	// An uncut message gets none.
+	const short = allMessages(
+		[{ from: "a", to: "b", text: "hello", at: 0 }] as never,
+		DEFAULT_PROFILE,
+		columns,
+	);
+	expect(short.some((l) => l.some((s) => s.text.includes("…")))).toBe(false);
 });
