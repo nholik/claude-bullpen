@@ -36,6 +36,16 @@ export function waitingStage(
 	return undefined;
 }
 
+/** Idle builders with an open PR; running teammates and verdict roles never wait. */
+export function waitingOn(
+	model: BullpenModel,
+	t: Teammate,
+	role?: string,
+): "review" | "merge" | undefined {
+	if (t.status !== "idle" || isVerdictRole(t, role)) return undefined;
+	return waitingStage(model, t);
+}
+
 /** Evidence of a possible stall, not a claim about the agent's reasoning. */
 export function stuckReasons(
 	model: BullpenModel,
@@ -60,7 +70,9 @@ export function stuckReasons(
 			(k) => t.issue !== undefined && k.issue === t.issue && k.at <= now,
 		);
 		const verdictRole = isVerdictRole(t, roles[t.name]);
-		const waiting = t.status === "idle" && waitingStage(model, t) !== undefined;
+		const waiting = waitingOn(model, t, roles[t.name]) !== undefined;
+		// A bounced builder usually waits for the lead to route the fix.
+		const idleLimit = ship?.stage === "changes" ? 15 : 5;
 		const reason =
 			(t.failureCount ?? 0) >= 3
 				? `same command failed ${t.failureCount} times`
@@ -70,7 +82,7 @@ export function stuckReasons(
 						? `no tool progress ${quiet}m`
 						: t.status === "idle" &&
 								t.issue !== undefined &&
-								idle >= 5 &&
+								idle >= idleLimit &&
 								!verdictRole &&
 								!waiting
 							? `idle with open work ${idle}m`

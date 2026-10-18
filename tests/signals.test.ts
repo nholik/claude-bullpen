@@ -389,3 +389,65 @@ test("idle reviewers and builders with an open PR are waiting, not stuck", () =>
 		expect(model.stuck?.[who]).toBeUndefined();
 	}
 });
+
+test("running teammates keep their running mood; idle bounced builders wait longer", () => {
+	const text = (events: BullpenEvent[], now: number, width = 110) => {
+		const model = buildModel(events, now);
+		return {
+			model,
+			text: teamStudioView(
+				model,
+				{ filter: "", burndown: [], checkedAt: 0 },
+				DEFAULT_PROFILE,
+				width,
+				32,
+				now,
+			)
+				.regions.flat()
+				.map((s) => s.text)
+				.join(""),
+		};
+	};
+	const announce = event("message", 1, {
+		target: "lead",
+		detail: "#12 PR is up: https://github.com/o/r/pull/30.",
+	});
+	const ask = event("message", 2, {
+		target: "gate",
+		detail: "#12: please review PR https://github.com/o/r/pull/30",
+	});
+	const now = 3 * minute;
+
+	// A reviewer mid-review and a builder still working after the PR are heads-down.
+	const running = text(
+		[
+			announce,
+			ask,
+			event("tool", now - 1000),
+			event("tool", now - 1000, { who: "gate" }),
+		],
+		now,
+	);
+	expect(running.text).not.toContain("waiting on");
+	expect(running.text).toContain("heads-down");
+
+	// Idle builder with an open PR still waits.
+	const idle = text([announce, ask, event("turn-end", 3)], 20 * minute);
+	expect(idle.text).toContain("waiting on review");
+
+	// Idle after CHANGES: quiet for 5 minutes is not stuck, 15 is.
+	const bounced = [
+		announce,
+		ask,
+		event("message", 3, {
+			who: "gate",
+			target: "lead",
+			detail: "PR #30 (#12) CHANGES",
+		}),
+		event("turn-end", 4),
+	];
+	expect(buildModel(bounced, 8 * minute).stuck?.builder).toBeUndefined();
+	expect(buildModel(bounced, 20 * minute).stuck?.builder).toBe(
+		"idle with open work 19m",
+	);
+});
