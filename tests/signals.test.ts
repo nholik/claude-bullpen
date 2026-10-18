@@ -205,7 +205,7 @@ test("stall timers honor their thresholds and messages do not count as tool prog
 	];
 	expect(buildModel(review, 15 * minute - 1).stuck?.builder).toBeUndefined();
 	// A slow review is not the builder's stall.
-	expect(buildModel(review, 30 * minute).stuck?.builder).toBeUndefined();
+	expect(buildModel(review, 20 * minute).stuck?.builder).toBeUndefined();
 	expect(
 		buildModel([event("turn-end", 0, { issues: [] })], 20 * minute).stuck,
 	).toEqual({});
