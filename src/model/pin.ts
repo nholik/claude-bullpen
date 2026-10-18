@@ -21,4 +21,5 @@ export default `
 {"version":1,"at":1792247800000,"kind":"message","who":"lead","target":"gate","detail":"closed #7, shipped #41","issues":[7,41]}
 {"version":1,"at":1792247900000,"kind":"message","agentId":"a-gate","who":"gate","target":"team-lead","detail":"PR #58 (#9): CHANGES, tests fail on the empty journal","issues":[9,58]}
 {"version":1,"at":1792248000000,"kind":"message","agentId":"a-ada","who":"ada","target":"team-lead","detail":"#9 blocked: skip or fix the empty-journal test?","issues":[9]}
+{"version":1,"at":1792248100000,"kind":"message","agentId":"a-code-reviewer","who":"code-reviewer","target":"team-lead","detail":"PR #60 (#11): FAIL, the empty team renders a blank card","issues":[11,60]}
 `;
