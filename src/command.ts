@@ -13,7 +13,7 @@ export function withoutCd(command: string): string {
 	return rest.trim();
 }
 
-const HEREDOC = /(?<!<)<<(?!<)-?\s*(["']?)([A-Za-z_]\w*)\1/;
+const HEREDOC = /(?<!<)<<(?!<)(-?)\s*(["']?)([A-Za-z_]\w*)\2/;
 
 /**
  * The command without heredoc bodies: their lines are data (a commit message,
@@ -23,16 +23,21 @@ const HEREDOC = /(?<!<)<<(?!<)-?\s*(["']?)([A-Za-z_]\w*)\1/;
 function withoutHeredocs(command: string): string {
 	const kept: string[] = [];
 	let end: string | undefined;
+	let tabs = false;
 	for (const line of command.split("\n")) {
 		if (end !== undefined) {
-			if (line.trim() === end) end = undefined;
+			// `<<-` strips leading tabs only; a plain `<<` needs the bare word.
+			if ((tabs ? line.replace(/^\t+/, "") : line) === end) end = undefined;
 			continue;
 		}
 		kept.push(line);
 		const m = HEREDOC.exec(line);
 		// A `<<` after an unclosed quote is text, not a redirection.
 		const quotes = m ? line.slice(0, m.index).match(/["']/g)?.length : 0;
-		if (m?.[2] && !((quotes ?? 0) % 2)) end = m[2];
+		if (m?.[3] && !((quotes ?? 0) % 2)) {
+			end = m[3];
+			tabs = m[1] === "-";
+		}
 	}
 	return kept.join("\n");
 }
