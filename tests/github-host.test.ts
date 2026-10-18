@@ -64,7 +64,9 @@ for (const scenario of [
 		expect(source.host).toBe(scenario.host);
 		expect(storedKey).toBe(burndownKey("owner/repo", "", scenario.host));
 		const api = recorded.filter((argv) => argv[1] === "api");
-		expect(api.length).toBe(2);
+		// Two count searches plus the one merge-ready graphql query.
+		expect(api.length).toBe(3);
+		expect(api.filter((argv) => argv[2] === "graphql").length).toBe(1);
 		for (const argv of api)
 			expect(argv[argv.indexOf("--hostname") + 1]).toBe(scenario.host);
 		expect(burndownKey("owner/repo", "", "github.com")).not.toBe(

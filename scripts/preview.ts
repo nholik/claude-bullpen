@@ -74,6 +74,7 @@ for (let i = 0; i < args.length; i += 2) {
 			"--glyphs",
 			"--animations",
 			"--journal",
+			"--ready",
 		].includes(key) ||
 		value === undefined
 	)
@@ -115,6 +116,20 @@ const focus = options.get("--focus");
 const journalDir = options.get("--journal");
 const at = number("--at", journalDir ? 2 : 12, 0, 86400) * 1000;
 const frames = number("--frames", 1, 1, 1000);
+/** `--ready N`: N sample merge-ready PRs in the needs-you queue. */
+const sampleReady = Array.from(
+	{ length: number("--ready", 0, 0, 20) },
+	(_, i) => ({
+		number: 300 + i,
+		title:
+			i % 2
+				? "Draw the merge-ready rows in the needs view with a title long enough to wrap at narrow widths"
+				: "Add the merge-ready queue",
+		url: `https://github.com/example/repo/pull/${300 + i}`,
+		head: "a".repeat(40),
+		checkedAt: 0,
+	}),
+);
 const color = (n: number, background = false) =>
 	`\x1b[${background ? 48 : 38};2;${(n >> 16) & 255};${(n >> 8) & 255};${n & 255}m`;
 const line = (segments: Line) =>
@@ -172,7 +187,11 @@ function frameAt(elapsed: number): Frame {
 const cardWidths = createCardWidthTracker();
 for (let frame = 0; frame < frames; frame++) {
 	Atomics.store(frameClock, 0, Date.now() & 0x7fffffff);
-	const { now, replay, source } = frameAt(at + frame * 100);
+	const framed = frameAt(at + frame * 100);
+	const { now, replay } = framed;
+	const source = sampleReady.length
+		? { ...framed.source, ready: sampleReady }
+		: framed.source;
 	const members = replay.members;
 	const model = buildModel(replay.events, now, {
 		present: Object.fromEntries(members.map((m) => [m.name, m.status])),
