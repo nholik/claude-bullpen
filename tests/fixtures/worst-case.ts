@@ -114,6 +114,20 @@ for (let issue = 1; issue <= ISSUES; issue++) {
 		push(base + 15, "message", "lead", `merged #${issue}`, { issues: [issue] });
 }
 
+// Open decisions for the needs view: the lead put them to the person, who has
+// not answered. They come before the hallway, which keeps the last 50 messages.
+for (let i = 0; i < 6; i++)
+	push(
+		30 + ISSUES * 20 + 20 + i * 5,
+		"decision",
+		"lead",
+		`Skip or fix the failing test on #${i + 1}?`,
+		{
+			context: "The review bounced twice and the fix touches the shared cache.",
+			issues: [i + 1],
+		},
+	);
+
 const hallwayStart = 30 + ISSUES * 20 + 60;
 for (let i = 0; i < HALLWAY + 10; i++) {
 	const name = WORST_NAMES[i % WORST_NAMES.length] ?? "ada";

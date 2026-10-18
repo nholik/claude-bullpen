@@ -2,7 +2,7 @@
 // stalls Claude Code. Each surface is drawn for the worst-case team
 // (tests/fixtures/worst-case.ts) at three widths; the median of a few runs
 // must stay under its budget. The budgets are about 3-5x the baseline measured
-// on the dev laptop (in ms: pane 3-12, talk 15-34, shipping 1-2, band 0.06), so
+// on the dev laptop (in ms: pane 3-12, talk 15-34, shipping 1-2, needs about 1, band 0.06), so
 // they catch an order-of-magnitude regression, not noise.
 
 import { expect, test } from "claude-code/testing";
@@ -26,7 +26,7 @@ const ROWS = 40;
 const WARMUP = 3;
 const RUNS = 9;
 
-const pane = (focus?: "shipping" | "talk") => (columns: number) =>
+const pane = (focus?: "shipping" | "talk" | "needs") => (columns: number) =>
 	paneView(model, members, columns, ROWS, WORST_NOW, {
 		...(focus ? { focus } : {}),
 	});
@@ -43,6 +43,7 @@ const SURFACES: {
 	{ name: "pane", draw: pane(), budgetMs: 60 },
 	{ name: "talk focus", draw: pane("talk"), budgetMs: 150 },
 	{ name: "shipping focus", draw: pane("shipping"), budgetMs: 30 },
+	{ name: "needs focus", draw: pane("needs"), budgetMs: 5 },
 	{
 		name: "band",
 		draw: (columns) => band(model, github, DEFAULT_PROFILE, columns, -1),
@@ -58,6 +59,7 @@ test("the fixture is the worst case it claims to be", () => {
 	expect(model.hallway.every((m) => m.text.length >= 1000)).toBe(true);
 	expect(Object.keys(model.teammates).length).toBeGreaterThanOrEqual(8);
 	expect(model.ship.length).toBe(20);
+	expect(model.decisions.length).toBeGreaterThanOrEqual(5);
 });
 
 for (const { name, draw, budgetMs } of SURFACES)
