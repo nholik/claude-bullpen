@@ -27,11 +27,54 @@ function str(args: Record<string, unknown>, key: string): string {
 	return typeof value === "string" ? value : "";
 }
 
-/** The PR body's `Closes #n`, from the raw command since heredocs hold bodies. */
-function prCloses(command: string): number | undefined {
-	const flag = BODY_FLAG.exec(command);
+/**
+ * The raw text of the first `gh pr create` that starts a command, up to the
+ * next top-level separator. Raw, since a heredoc body sits inside the quoted
+ * `$(cat <<EOF …)` of `--body`; scoped, so an `echo --body '…'` beside it is
+ * not its body.
+ */
+function createSegment(command: string): string | undefined {
+	let quote = "";
+	let escaped = false;
+	let start = true;
+	for (let i = 0; i < command.length; i++) {
+		const ch = command.charAt(i);
+		if (start && !/\s/.test(ch)) {
+			if (!PR_CREATE.test(command.slice(i, i + 40))) start = false;
+			else return command.slice(i, segmentEnd(command, i));
+		}
+		if (escaped) escaped = false;
+		else if (ch === "\\" && quote !== "'") escaped = true;
+		else if (quote) {
+			if (ch === quote) quote = "";
+		} else if (ch === '"' || ch === "'") quote = ch;
+		else if (ch === ";" || ch === "&" || ch === "|" || ch === "\n")
+			start = true;
+	}
+	return undefined;
+}
+
+/** The index of the first unquoted separator at or after `from`, else the end. */
+function segmentEnd(command: string, from: number): number {
+	let quote = "";
+	let escaped = false;
+	for (let i = from; i < command.length; i++) {
+		const ch = command.charAt(i);
+		if (escaped) escaped = false;
+		else if (ch === "\\" && quote !== "'") escaped = true;
+		else if (quote) {
+			if (ch === quote) quote = "";
+		} else if (ch === '"' || ch === "'") quote = ch;
+		else if (ch === ";" || ch === "&" || ch === "|" || ch === "\n") return i;
+	}
+	return command.length;
+}
+
+/** The PR body's `Closes #n` in a `gh pr create` segment. */
+function prCloses(segment: string): number | undefined {
+	const flag = BODY_FLAG.exec(segment);
 	if (!flag) return undefined;
-	const rest = command.slice(flag.index + flag[0].length);
+	const rest = segment.slice(flag.index + flag[0].length);
 	const end = NEXT_FLAG.exec(rest)?.index ?? rest.length;
 	const n = CLOSES.exec(rest.slice(0, end))?.[1];
 	return n ? Number(n) : undefined;
@@ -62,10 +105,9 @@ export function ownershipOf(
 		if (m && branch && !segment.includes(`origin/${branch}`))
 			return { issue: Number(m[2]), by: "worktree" };
 	}
-	if (segments.some((segment) => PR_CREATE.test(segment))) {
-		const closes = prCloses(command);
-		if (closes !== undefined) return { issue: closes, by: "pr" };
-	}
+	const create = createSegment(command);
+	const closes = create === undefined ? undefined : prCloses(create);
+	if (closes !== undefined) return { issue: closes, by: "pr" };
 	return undefined;
 }
 

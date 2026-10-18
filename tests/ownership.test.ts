@@ -239,3 +239,17 @@ test("short title flags don't claim", () => {
 	expect(bash("gh pr create -t 'Fixes #9 crash' -b 'no refs'")).toBeUndefined();
 	expect(bash("gh pr create -t 'x' -b 'Closes #9'")?.issue).toBe(9);
 });
+
+test("the PR body is read from the gh pr create segment only", () => {
+	expect(
+		bash("echo --body 'Closes #999'; gh pr create --fill"),
+	).toBeUndefined();
+	expect(
+		bash("gh pr create --fill; echo --body 'Closes #999'"),
+	).toBeUndefined();
+	expect(bash("gh pr create --body 'no refs' -t 'Closes #3'")).toBeUndefined();
+	expect(
+		bash("echo 'gh pr create'; gh pr create --body 'Closes #7'")?.issue,
+	).toBe(7);
+	expect(bash("cd x && gh pr create --body 'Closes #8'")?.issue).toBe(8);
+});
