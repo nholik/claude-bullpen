@@ -183,3 +183,59 @@ test("a leave clears the owner, so a respawn starts fresh", () => {
 	);
 	expect(model.teammates.ada?.owned).toBeUndefined();
 });
+
+test("claim-only events stay out of the trail and the card's activity", () => {
+	const model = buildModel(
+		[
+			ev(1, "turn-start", "build"),
+			ev(2, "tool", "edit team.ts", { target: "Edit" }),
+			ev(3, "tool", "owns #147", {
+				target: "Edit",
+				owns: 147,
+				ownedBy: "worktree",
+			}),
+			ev(4, "tool", "git checkout -b 147-x", { target: "Bash" }),
+			ev(5, "tool", "owns #147", {
+				target: "Bash",
+				owns: 147,
+				ownedBy: "worktree",
+			}),
+		],
+		T + 10_000,
+	);
+	const ada = model.teammates.ada;
+	expect(ada?.issue).toBe(147);
+	expect(ada?.trail.map((t) => t.detail)).toEqual([
+		"build",
+		"edit team.ts",
+		"git checkout -b 147-x",
+	]);
+	expect(ada?.lastActiveAt).toBe(T + 4000);
+});
+
+test("a repeated claim is journaled once", () => {
+	const claim = {
+		op: "event" as const,
+		kind: "tool" as const,
+		agentId: "a1",
+		detail: "owns #147",
+		target: "Edit",
+		attribute: false,
+		owns: { issue: 147, by: "worktree" as const },
+	};
+	const out = applyBatch({}, [
+		{ op: "touch", at: T, id: "a1", patch: { name: "ada" } },
+		{ ...claim, at: T + 1 },
+		{ ...claim, at: T + 2 },
+		{ ...claim, at: T + 3, owns: { issue: 9, by: "pr" } },
+	]);
+	expect(out.events.filter((e) => e.owns !== undefined).length).toBe(1);
+	expect(out.members.a1?.issue).toBe(147);
+	const lead = applyBatch({}, [{ ...claim, agentId: undefined, at: T }]);
+	expect(lead.events.length).toBe(0);
+});
+
+test("short title flags don't claim", () => {
+	expect(bash("gh pr create -t 'Fixes #9 crash' -b 'no refs'")).toBeUndefined();
+	expect(bash("gh pr create -t 'x' -b 'Closes #9'")?.issue).toBe(9);
+});

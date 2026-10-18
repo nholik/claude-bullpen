@@ -190,9 +190,22 @@ export function applyBatch(
 				);
 				break;
 			case "event": {
+				// A claim-only event is journaled when it changes the owner, so
+				// repeated writes in one worktree add nothing.
+				if (op.owns) {
+					const id = op.agentId ?? LEAD;
+					const claim =
+						id !== LEAD ? claimOwner(all[id]?.owned, op.owns) : undefined;
+					const current = all[id];
+					if (
+						!claim ||
+						(claim.issue === current?.issue && claim.by === current.owned)
+					)
+						break;
+				}
 				const id = op.agentId ?? LEAD;
 				const issues = issueRefs(
-					op.kind === "tool" && op.target === "Bash"
+					op.owns || (op.kind === "tool" && op.target === "Bash")
 						? (op.text ?? "")
 						: `${op.detail} ${op.text ?? ""}`,
 				);

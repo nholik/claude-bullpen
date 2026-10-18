@@ -1140,15 +1140,15 @@ export function register(on: On) {
 						}),
 					)
 					.catch(() => {});
-			// An owner is claimed only once the call went through: a denied call
-			// changed nothing.
+			// An owner is claimed only once the call went through: a denied or
+			// failed call changed nothing.
 			const owns = ownershipOf(String(e.tool), args);
-			const denied =
+			const failed =
 				!!result &&
 				typeof result === "object" &&
-				"deny" in result &&
-				result.deny !== undefined;
-			if (owns && !denied)
+				(("deny" in result && result.deny !== undefined) ||
+					("isError" in result && result.isError === true));
+			if (owns && !failed)
 				void producers
 					.track(
 						record($, "tool", e.agentId, `owns #${owns.issue}`, {

@@ -160,6 +160,25 @@ export function applyEvent(
 			issueStarted[issue] = e.at;
 	};
 
+	// A claim-only event sets the owner and nothing else: it is no step, no
+	// activity and no progress, so it never replaces the real edit or command
+	// in the card.
+	if (e.owns !== undefined && e.ownedBy) {
+		const prev = teammates[e.who];
+		const claim = isLead(e.who, options)
+			? undefined
+			: claimOwner(prev?.owned, { issue: e.owns, by: e.ownedBy });
+		if (!claim) return state;
+		teammates[e.who] = step(teammates, e.who, e, {
+			issue: claim.issue,
+			owned: claim.by,
+			lastActiveAt: prev?.lastActiveAt ?? e.at,
+		});
+		take(claim.issue);
+		issueActive[claim.issue] = e.at;
+		return { ...state, teammates, issueStarted, issueActive };
+	}
+
 	// A spawn brings in `target` (a teammate joining reports itself, with no
 	// target). Its brief's first issue is the newcomer's, if it has none yet.
 	const trailStep = {

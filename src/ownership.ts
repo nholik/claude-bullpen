@@ -19,7 +19,7 @@ const PR_CREATE = /^\s*gh\s+pr\s+create\b/;
 // The body argument, to the next flag: a title (`--title 'fix #3'`) is no claim.
 const BODY_FLAG = /(?:^|\s)(?:--body|-b)(?:\s+|=)/;
 const NEXT_FLAG =
-	/\s--(?:title|base|head|label|assignee|draft|fill|reviewer|repo|milestone|project|web|template|body-file|recover|no-maintainer-edit)\b/;
+	/\s--(?:title|base|head|label|assignee|draft|fill|reviewer|repo|milestone|project|web|template|body-file|recover|no-maintainer-edit)\b|\s-[tBHlard]\s/;
 const CLOSES = /\b(?:closes|fixes|resolves)\s+#(\d{1,7})\b/i;
 
 function str(args: Record<string, unknown>, key: string): string {
