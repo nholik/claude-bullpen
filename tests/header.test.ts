@@ -112,14 +112,14 @@ test("the footer says why there is no GitHub data", () => {
 		labels: [],
 		assignees: [],
 	}));
-	expect(
-		text({
-			...fresh,
-			checkedAt: 5,
-			result: { status: "ok", issues: capped },
-			burndown: [{ at: 0, open: 3, closed: 1 }],
-		}),
-	).toContain("exact counts unavailable");
+	const noCounts = text({
+		...fresh,
+		checkedAt: 5,
+		result: { status: "ok", issues: capped },
+		burndown: [{ at: 0, open: 3, closed: 1 }],
+	});
+	expect(noCounts).toContain("exact counts unavailable");
+	expect(noCounts).not.toContain("no GitHub data");
 	expect(text(fresh, "demo")).toContain("paused in demo");
 	expect(text(fresh, "replay")).toContain("paused in replay");
 	expect(

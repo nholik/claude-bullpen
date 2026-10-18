@@ -128,14 +128,16 @@ export function footer(
 	columns: number,
 	mode: "live" | "demo" | "replay" = "live",
 ): Line[] {
-	// A full issue page whose count searches failed has no trustworthy burndown.
-	if (github.result?.status !== "ok" || !exactCounts(github.result))
+	if (github.result?.status !== "ok")
 		return [
 			textLine(
 				`burndown · no GitHub data · ${noDataReason(github, mode)}`,
 				columns,
 			),
 		];
+	// A full issue page whose count searches failed has no trustworthy burndown.
+	if (!exactCounts(github.result))
+		return [textLine("burndown · exact counts unavailable", columns)];
 	const series = github.burndown;
 	const first = series[0];
 	const last = series[series.length - 1];

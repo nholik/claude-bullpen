@@ -367,10 +367,8 @@ export function noDataReason(
 ): string {
 	if (mode === "demo") return "paused in demo";
 	if (mode === "replay") return "paused in replay";
-	if (github.result)
-		return github.result.status === "ok"
-			? "exact counts unavailable"
-			: github.result.message;
+	if (github.result && github.result.status !== "ok")
+		return github.result.message;
 	return github.checkedAt > 0 ? "no result yet" : "waiting for first poll";
 }
 

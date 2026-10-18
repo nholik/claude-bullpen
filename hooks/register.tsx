@@ -859,7 +859,7 @@ function startTimers($: $) {
  * for changed modules, so the timers can die while the pane stays open. Called
  * from render and from observers: restarts whatever has stopped beating.
  */
-async function ensureLive($: $) {
+async function ensureLive($: $, rearm = true) {
 	const at = await now($);
 	lastClockMs = at;
 	if (at - lastEnsureAt < ENSURE_MS) return;
@@ -867,9 +867,10 @@ async function ensureLive($: $) {
 	const viewDead =
 		!viewTimer || at - Math.max(lastBeatAt, lastTimerStartAt) > BEAT_GRACE_MS;
 	if (viewDead) startTimers($);
-	else {
+	else if (rearm) {
 		// Beating inside the grace may be a cancelled timer that has not yet
-		// aged out: look once more just past it. One pending recheck at most.
+		// aged out: look once more just past it. One pending recheck at most, and
+		// the recheck itself never arms another (ticks beat every second).
 		const delay = recheckDelay(at, lastBeatAt, lastTimerStartAt, BEAT_GRACE_MS);
 		// A recheck long overdue was itself cancelled by a reload: replace it.
 		const overdue = at > recheckDueAt + BEAT_GRACE_MS;
@@ -878,7 +879,7 @@ async function ensureLive($: $) {
 			recheckTimer = $.clock.after(delay, () => {
 				recheckTimer = undefined;
 				lastEnsureAt = 0;
-				void ensureLive($).catch(() => {});
+				void ensureLive($, false).catch(() => {});
 			});
 		}
 	}
@@ -938,6 +939,9 @@ export function register(on: On) {
 		cardWidths.clear();
 		viewTimer?.cancel();
 		viewTimer = undefined;
+		recheckTimer?.cancel();
+		recheckTimer = undefined;
+		recheckDueAt = 0;
 		reconcileTimer?.cancel();
 		reconcileTimer = undefined;
 		pollLoop?.cancel();
