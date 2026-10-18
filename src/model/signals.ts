@@ -56,9 +56,6 @@ export function stuckReasons(
 			Math.floor((now - (t.lastProgressAt ?? t.lastActiveAt)) / MINUTE),
 		);
 		const idle = Math.max(0, Math.floor((now - t.lastActiveAt) / MINUTE));
-		const reviewAge = ship
-			? Math.max(0, Math.floor((now - ship.at) / MINUTE))
-			: 0;
 		const kickbacks = model.kickbacks.filter(
 			(k) => t.issue !== undefined && k.issue === t.issue && k.at <= now,
 		);
@@ -69,17 +66,15 @@ export function stuckReasons(
 				? `same command failed ${t.failureCount} times`
 				: kickbacks.length >= 2 && ship?.stage !== "approved"
 					? `sent back ${kickbacks.length} times`
-					: ship?.stage === "in-review" && reviewAge >= 15 && !waiting
-						? `review waiting ${reviewAge}m`
-						: t.status === "running" && quiet >= 10
-							? `no tool progress ${quiet}m`
-							: t.status === "idle" &&
-									t.issue !== undefined &&
-									idle >= 5 &&
-									!verdictRole &&
-									!waiting
-								? `idle with open work ${idle}m`
-								: undefined;
+					: t.status === "running" && quiet >= 10
+						? `no tool progress ${quiet}m`
+						: t.status === "idle" &&
+								t.issue !== undefined &&
+								idle >= 5 &&
+								!verdictRole &&
+								!waiting
+							? `idle with open work ${idle}m`
+							: undefined;
 		if (reason) reasons[t.name] = reason;
 	}
 	return reasons;

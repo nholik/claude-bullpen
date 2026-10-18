@@ -45,16 +45,6 @@ test("each stuck rule has a visible reason, and success clears repeated command 
 		],
 		[
 			[
-				event("message", 0, {
-					target: "lead",
-					detail: "#12 please review https://github.com/o/r/pull/22",
-				}),
-			],
-			15 * minute,
-			"review waiting 15m",
-		],
-		[
-			[
 				event("tool", 0),
 				event("message", 1, {
 					who: "gate",
@@ -214,9 +204,8 @@ test("stall timers honor their thresholds and messages do not count as tool prog
 		event("tool", 14 * minute),
 	];
 	expect(buildModel(review, 15 * minute - 1).stuck?.builder).toBeUndefined();
-	expect(buildModel(review, 15 * minute).stuck?.builder).toBe(
-		"review waiting 15m",
-	);
+	// A slow review is not the builder's stall.
+	expect(buildModel(review, 30 * minute).stuck?.builder).toBeUndefined();
 	expect(
 		buildModel([event("turn-end", 0, { issues: [] })], 20 * minute).stuck,
 	).toEqual({});

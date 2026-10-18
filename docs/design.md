@@ -144,7 +144,7 @@ appears with its word: color and face are never the only signal.
 | failing | `(>_<)` | checks red ×N | coral | coral frame | none |
 | kicked back | `(>_<)` | sent back | coral | coral frame | none |
 | stuck | `(._.)` | stuck · reason | amber text | normal | none |
-| in review | `(o_o)?` | waiting on review | lavender | normal | none |
+| in review | `(o_o)?` | waiting on review, or waiting on merge once approved | lavender | normal | none |
 | running | `(o.o)` | heads-down | text | normal | none |
 | merged | `(^_^)b` | merged | mint | normal | one-shot, ≤2 s |
 | idle | `(-_-)` | snoozing | muted | dimmed | z's drift |
@@ -156,8 +156,11 @@ from top to bottom: the first state that matches wins.
 
 **Stuck** fires on any of: running with no tool progress for 10 min; the same failing
 command three times; two review kickbacks on one issue; idle for 5 min while assigned
-an open issue; waiting on review for 15 min. The reason goes on the card ("no progress
-14m"). Morale's stall detection and the card must agree: if the header says an issue
+an open issue and no PR exists for it. The reason goes on the card ("no progress
+14m"). A slow review is never the
+builder's stall: an idle builder whose PR is open shows waiting on review, or waiting on
+merge once approved. Reviewer and designer roles (gate, ux) never get "idle with open
+work"; when idle they snooze. Morale's stall detection and the card must agree: if the header says an issue
 stalled, its owner's card says stuck. **Cost** shows turns and wall-clock per teammate.
 Token or dollar figures appear only if the engine reports them. We never estimate.
 
