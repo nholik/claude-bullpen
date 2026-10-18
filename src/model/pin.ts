@@ -14,4 +14,11 @@ export default `
 {"version":1,"at":1792246860000,"kind":"pr","agentId":"a-ada","who":"ada","detail":"opened PR #41","issues":[41],"url":"https://example.invalid/pr/41"}
 {"version":1,"at":1792247100000,"kind":"message","agentId":"a-gate","who":"gate","target":"team-lead","detail":"PR #41 (#7): CHANGES, one P1 blocks the merge","issues":[7]}
 {"version":1,"at":1792247400000,"kind":"message","agentId":"a-gate","who":"gate","target":"team-lead","detail":"PR #41 (#7): PASS","issues":[7]}
+{"version":1,"at":1792247500000,"kind":"tool","agentId":"a-ada","who":"ada","target":"SendMessage","detail":"to gate: look at #52 too","issues":[52]}
+{"version":1,"at":1792247510000,"kind":"message","agentId":"a-ada","who":"ada","target":"team-lead","detail":"Round: | #50 (merged) | ok |","issues":[50]}
+{"version":1,"at":1792247600000,"kind":"tool","agentId":"a-ada","who":"ada","target":"Bash","detail":"git worktree add .worktrees/53-x","issues":[53],"owns":53,"ownedBy":"worktree"}
+{"version":1,"at":1792247700000,"kind":"message","agentId":"a-ada","who":"ada","target":"team-lead","detail":"while at it, #54 looks related","issues":[54]}
+{"version":1,"at":1792247800000,"kind":"message","who":"lead","target":"gate","detail":"closed #7, shipped #41","issues":[7,41]}
+{"version":1,"at":1792247900000,"kind":"message","agentId":"a-gate","who":"gate","target":"team-lead","detail":"PR #58 (#9): CHANGES, tests fail on the empty journal","issues":[9,58]}
+{"version":1,"at":1792248000000,"kind":"message","agentId":"a-ada","who":"ada","target":"team-lead","detail":"#9 blocked: skip or fix the empty-journal test?","issues":[9]}
 `;

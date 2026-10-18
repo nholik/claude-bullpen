@@ -38,6 +38,10 @@ test("MODEL_VERSION fingerprints the reducer's output for the pin journal", asyn
 	// The fixture must keep exercising the rules the version guards.
 	expect(state.asks.length).toBeGreaterThan(0);
 	expect(Object.keys(state.ship.paths).length).toBeGreaterThan(0);
+	expect(state.closes.length).toBeGreaterThan(0);
+	expect(state.kickbacks.length).toBeGreaterThan(0);
+	expect(state.asks.some((a) => a.open)).toBe(true);
+	expect(Object.values(state.teammates).some((t) => t.owned)).toBe(true);
 	expect(MODEL_VERSION).toBe(fingerprintOf(state));
 	expect(MODEL_VERSION).toMatch(/^r[0-9a-f]+$/);
 	// Different output, different version; same output, same version.
