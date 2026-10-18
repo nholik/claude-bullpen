@@ -2,6 +2,7 @@ import type { GithubSource, Profile } from "../../types";
 import type { BullpenModel, Teammate } from "../model";
 import { activeTime, flowSummary, waitingOn } from "../model/signals";
 import { colorFor, colorIndex, memberRole, roleLabel } from "../profile";
+import { messageKey } from "../scroll";
 import { activityPhrase } from "./activity";
 import {
 	type CardWidthTracker,
@@ -204,24 +205,31 @@ function messageLines(
 	profile: Profile,
 	columns: number,
 	maxLines = 2,
+	keyed = false,
 ): Line[] {
+	// Wrapping a 2000-char message to keep six lines is wasted work: wrap a
+	// prefix with room to spare (two chars a cell) and mark the cut ourselves.
+	const reach = (maxLines + 1) * Math.max(1, columns) * 2;
 	return messages.flatMap((message) => {
-		const wrapped = wrapText(message.text, columns);
+		const clipped = message.text.length > reach;
+		const wrapped = wrapText(
+			clipped ? message.text.slice(0, reach) : message.text,
+			columns,
+		);
 		const body = wrapped.slice(0, maxLines);
-		if (wrapped.length > maxLines && body.length)
+		if ((clipped || wrapped.length > maxLines) && body.length)
 			body.push(withCutMarker(body.pop() ?? [], columns));
-		return [
-			align(
-				text(
-					`${message.from} → ${message.to}`,
-					colorFor(message.from, profile, colorIndex(message.from)),
-				),
-				text(clock(message.at).slice(0, 5), STUDIO.muted),
-				columns,
+		const header = align(
+			text(
+				`${message.from} → ${message.to}`,
+				colorFor(message.from, profile, colorIndex(message.from)),
 			),
-			...body,
-			[],
-		];
+			text(clock(message.at).slice(0, 5), STUDIO.muted),
+			columns,
+		);
+		const first = header[0];
+		if (keyed && first) header[0] = { ...first, key: messageKey(message) };
+		return [header, ...body, []];
 	});
 }
 
@@ -234,7 +242,7 @@ export function allMessages(
 	profile: Profile,
 	columns: number,
 ): Line[] {
-	return messageLines(messages, profile, columns, 6);
+	return messageLines(messages, profile, columns, 6, true);
 }
 
 /** A people-first terminal view: measured text and symbols, not an office illustration. */

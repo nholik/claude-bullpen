@@ -332,3 +332,28 @@ test("a message cut at six lines keeps its marker even on a full-width line", ()
 	);
 	expect(short.some((l) => l.some((s) => s.text.includes("…")))).toBe(false);
 });
+
+test("a 2000-char message is wrapped from a prefix yet still shows the marker", () => {
+	for (const columns of [20, 60, 160]) {
+		const text = "word ".repeat(400);
+		const lines = allMessages(
+			[{ from: "a", to: "b", text, at: 0 }] as never,
+			DEFAULT_PROFILE,
+			columns,
+		);
+		expect(lines.length).toBe(8);
+		const last = lines[6]?.map((s) => s.text).join("") ?? "";
+		expect(last.endsWith("…")).toBe(true);
+		expect(width(lines[6] ?? [])).toBeLessThanOrEqual(columns);
+	}
+});
+
+test("only a message header carries a row key", () => {
+	const lines = allMessages(
+		[{ from: "a", to: "b", text: "hi there", at: 5 }] as never,
+		DEFAULT_PROFILE,
+		40,
+	);
+	expect(lines.filter((l) => l[0]?.key !== undefined).length).toBe(1);
+	expect(lines[0]?.[0]?.key).toBeDefined();
+});
