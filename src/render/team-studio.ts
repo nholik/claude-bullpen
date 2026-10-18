@@ -236,8 +236,10 @@ export function newestMessages(
 		}
 		// Keep the header and as much text as fits, then stop.
 		const cut = block.slice(0, left);
-		const last = cut.pop() ?? [];
-		cut.push([...last, { text: "…", fg: STUDIO.muted }]);
+		// Leave a cell for the marker, unless the wrap already ended the line with one.
+		const last = fit(cut.pop() ?? [], columns - 1);
+		const marked = last.at(-1)?.text.endsWith("…") ?? false;
+		cut.push(marked ? last : [...last, { text: "…", fg: STUDIO.muted }]);
 		picked.unshift(cut);
 		break;
 	}

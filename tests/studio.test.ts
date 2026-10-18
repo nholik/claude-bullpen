@@ -292,3 +292,33 @@ test("the messages view keeps the newest messages and fits its rows", () => {
 		expect(flat.some((t) => t.includes("m0 "))).toBe(false);
 	}
 });
+
+test("the messages view marks a cut on a full-width line, once", () => {
+	const columns = 40;
+	const full = "x".repeat(columns * 3);
+	// Header + 1 body line fit; the cut lands on a full-width wrapped line.
+	const one = [{ from: "a", to: "b", text: full, at: 0 }];
+	const cut = newestMessages(one as never, DEFAULT_PROFILE, columns, 2);
+	const rowText = cut.map((l) => l.map((s) => s.text).join(""));
+	expect(rowText[1]?.endsWith("…")).toBe(true);
+	expect(width(cut[1] ?? [])).toBeLessThanOrEqual(columns);
+
+	// The wrap already ended the message with "…" (more than six lines): no doubling.
+	const huge = [{ from: "a", to: "b", text: "word ".repeat(400), at: 0 }];
+	const marked = newestMessages(huge as never, DEFAULT_PROFILE, columns, 7);
+	for (const l of marked) {
+		expect(
+			l
+				.map((s) => s.text)
+				.join("")
+				.includes("……"),
+		).toBe(false);
+	}
+	const lastRow = marked.at(-1) ?? [];
+	expect(
+		lastRow
+			.map((s) => s.text)
+			.join("")
+			.endsWith("…"),
+	).toBe(true);
+});
