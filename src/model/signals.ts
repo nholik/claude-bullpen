@@ -1,12 +1,56 @@
 import type { BurndownPoint } from "../../types";
+import { isReviewer } from "./detect";
+import type { ShipPath } from "./ship";
 import type { BullpenModel, Teammate } from "./types";
 
 const MINUTE = 60_000;
+
+/** Reviewers and designers finish by reporting a verdict; idle afterwards is done. */
+export function isVerdictRole(t: Teammate, role: string | undefined): boolean {
+	return (
+		isReviewer(t.name, role ?? t.agentType) ||
+		/designer|reviewer/i.test(role ?? t.agentType ?? "")
+	);
+}
+
+/**
+ * The ship path for the teammate's issue. Messages say "PR #121" as often as
+ * "#121", so a teammate's issue may really be a PR number: match that too.
+ */
+function shipOf(model: BullpenModel, t: Teammate): ShipPath | undefined {
+	if (t.issue === undefined) return undefined;
+	return (
+		model.ship.find((p) => p.issue === t.issue) ??
+		model.ship.find((p) => p.pr === t.issue)
+	);
+}
+
+/** An open PR (not yet merged) on the issue: its owner is waiting, not stalled. */
+export function waitingStage(
+	model: BullpenModel,
+	t: Teammate,
+): "review" | "merge" | undefined {
+	const ship = shipOf(model, t);
+	if (ship?.stage === "approved") return "merge";
+	if (ship?.stage === "pr-open" || ship?.stage === "in-review") return "review";
+	return undefined;
+}
+
+/** Idle builders with an open PR; running teammates and verdict roles never wait. */
+export function waitingOn(
+	model: BullpenModel,
+	t: Teammate,
+	role?: string,
+): "review" | "merge" | undefined {
+	if (t.status !== "idle" || isVerdictRole(t, role)) return undefined;
+	return waitingStage(model, t);
+}
 
 /** Evidence of a possible stall, not a claim about the agent's reasoning. */
 export function stuckReasons(
 	model: BullpenModel,
 	now: number,
+	roles: Readonly<Record<string, string>> = {},
 ): Record<string, string> {
 	const reasons: Record<string, string> = {};
 	for (const t of Object.values(model.teammates)) {
@@ -15,31 +59,34 @@ export function stuckReasons(
 			(t.issue !== undefined && model.closed.includes(t.issue))
 		)
 			continue;
-		const ship = model.ship.find((p) => p.issue === t.issue);
+		const ship = shipOf(model, t);
 		if (ship?.stage === "merged" || ship?.stage === "shipped") continue;
 		const quiet = Math.max(
 			0,
 			Math.floor((now - (t.lastProgressAt ?? t.lastActiveAt)) / MINUTE),
 		);
 		const idle = Math.max(0, Math.floor((now - t.lastActiveAt) / MINUTE));
-		const reviewAge = ship
-			? Math.max(0, Math.floor((now - ship.at) / MINUTE))
-			: 0;
 		const kickbacks = model.kickbacks.filter(
 			(k) => t.issue !== undefined && k.issue === t.issue && k.at <= now,
 		);
+		const verdictRole = isVerdictRole(t, roles[t.name]);
+		const waiting = waitingOn(model, t, roles[t.name]) !== undefined;
+		// A bounced builder usually waits for the lead to route the fix.
+		const idleLimit = ship?.stage === "changes" ? 15 : 5;
 		const reason =
 			(t.failureCount ?? 0) >= 3
 				? `same command failed ${t.failureCount} times`
 				: kickbacks.length >= 2 && ship?.stage !== "approved"
 					? `sent back ${kickbacks.length} times`
-					: ship?.stage === "in-review" && reviewAge >= 15
-						? `review waiting ${reviewAge}m`
-						: t.status === "running" && quiet >= 10
-							? `no tool progress ${quiet}m`
-							: t.status === "idle" && t.issue !== undefined && idle >= 5
-								? `idle with open work ${idle}m`
-								: undefined;
+					: t.status === "running" && quiet >= 10
+						? `no tool progress ${quiet}m`
+						: t.status === "idle" &&
+								t.issue !== undefined &&
+								idle >= idleLimit &&
+								!verdictRole &&
+								!waiting
+							? `idle with open work ${idle}m`
+							: undefined;
 		if (reason) reasons[t.name] = reason;
 	}
 	return reasons;
