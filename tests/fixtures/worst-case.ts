@@ -1,6 +1,7 @@
 // A worst-case team for the render budget (tests/render-perf.test.ts): 8
 // teammates, 20 issues each on the way to shipping, and a full hallway of
-// 2000-character messages (the reducer keeps 50). Shaped on real journal lines,
+// 2000-character messages (the reducer keeps 50), 50 open decisions (its
+// retained maximum) and open asks from idle, stalled and gone teammates. Shaped on real journal lines,
 // with names, paths and prompt text replaced by neutral placeholders. Built in
 // code rather than written out: the hallway text alone would be 100 KB.
 
@@ -20,7 +21,16 @@ export const WORST_NAMES = [
 	"rhea",
 ];
 
+/** Live presence: some of the team is idle or gone, the rest silent but running (stalled). */
+export const WORST_PRESENT: Record<string, "running" | "idle" | "gone"> = {
+	smith: "idle",
+	iris: "idle",
+	vale: "gone",
+	rhea: "gone",
+};
+
 const ISSUES = 20;
+const DECISIONS = 50;
 const HALLWAY = 50;
 const WORDS = [
 	"the",
@@ -34,6 +44,7 @@ const WORDS = [
 	"to",
 	"a",
 	"wide-界-character",
+	"\u{1F469}\u200D\u{1F4BB}",
 	"row",
 	"before",
 	"#7",
@@ -77,7 +88,7 @@ for (let issue = 1; issue <= ISSUES; issue++) {
 	const name = WORST_NAMES[issue % WORST_NAMES.length] ?? "ada";
 	const pr = 100 + issue;
 	const base = 30 + issue * 20;
-	push(base, "turn-start", name, "work", {
+	push(base, "turn-start", name, "started a turn", {
 		agentId: `a-${name}`,
 		issues: [issue],
 	});
@@ -114,26 +125,51 @@ for (let issue = 1; issue <= ISSUES; issue++) {
 		push(base + 15, "message", "lead", `merged #${issue}`, { issues: [issue] });
 }
 
-// Open decisions for the needs view: the lead put them to the person, who has
-// not answered. They come before the hallway, which keeps the last 50 messages.
-for (let i = 0; i < 6; i++)
+// Open asks to the lead from idle, stalled and gone teammates: a question
+// mark is what makes a message an ask, and nothing answers them.
+for (const [i, name] of [
+	"smith",
+	"iris",
+	"vale",
+	"rhea",
+	"gate",
+	"kit",
+].entries())
 	push(
-		30 + ISSUES * 20 + 20 + i * 5,
-		"decision",
-		"lead",
-		`Skip or fix the failing test on #${i + 1}?`,
+		30 + ISSUES * 20 + 20 + i,
+		"message",
+		name,
+		`Blocked on #${i + 1}, can you confirm the approach?`,
 		{
-			context: "The review bounced twice and the fix touches the shared cache.",
+			agentId: `a-${name}`,
+			target: "team-lead",
 			issues: [i + 1],
 		},
 	);
 
-const hallwayStart = 30 + ISSUES * 20 + 60;
+// Open decisions for the needs view: the lead put them to the person, who has
+// not answered. They come before the hallway, which keeps the last 50 messages.
+for (let i = 0; i < DECISIONS; i++)
+	push(
+		30 + ISSUES * 20 + 40 + i * 5,
+		"decision",
+		"lead",
+		`Skip or fix the failing test on #${(i % ISSUES) + 1} (round ${i})?`,
+		{
+			context: "The review bounced twice and the fix touches the shared cache.",
+			issues: [(i % ISSUES) + 1],
+		},
+	);
+
+const hallwayStart = 30 + ISSUES * 20 + 40 + DECISIONS * 5 + 60;
 for (let i = 0; i < HALLWAY + 10; i++) {
 	const name = WORST_NAMES[i % WORST_NAMES.length] ?? "ada";
 	push(hallwayStart + i * 10, "message", name, prose(i), {
 		agentId: `a-${name}`,
-		target: i % 3 === 0 ? "team-lead" : "all",
+		target:
+			i % 3 === 0
+				? "team-lead"
+				: (WORST_NAMES[(i + 1) % WORST_NAMES.length] ?? "ada"),
 		issues: [(i % ISSUES) + 1],
 	});
 }

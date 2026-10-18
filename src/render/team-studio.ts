@@ -200,7 +200,32 @@ function withCutMarker(line: Line, columns: number): Line {
 		: [...last, { text: "…", fg: STUDIO.muted }];
 }
 
-/** Hallway messages as a sender/time row, up to two wrapped lines and a gap. */
+/** Wrapped bodies of the talk focus, so a redraw only wraps what is new. */
+type Wrapped = { text: string; body: Line[] };
+let wrapCache = new Map<string, Wrapped>();
+let wrapCacheColumns = -1;
+
+/**
+ * A message's wrapped body (at most `maxLines`, with a cut marker). Wrapping a
+ * 2000-char message to keep six lines is wasted work: wrap a prefix with room
+ * to spare (two chars a cell) and mark the cut ourselves.
+ */
+function wrapBody(text: string, columns: number, maxLines: number): Line[] {
+	const reach = (maxLines + 1) * Math.max(1, columns) * 2;
+	const clipped = text.length > reach;
+	const wrapped = wrapText(clipped ? text.slice(0, reach) : text, columns);
+	const body = wrapped.slice(0, maxLines);
+	if ((clipped || wrapped.length > maxLines) && body.length)
+		body.push(withCutMarker(body.pop() ?? [], columns));
+	return body;
+}
+
+/**
+ * Hallway messages as a sender/time row, up to `maxLines` wrapped lines and a
+ * gap. The keyed (talk focus) form caches bodies per message and width: it
+ * keeps only the messages drawn this call, and drops everything when the
+ * width changes, so the cache never outgrows the hallway.
+ */
 function messageLines(
 	messages: BullpenModel["hallway"],
 	profile: Profile,
@@ -208,18 +233,19 @@ function messageLines(
 	maxLines = 2,
 	keyed = false,
 ): Line[] {
-	// Wrapping a 2000-char message to keep six lines is wasted work: wrap a
-	// prefix with room to spare (two chars a cell) and mark the cut ourselves.
-	const reach = (maxLines + 1) * Math.max(1, columns) * 2;
-	return messages.flatMap((message) => {
-		const clipped = message.text.length > reach;
-		const wrapped = wrapText(
-			clipped ? message.text.slice(0, reach) : message.text,
-			columns,
-		);
-		const body = wrapped.slice(0, maxLines);
-		if ((clipped || wrapped.length > maxLines) && body.length)
-			body.push(withCutMarker(body.pop() ?? [], columns));
+	const kept = new Map<string, Wrapped>();
+	if (keyed) {
+		if (wrapCacheColumns !== columns) wrapCache = new Map();
+		wrapCacheColumns = columns;
+	}
+	const lines = messages.flatMap((message) => {
+		const key = messageKey(message);
+		const hit = keyed ? wrapCache.get(key) : undefined;
+		const body =
+			hit && hit.text === message.text
+				? hit.body
+				: wrapBody(message.text, columns, maxLines);
+		if (keyed) kept.set(key, { text: message.text, body });
 		const header = align(
 			text(
 				`${message.from} → ${message.to}`,
@@ -229,9 +255,11 @@ function messageLines(
 			columns,
 		);
 		const first = header[0];
-		if (keyed && first) header[0] = { ...first, key: messageKey(message) };
+		if (keyed && first) header[0] = { ...first, key };
 		return [header, ...body, []];
 	});
+	if (keyed) wrapCache = kept;
+	return lines;
 }
 
 /**
