@@ -2,6 +2,7 @@ import type { GithubSource, Profile } from "../../types";
 import type { BullpenModel, Teammate } from "../model";
 import { activeTime, flowSummary, waitingOn } from "../model/signals";
 import { colorFor, colorIndex, memberRole, roleLabel } from "../profile";
+import { messageKey } from "../scroll";
 import { activityPhrase } from "./activity";
 import {
 	type CardWidthTracker,
@@ -190,61 +191,58 @@ function workstation(
 	];
 }
 
+/** The line ending in one "…": a cell is left for it, and `fit` may already have added it. */
+function withCutMarker(line: Line, columns: number): Line {
+	const last = fit(line, columns - 1);
+	return last.at(-1)?.text.endsWith("…")
+		? last
+		: [...last, { text: "…", fg: STUDIO.muted }];
+}
+
 /** Hallway messages as a sender/time row, up to two wrapped lines and a gap. */
 function messageLines(
 	messages: BullpenModel["hallway"],
 	profile: Profile,
 	columns: number,
 	maxLines = 2,
+	keyed = false,
 ): Line[] {
+	// Wrapping a 2000-char message to keep six lines is wasted work: wrap a
+	// prefix with room to spare (two chars a cell) and mark the cut ourselves.
+	const reach = (maxLines + 1) * Math.max(1, columns) * 2;
 	return messages.flatMap((message) => {
-		const wrapped = wrapText(message.text, columns);
+		const clipped = message.text.length > reach;
+		const wrapped = wrapText(
+			clipped ? message.text.slice(0, reach) : message.text,
+			columns,
+		);
 		const body = wrapped.slice(0, maxLines);
-		if (wrapped.length > maxLines && body.length)
-			body.push([...(body.pop() ?? []), { text: "…", fg: STUDIO.muted }]);
-		return [
-			align(
-				text(
-					`${message.from} → ${message.to}`,
-					colorFor(message.from, profile, colorIndex(message.from)),
-				),
-				text(clock(message.at).slice(0, 5), STUDIO.muted),
-				columns,
+		if ((clipped || wrapped.length > maxLines) && body.length)
+			body.push(withCutMarker(body.pop() ?? [], columns));
+		const header = align(
+			text(
+				`${message.from} → ${message.to}`,
+				colorFor(message.from, profile, colorIndex(message.from)),
 			),
-			...body,
-			[],
-		];
+			text(clock(message.at).slice(0, 5), STUDIO.muted),
+			columns,
+		);
+		const first = header[0];
+		if (keyed && first) header[0] = { ...first, key: messageKey(message) };
+		return [header, ...body, []];
 	});
 }
 
-/** The newest messages that fit `rows` (oldest first); a cut-off oldest one ends in "…". */
-export function newestMessages(
+/**
+ * The whole kept hallway, oldest first, as a tree taller than the window: the
+ * engine scrolls it row by row. A message over six lines ends in "…".
+ */
+export function allMessages(
 	messages: BullpenModel["hallway"],
 	profile: Profile,
 	columns: number,
-	rows: number,
 ): Line[] {
-	const picked: Line[][] = [];
-	let left = Math.max(0, rows);
-	for (let i = messages.length - 1; i >= 0 && left > 1; i--) {
-		const message = messages[i];
-		if (!message) continue;
-		const block = messageLines([message], profile, columns, 6);
-		if (block.length <= left) {
-			picked.unshift(block);
-			left -= block.length;
-			continue;
-		}
-		// Keep the header and as much text as fits, then stop.
-		const cut = block.slice(0, left);
-		// Leave a cell for the marker, unless the wrap already ended the line with one.
-		const last = fit(cut.pop() ?? [], columns - 1);
-		const marked = last.at(-1)?.text.endsWith("…") ?? false;
-		cut.push(marked ? last : [...last, { text: "…", fg: STUDIO.muted }]);
-		picked.unshift(cut);
-		break;
-	}
-	return picked.flat();
+	return messageLines(messages, profile, columns, 6, true);
 }
 
 /** A people-first terminal view: measured text and symbols, not an office illustration. */
@@ -324,19 +322,23 @@ export function teamStudioView(
 	const room = Math.max(0, rows - header.length);
 	if (focus) {
 		// A focused list fills the body under the same header.
+		// Messages are not cut to the window: the pane scrolls the tall tree.
 		const body =
 			focus === "shipping"
-				? shippingSection(model, github, profile, columns, room, now)
+				? shippingSection(model, github, profile, columns, room, now).slice(
+						0,
+						room,
+					)
 				: [
 						section("MESSAGES / hallway", columns),
 						...(model.hallway.length
-							? newestMessages(model.hallway, profile, columns, room - 1)
+							? allMessages(model.hallway, profile, columns)
 							: [textLine("The hallway is quiet.", columns)]),
 					];
 		return {
 			header: glyphLines(header, profile.glyphs),
 			regions: glyphLines(
-				body.slice(0, room).map((line) => fit(line, columns)),
+				body.map((line) => fit(line, columns)),
 				profile.glyphs,
 			),
 		};

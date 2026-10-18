@@ -7,6 +7,8 @@ export type Seg = {
 	text: string;
 	story?: number;
 	agentId?: string;
+	/** Names the row this segment starts, so the window can be scrolled back to it. */
+	key?: string;
 	/** Opens the human reply form for this ask. */
 	ask?: { from: string; at: number };
 	fg?: number;
