@@ -70,6 +70,7 @@ import { createMotion, motionFor } from "../src/motion";
 import {
 	DEFAULT_PROFILE,
 	parseProfile,
+	roleNames,
 	withMemberColors,
 } from "../src/profile";
 import {
@@ -1171,6 +1172,7 @@ export function register(on: On) {
 		const at = snapshot.now;
 		const model = sceneModel(snapshot, {
 			github: source,
+			roles: roleNames(config),
 			present: Object.fromEntries(list.map((m) => [m.name, m.status])),
 			agentTypes: Object.fromEntries(
 				list.flatMap((m) => (m.agentType ? [[m.name, m.agentType]] : [])),
@@ -1433,6 +1435,7 @@ export function register(on: On) {
 		const { Box, Text, Button } = $.ui.resolve(e);
 		const model = sceneModel(snapshot, {
 			github: snapshot.github,
+			roles: roleNames(await read($, profile)),
 			present: Object.fromEntries(
 				Object.values(snapshot.members).map((m) => [m.name, m.status]),
 			),

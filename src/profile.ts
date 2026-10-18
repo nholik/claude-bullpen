@@ -232,6 +232,14 @@ export function roleFor(name: string, profile: Profile): Role | undefined {
 	return undefined;
 }
 
+/** Team name → declared role, for the entries that name one (the model's `roles` option). */
+export function roleNames(profile: Profile): Record<string, string> {
+	const out: Record<string, string> = {};
+	for (const [name, r] of Object.entries(profile.roles))
+		if (r.role !== undefined) out[name] = r.role;
+	return out;
+}
+
 const TYPE_ROLES: Record<string, string> = {
 	builder: "engineer",
 	gate: "reviewer",
