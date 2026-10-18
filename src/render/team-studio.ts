@@ -1,7 +1,7 @@
 import type { GithubSource, Profile } from "../../types";
 import type { BullpenModel, Teammate } from "../model";
 import { activeTime, flowSummary, waitingOn } from "../model/signals";
-import { colorFor, colorIndex, roleLabel } from "../profile";
+import { colorFor, colorIndex, memberRole, roleLabel } from "../profile";
 import { activityPhrase } from "./activity";
 import {
 	type CardWidthTracker,
@@ -58,12 +58,13 @@ function workstation(
 		member.agentType,
 	);
 	const role = roleLabel(member.name, member.agentType, profile);
+	const waiting = waitingOn(model, member, memberRole(member, profile));
 	const feel = moodFor({
 		status: member.status,
 		away: member.away,
 		stuckReason: model.stuck?.[member.name],
-		waitingOnReview: waitingOn(model, member) !== undefined,
-		waitingOnMerge: waitingOn(model, member) === "merge",
+		waitingOnReview: waiting !== undefined,
+		waitingOnMerge: waiting === "merge",
 		failingChecks: member.failureCount,
 		justMerged: model.ship.some(
 			(p) =>

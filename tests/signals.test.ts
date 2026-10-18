@@ -2,7 +2,7 @@ import { expect, test } from "claude-code/testing";
 import { toolOutcome } from "../src/collect";
 import { applyEvent, buildModel, modelOf, reduceEvents } from "../src/model";
 import { activeTime, backlogTrend, flowSummary } from "../src/model/signals";
-import { DEFAULT_PROFILE } from "../src/profile";
+import { DEFAULT_PROFILE, roleNames } from "../src/profile";
 import { width } from "../src/render/lines";
 import { teamStudioView } from "../src/render/team-studio";
 import { replayAt } from "../src/replay";
@@ -467,4 +467,144 @@ test("morale does not count idle reviewers or builders waiting on a PR as idling
 	];
 	const model = buildModel(events, 20 * minute);
 	expect(model.morale.factors.idle).toEqual(["other"]);
+});
+
+test("a reviewer known only through the profile's roles is not a waiting builder", () => {
+	const idle = 20 * minute;
+	const who = "checker";
+	const events = [
+		event("tool", 0, { who }),
+		event("message", 1, {
+			who,
+			target: "lead",
+			detail: "#12 PR is up: https://github.com/o/r/pull/30. Check is green.",
+		}),
+		event("turn-end", 2, { who }),
+	];
+	const agentTypes = { [who]: "general-purpose" };
+	const profile = {
+		...DEFAULT_PROFILE,
+		roles: { [who]: { role: "reviewer" } },
+	};
+	const card = (roles: Record<string, string>, p = DEFAULT_PROFILE) =>
+		teamStudioView(
+			buildModel(events, idle, { agentTypes, roles }),
+			{ filter: "", burndown: [], checkedAt: 0 },
+			p,
+			110,
+			32,
+			idle,
+		)
+			.regions.flat()
+			.map((s) => s.text)
+			.join("");
+
+	// Unknown to the model, it reads as a builder waiting on review.
+	expect(card({}).includes("waiting on review")).toBe(true);
+	// Known through the profile, it is a finished reviewer.
+	const roles = roleNames(profile, [
+		{ name: who, agentType: "general-purpose" },
+	]);
+	expect(roles).toEqual({ [who]: "reviewer" });
+	expect(
+		buildModel(events, idle, { agentTypes, roles }).stuck?.[who],
+	).toBeUndefined();
+	expect(card(roles, profile).includes("waiting on review")).toBe(false);
+});
+
+test("an idle profile-role reviewer on an issue with no PR is done, not stuck or idling", () => {
+	const idle = 20 * minute;
+	const who = "checker";
+	const events = [
+		event("tool", 0, { who }),
+		event("tool", 0, { who: "builder", agentId: "b" }),
+		event("turn-end", 1, { who }),
+	];
+	const agentTypes = { [who]: "general-purpose" };
+	const build = (roles: Record<string, string>) =>
+		buildModel(events, idle, { agentTypes, roles });
+
+	const bare = build({});
+	expect(bare.stuck?.[who]).toBe("idle with open work 19m");
+	expect(bare.morale.factors.idle).toContain(who);
+
+	// The profile key may differ in case from the teammate's name.
+	const profile = {
+		...DEFAULT_PROFILE,
+		roles: { Checker: { role: "reviewer" } },
+	};
+	const roles = roleNames(profile, [{ name: who }, { name: "builder" }]);
+	expect(roles).toEqual({ [who]: "reviewer" });
+	const known = build(roles);
+	expect(known.stuck?.[who]).toBeUndefined();
+	expect(known.morale.factors.idle).not.toContain(who);
+});
+
+test("roleNames resolves by name, mixed case and agent type", () => {
+	const profile = {
+		...DEFAULT_PROFILE,
+		roles: {
+			exact: { role: "designer" },
+			Mixed: { role: "reviewer" },
+			"general-purpose": { role: "reviewer" },
+			colorOnly: {},
+		},
+	};
+	expect(
+		roleNames(profile, [
+			{ name: "exact" },
+			{ name: "mixed" },
+			{ name: "anon", agentType: "General-Purpose" },
+			{ name: "colorOnly", agentType: "general-purpose" },
+			{ name: "builder", agentType: "builder" },
+		]),
+	).toEqual({
+		exact: "designer",
+		mixed: "reviewer",
+		anon: "reviewer",
+		colorOnly: "reviewer",
+	});
+});
+
+test("a reviewer known only by agent type in the profile is not stuck or waiting", () => {
+	const idle = 20 * minute;
+	const who = "checker";
+	const events = [
+		event("tool", 0, { who }),
+		event("message", 1, {
+			who,
+			target: "lead",
+			detail: "#12 PR is up: https://github.com/o/r/pull/30. Check is green.",
+		}),
+		event("turn-end", 2, { who }),
+		event("tool", 0, { who: "bare" }),
+		event("turn-end", 1, { who: "bare" }),
+	];
+	const agentTypes = { [who]: "general-purpose", bare: "general-purpose" };
+	const profile = {
+		...DEFAULT_PROFILE,
+		roles: { "general-purpose": { role: "reviewer" } },
+	};
+	const members = [
+		{ name: who, agentType: "general-purpose" },
+		{ name: "bare", agentType: "general-purpose" },
+	];
+	const roles = roleNames(profile, members);
+	const model = buildModel(events, idle, { agentTypes, roles });
+	expect(model.stuck?.[who]).toBeUndefined();
+	expect(model.stuck?.bare).toBeUndefined();
+	const text = (p: typeof profile | typeof DEFAULT_PROFILE) =>
+		teamStudioView(
+			model,
+			{ filter: "", burndown: [], checkedAt: 0 },
+			p,
+			110,
+			32,
+			idle,
+		)
+			.regions.flat()
+			.map((s) => s.text)
+			.join("");
+	expect(text(DEFAULT_PROFILE).includes("waiting on review")).toBe(true);
+	expect(text(profile).includes("waiting on review")).toBe(false);
 });
