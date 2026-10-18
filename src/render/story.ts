@@ -23,6 +23,8 @@ export function storyFor(
 	const owned = new Map<string, OwnSource>();
 	const selected: BullpenEvent[] = [];
 	for (const event of events) {
+		// The person's side of the conversation belongs to no issue's story.
+		if (event.kind === "decision" || event.kind === "reply") continue;
 		const name =
 			event.kind === "spawn" ? (event.target ?? event.who) : event.who;
 		const previous = assigned.get(name);

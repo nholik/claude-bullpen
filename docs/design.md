@@ -75,15 +75,16 @@ If two things fight for a row, the one higher in this table wins.
 ### Needs-you queue
 
 ```
- ! gate → you  #204 flaky test: skip or fix?                     6m  [t]
- ! ada  → you  #208 can I change the login redirect contract?    1m  [t]
+ ! NEEDS YOU · 6m ago · skip or fix the flaky test on #204?
+ ! NEEDS YOU · 1m ago · merge #204 now, or wait and ship it with #208?
 ```
 
-An ask is open until the lead answers it or a human reply is successfully queued.
-The human form resolves only the selected request. Other questions from the same
-agent stay open. Delivery is not an acknowledgement; the UI says so explicitly. The age
-turns from amber to coral at 10 minutes. The pulse runs for 10 s when an ask arrives,
-then holds steady: a pulse that never stops is just noise.
+Only the human's items. The lead puts one by writing a line starting `Decision:` in its
+final answer; teammate messages to the lead never enter the queue. A decision is open until
+the person's next prompt, or until they dismiss it (`d`, kept for the session). The `n` view lists
+them with the lead's words before each; Enter quotes one into the real prompt and never sends
+it. Row 1 pulses for 10 s when a decision arrives, then holds steady: a pulse that never stops
+is just noise. Calm: with nothing queued there is no row, no "0" and no key.
 
 ### Ship path
 

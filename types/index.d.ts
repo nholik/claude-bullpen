@@ -5,6 +5,10 @@ export type BullpenEventKind =
 	| "tool"
 	| "message"
 	| "answer"
+	/** The lead put a decision to the person: a `Decision:` line in its final answer. */
+	| "decision"
+	/** The person sent a prompt: every open decision before it is answered. */
+	| "reply"
 	/** A member left: gone from `$.agent.list()`, or a demo `leave` step. */
 	| "leave";
 
@@ -41,6 +45,10 @@ export type BullpenEvent = {
 	owns?: number;
 	/** What `owns` came from. */
 	ownedBy?: "worktree" | "pr";
+	/** On `decision`: the lead's words just before the decision line. */
+	context?: string;
+	/** On `reply`: ids of the decisions the prompt quoted. Older replies have none and close nothing. */
+	answered?: string[];
 };
 
 export type MemberStatus = "running" | "idle" | "gone";
@@ -138,14 +146,6 @@ export type GithubSource = {
 	}[];
 };
 
-export type Decision = {
-	from: string;
-	at: number;
-	text: string;
-	agentId?: string;
-	issues: number[];
-};
-
 export type Replay = {
 	events: BullpenEvent[];
 	startedAt: number;
@@ -185,6 +185,14 @@ export type TeamSnapshot = {
 	issueActive: Record<number, number>;
 	hallway: RecordedMessage[];
 	asks: (RecordedMessage & { open: boolean; agentId?: string })[];
+	decisions: {
+		id: string;
+		at: number;
+		text: string;
+		context: string;
+		issues: number[];
+		open: boolean;
+	}[];
 	kickbacks: {
 		from: string;
 		to?: string;
@@ -237,14 +245,15 @@ declare module "claude-code" {
 			profile: Profile;
 			github: GithubSource;
 			hallwaySeenAt: number;
-			focus: "" | "shipping" | "talk";
+			focus: "" | "shipping" | "talk" | "needs";
 			viewTime: number;
 			storyIssue: number;
 			demoStart: number;
 			replay: Replay | null;
-			decision: Decision | null;
-			decisionDraft: string;
-			decisionStatus: string;
+			/** Ids of decisions the person dismissed or acted on this session. */
+			decisionsHandled: string[];
+			/** The needs-you view's selected row. */
+			needsCursor: number;
 		};
 	}
 }

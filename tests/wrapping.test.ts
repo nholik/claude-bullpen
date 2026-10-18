@@ -23,7 +23,7 @@ const text = (lines: ReturnType<typeof wrapText>) =>
 test("needs-you asks and issue stories wrap instead of clipping their text", () => {
 	for (const columns of [48, 60, 72, 100, 160]) {
 		const asks = header(
-			buildModel([event], 0),
+			buildModel([{ ...event, kind: "decision", who: "lead" }], 0),
 			{ filter: "", checkedAt: 0, burndown: [] },
 			columns,
 			0,

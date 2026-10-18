@@ -5,14 +5,22 @@ import { DEFAULT_PROFILE } from "../profile";
 import type { CardWidthTracker } from "./card-width";
 import { band, footer, header } from "./header";
 import { beside, glyphLines, type Line, textLine } from "./lines";
+import { needsSection } from "./needs";
 import { hallway, huddles } from "./regions";
 import { shippingSection } from "./shipping";
 import { teamStudioView } from "./team-studio";
 
-export type Focus = "shipping" | "talk";
+export type Focus = "shipping" | "talk" | "needs";
 
-function keys(focus: Focus | undefined): string {
-	return `a: answer · s: ${focus === "shipping" ? "back" : "shipping"} · t: ${focus === "talk" ? "back" : "messages"}`;
+/**
+ * The key hints. `n` shows only while a decision waits on the person or the
+ * needs-you view is open; in it the list's own keys lead.
+ */
+export function keys(focus: Focus | undefined, waiting: number): string {
+	if (focus === "needs")
+		return "j/k: move · enter: reply · d: dismiss · n: back";
+	const needs = waiting > 0 ? `n: needs you (${waiting}) · ` : "";
+	return `${needs}s: ${focus === "shipping" ? "back" : "shipping"} · t: ${focus === "talk" ? "back" : "messages"}`;
 }
 export type PaneView = {
 	header: Line[];
@@ -27,6 +35,8 @@ export type PaneOptions = {
 	github?: GithubSource;
 	profile?: Profile;
 	focus?: Focus;
+	/** The needs-you view's selected row. */
+	cursor?: number;
 	seenAt?: number;
 	/** False when this surface cannot draw a Raster. */
 	raster?: boolean;
@@ -62,6 +72,7 @@ export function paneView(
 	};
 	const github = options.github ?? { filter: "", burndown: [], checkedAt: 0 };
 	const profile = options.profile ?? DEFAULT_PROFILE;
+	const hints = keys(options.focus, model.decisions.length);
 	if (columns >= 60 && rows >= 16) {
 		const view = teamStudioView(
 			model,
@@ -74,6 +85,7 @@ export function paneView(
 			options.cardWidths,
 			options.wallNow,
 			options.focus,
+			options.cursor,
 		);
 		return {
 			header: view.header,
@@ -82,10 +94,7 @@ export function paneView(
 			sidebar: [],
 			regions: view.regions,
 			footer: glyphLines(
-				[
-					...footer(github, columns, options.mode),
-					textLine(keys(options.focus), columns),
-				],
+				[...footer(github, columns, options.mode), textLine(hints, columns)],
 				profile.glyphs,
 			),
 			band: band(model, github, profile, columns, options.seenAt ?? -1),
@@ -97,7 +106,7 @@ export function paneView(
 	);
 	const bottom = [
 		...footer(github, columns, options.mode),
-		textLine(keys(options.focus), columns),
+		textLine(hints, columns),
 	].slice(0, Math.max(0, rows - heading.length - 1));
 	const available = Math.max(0, rows - heading.length - bottom.length - 1);
 	const studio =
@@ -130,6 +139,14 @@ export function paneView(
 	if (studio) regions = hallway(model, profile, columns, room, now);
 	else if (options.focus === "shipping")
 		regions = shippingSection(model, github, profile, columns, room, now);
+	else if (options.focus === "needs")
+		regions = needsSection(
+			model.decisions,
+			columns,
+			now,
+			options.cursor ?? 0,
+			room,
+		);
 	else if (options.focus === "talk")
 		regions = hallway(model, profile, columns, room, now);
 	else {

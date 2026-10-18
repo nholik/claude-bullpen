@@ -183,7 +183,10 @@ for (let frame = 0; frame < frames; frame++) {
 		profile: profile,
 		mode: team ? "replay" : "demo",
 		cardWidths,
-		focus: focus === "shipping" || focus === "talk" ? focus : undefined,
+		focus:
+			focus === "shipping" || focus === "talk" || focus === "needs"
+				? focus
+				: undefined,
 	});
 	if (options.has("--story")) {
 		const issue = number("--story", 204, 1, 9999999);

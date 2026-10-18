@@ -13,6 +13,10 @@ export type DemoStep = {
 		| { kind: "work"; detail: string; issue?: number }
 		| { kind: "rest" }
 		| { kind: "say"; to: string; text: string }
+		/** The lead puts a decision to the person (a `Decision:` line). */
+		| { kind: "decide"; text: string; context: string }
+		/** The person sends a prompt quoting the decision put at `to` (step time, ms). */
+		| { kind: "reply"; to: number }
 		| { kind: "leave" }
 		| { kind: "advance"; ms: number };
 };
@@ -117,6 +121,16 @@ const finale: { at: number; who: string; do: DemoStep["do"] }[] = [
 		who: "gate",
 		do: { kind: "say", to: LEAD, text: "#204 flaky test — skip or fix?" },
 	},
+	{
+		at: 17000,
+		who: LEAD,
+		do: {
+			kind: "decide",
+			text: "skip or fix the flaky test on #204?",
+			context:
+				"gate has failed #204 twice on session expiry, and smith and ada are paused until it is settled.",
+		},
+	},
 	{ at: 18000, who: "smith", do: { kind: "rest" } },
 	{ at: 18000, who: "ada", do: { kind: "rest" } },
 	{ at: 18000, who: "gate", do: { kind: "rest" } },
@@ -130,6 +144,7 @@ const finale: { at: number; who: string; do: DemoStep["do"] }[] = [
 			text: "#204 still blocked — need a decision?",
 		},
 	},
+	{ at: 39000, who: LEAD, do: { kind: "reply", to: 17000 } },
 	{
 		at: 40000,
 		who: LEAD,
@@ -154,6 +169,16 @@ const finale: { at: number; who: string; do: DemoStep["do"] }[] = [
 		at: 55000,
 		who: "smith",
 		do: { kind: "say", to: LEAD, text: "closed #204" },
+	},
+	{
+		at: 56000,
+		who: LEAD,
+		do: {
+			kind: "decide",
+			text: "merge #204 now, or wait and ship it with #208?",
+			context:
+				"#204 is green after the fix. #208 is one review from done, so the two could land together.",
+		},
 	},
 	{
 		at: 58000,

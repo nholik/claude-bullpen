@@ -21,6 +21,13 @@ import {
 	toolOutcome,
 } from "../src/collect";
 import { hex } from "../src/color";
+import {
+	moveCursor,
+	parseDecisions,
+	quotedPrefix,
+	repliedTo,
+	waiting,
+} from "../src/decisions";
 import { DEMO_PREFIX, DEMO_SCRIPT, demoClock } from "../src/demo";
 import { demoAt, demoGithubAt, demoProfile } from "../src/demo-replay";
 import { describeTool, oneLine, toolText } from "../src/events";
@@ -81,6 +88,7 @@ import {
 } from "../src/render/card-width";
 import { band } from "../src/render/header";
 import { fit, glyphLines, type Line, wrapText } from "../src/render/lines";
+import { PULSE_MS as NEEDS_PULSE_MS } from "../src/render/needs";
 import { type Focus, paneView } from "../src/render/pane";
 import { storyFor, storyLines } from "../src/render/story";
 import { replayAt } from "../src/replay";
@@ -90,19 +98,14 @@ import type { BullpenEventKind, Member, Profile } from "../types";
 
 const PANE = "bullpen";
 const STORY = "bullpen-story";
-const ANSWER = "bullpen-answer";
 const replay = atom({ plugin: "bullpen", key: "replay" } as const, null);
-const decision = atom({ plugin: "bullpen", key: "decision" } as const, null);
-const decisionDraft = atom(
-	{ plugin: "bullpen", key: "decisionDraft" } as const,
-	"",
+/** Ids of decisions the person dismissed or acted on; they leave the queue for the session. */
+const decisionsHandled = atom(
+	{ plugin: "bullpen", key: "decisionsHandled" } as const,
+	[],
 );
-const decisionStatus = atom(
-	{ plugin: "bullpen", key: "decisionStatus" } as const,
-	"",
-);
-const sendingAnswers = new Set<string>();
-const deliveredAnswers = new Set<string>();
+/** The needs-you view's selected row. */
+const needsCursor = atom({ plugin: "bullpen", key: "needsCursor" } as const, 0);
 const storyIssue = atom({ plugin: "bullpen", key: "storyIssue" } as const, 0);
 async function openStory($: $, issue: number) {
 	await update($, storyIssue, () => issue);
@@ -222,127 +225,6 @@ function sceneModel(
 		: buildModel(snapshot.events, snapshot.now, options);
 }
 
-async function openDecision($: $, from?: string, at?: number) {
-	const snapshot = await readScene($);
-	const ask = sceneModel(snapshot).asks.find(
-		(a) =>
-			a.open &&
-			(from === undefined || a.from === from) &&
-			(at === undefined || a.at === at),
-	);
-	if (!ask) {
-		$.ui.toast("No open decisions.");
-		return;
-	}
-	const member = Object.values(snapshot.members).find(
-		(m) => m.name === ask.from,
-	);
-	const previous = await read($, decision);
-	await update($, decision, () => ({
-		from: ask.from,
-		at: ask.at,
-		text: ask.text,
-		issues: ask.issues,
-		agentId: ask.agentId ?? member?.id,
-	}));
-	if (previous?.from !== ask.from || previous.at !== ask.at) {
-		await update($, decisionDraft, () => "");
-		await update($, decisionStatus, () => "");
-	}
-	return $.ui.open({
-		id: ANSWER,
-		title: `Answer ${ask.from}`,
-		columns: 72,
-		rows: 18,
-		focus: true,
-	});
-}
-
-async function submitDecision($: $, text: string) {
-	const selected = await read($, decision);
-	if (!selected) return;
-	const key = `${selected.from}:${selected.at}`;
-	if (sendingAnswers.has(key)) return;
-	sendingAnswers.add(key);
-	const status = async (message: string) => {
-		const current = await read($, decision);
-		if (current?.from === selected.from && current.at === selected.at)
-			await update($, decisionStatus, () => message);
-	};
-	try {
-		if (deliveredAnswers.has(key)) {
-			await status("This answer has already been sent.");
-			return;
-		}
-		const snapshot = await readScene($);
-		if (snapshot.readOnly) {
-			await status(
-				"Demo and replay are read-only. Return to /bullpen live to answer a real agent.",
-			);
-			return;
-		}
-		if (!text.trim()) {
-			await status("Enter an answer before sending.");
-			return;
-		}
-		await collector?.drain();
-		const current = await readScene($);
-		const ask = sceneModel(current).asks.find(
-			(a) => a.open && a.from === selected.from && a.at === selected.at,
-		);
-		if (!ask) {
-			await status(
-				"This decision has already been answered or is no longer available.",
-			);
-			return;
-		}
-		const recipient = Object.values(current.members).find(
-			(m) => m.name === selected.from && m.id === selected.agentId,
-		);
-		if (
-			!recipient ||
-			recipient.id === LEAD ||
-			recipient.id.startsWith(DEMO_PREFIX)
-		) {
-			await status(
-				"The original asking agent is unavailable. Open its transcript to follow up.",
-			);
-			return;
-		}
-		await status("Sending answer…");
-		const result = await $.session.send({
-			to: { agentId: recipient.id },
-			text: `Human answer to your request: ${selected.text}\n\n${text.trim()}`,
-		});
-		if (!result.isDelivered) {
-			await status(
-				`Not delivered: ${result.reason}. Your draft is kept; you can retry.`,
-			);
-			return;
-		}
-		deliveredAnswers.add(key);
-		collectorOf($).push({
-			op: "event",
-			at: await now($),
-			kind: "answer",
-			detail: text.trim(),
-			target: selected.from,
-			replyTo: selected.at,
-			text: selected.issues.map((n) => `#${n}`).join(" "),
-			attribute: false,
-		});
-		await collectorOf($).drain();
-		await status(
-			"Answer sent to the agent's inbox. Delivery does not confirm it has been read.",
-		);
-	} catch (error) {
-		await status(
-			`Not delivered: ${String(error)}. Your draft is kept; you can retry.`,
-		);
-	} finally {
-		sendingAnswers.delete(key);
-	}
-}
 let animationTimer: Timer | undefined;
 let lastBlit = -Infinity;
 let scene:
@@ -394,8 +276,31 @@ async function tickAnimation($: $) {
 		animationTimer = undefined;
 	}
 }
+let pulseTimer: Timer | undefined;
+let pulseUntil = 0;
+/** Redraw while the first decision's pulse runs (`remaining` ms left), then stop. */
+function followPulse($: $, wallNow: number, remaining: number) {
+	if (remaining > 0) pulseUntil = Math.max(pulseUntil, wallNow + remaining);
+	if (wallNow >= pulseUntil) {
+		pulseTimer?.cancel();
+		pulseTimer = undefined;
+		return;
+	}
+	if (pulseTimer) return;
+	pulseTimer = $.clock.every(PULSE_REDRAW_MS, () => {
+		void (async () => {
+			const at = await now($);
+			if (at >= pulseUntil) {
+				pulseTimer?.cancel();
+				pulseTimer = undefined;
+			}
+			await update($, viewTime, () => at);
+		})().catch(() => {});
+	});
+}
 /** Card widths persist between draws; a team-size change tweens them. */
 const cardWidths = createCardWidthTrackers();
+const PULSE_REDRAW_MS = 250;
 let tweenTimer: Timer | undefined;
 /** Redraw at 10 Hz while card widths settle, then stop the timer. */
 function followCardTween($: $, wallNow: number) {
@@ -460,7 +365,61 @@ const viewTime = atom({ plugin: "bullpen", key: "viewTime" } as const, 0);
 function followTail($: $) {
 	void $.ui.scroll({ in: PANE, to: "end" }).catch(() => {});
 }
+/** The decisions still waiting on the person, oldest first. */
+async function waitingDecisions($: $) {
+	const snapshot = await readScene($);
+	return waiting(
+		sceneModel(snapshot).decisions,
+		await read($, decisionsHandled),
+	);
+}
+async function moveNeeds($: $, by: number) {
+	const length = (await waitingDecisions($)).length;
+	await update($, needsCursor, (at) => moveCursor(at, by, length));
+}
+/** The selected decision, or none when the queue emptied under the cursor. */
+async function selectedNeed($: $) {
+	const queue = await waitingDecisions($);
+	return queue[Math.min(await read($, needsCursor), queue.length - 1)];
+}
+/** `d`: take the selected decision off the queue for the session. */
+async function dismissNeed($: $) {
+	const item = await selectedNeed($);
+	if (!item) return;
+	await update($, decisionsHandled, (ids) => [...ids, item.id]);
+	const length = (await waitingDecisions($)).length;
+	await update($, needsCursor, (at) => moveCursor(at, 0, length));
+	if (!length) await update($, focus, () => "");
+}
+/** Enter: quote the selected decision into the prompt, never submitting, and leave the pane. It stays queued until the prompt is submitted. */
+async function replyToNeed($: $) {
+	const item = await selectedNeed($);
+	if (!item) return;
+	const draft = await $.prompt.read().catch(() => undefined);
+	const gap = draft?.text && !draft.text.endsWith("\n") ? "\n" : "";
+	const filled = await $.prompt.fill({
+		text: gap + quotedPrefix(item),
+		mode: "append",
+	});
+	if (!filled.isFilled) {
+		$.ui.toast(
+			`Bullpen could not fill the prompt${filled.refusal ? ` (${filled.refusal})` : ""}; nothing changed.`,
+		);
+		return;
+	}
+	// Not handled yet: the person's submit closes it (the reducer's `reply`), and an
+	// abandoned draft leaves it queued.
+	await update($, focus, () => "");
+	await $.ui.close({ id: PANE });
+}
 async function focusRegion($: $, region: Focus | "") {
+	if (region === "needs" && (await read($, focus)) !== "needs") {
+		if (!(await waitingDecisions($)).length) {
+			$.ui.toast("Nothing is waiting on you.");
+			return;
+		}
+		await update($, needsCursor, () => 0);
+	}
 	await update($, focus, (current) => (current === region ? "" : region));
 	if (region === "talk" && (await read($, focus)) === "talk") {
 		const at = await now($);
@@ -495,18 +454,6 @@ function renderLines(
 						{seg.text}
 					</Text>
 				);
-				if (seg.ask) {
-					const ask = seg.ask;
-					return (
-						<Button
-							key={`ask-${ask.at}-${ask.from}`}
-							plain
-							onPress={() => void openDecision($, ask.from, ask.at)}
-						>
-							{text}
-						</Button>
-					);
-				}
 				if (seg.story !== undefined) {
 					const issue = seg.story;
 					return (
@@ -674,6 +621,8 @@ async function record(
 		outcome?: "ok" | "error";
 		agentType?: string;
 		owns?: Own;
+		context?: string;
+		answered?: string[];
 	} = {},
 ) {
 	collectorOf($).push({
@@ -688,6 +637,8 @@ async function record(
 		outcome: extra.outcome,
 		agentType: extra.agentType,
 		owns: extra.owns,
+		context: extra.context,
+		answered: extra.answered,
 		attribute: extra.attribute ?? true,
 	});
 }
@@ -945,7 +896,7 @@ export function register(on: On) {
 			name: "bullpen",
 			description: "Open the Bullpen: a live view of your agent team",
 			argumentHint:
-				"[demo|live|replay PATH|answer|reload|story #N|focus shipping|talk|all]",
+				"[demo|live|replay PATH|needs|reload|story #N|focus shipping|talk|all]",
 		});
 
 		return next(e);
@@ -987,9 +938,10 @@ export function register(on: On) {
 				.catch(() => {});
 			return { text: "Bullpen: showing the live team." };
 		}
-		if (e.args.trim() === "answer") {
-			await openDecision($);
-			return { text: "Bullpen: opening the oldest pending decision." };
+		if (e.args.trim() === "answer" || e.args.trim() === "needs") {
+			await focusRegion($, "needs");
+			await openPane($);
+			return { text: "Bullpen: opening what needs you." };
 		}
 		if (e.args.trim().startsWith("replay")) {
 			const path = e.args
@@ -1130,10 +1082,46 @@ export function register(on: On) {
 						e.agentId,
 						`finished a turn (${Math.round(e.durationMs / 1000)}s)`,
 					);
+					// The lead's `Decision:` lines are what the person is asked.
+					if (e.agentId === undefined)
+						for (const found of parseDecisions(e.answer))
+							await record($, "decision", undefined, found.text, {
+								text: found.text,
+								context: found.context,
+								attribute: false,
+							});
 				}),
 			)
 			.catch(() => {});
 		return result;
+	});
+
+	// The person's own prompt answers whatever the lead asked before it.
+	on("prompt.submit", async ($, e, next) => {
+		if (
+			(e.origin.kind === "composer" || e.origin.kind === "bridge") &&
+			!e.command &&
+			!e.isMeta &&
+			e.text.trim()
+		)
+			void producers
+				.track(
+					(async () => {
+						// The live decisions, not the demo's or a replay's. A prompt
+						// closes only the ones it quotes; the rest stay open.
+						const open = (await currentModel($)).decisions.filter(
+							(d) => d.open,
+						);
+						const answered = repliedTo(e.text, open);
+						if (answered.length)
+							await record($, "reply", undefined, "replied", {
+								attribute: false,
+								answered,
+							});
+					})(),
+				)
+				.catch(() => {});
+		return next(e);
 	});
 
 	on("tool.call", async ($, e, next) => {
@@ -1240,7 +1228,8 @@ export function register(on: On) {
 	);
 	on("ui.render", { component: "Pane", requestId: PANE }, async ($, e) => {
 		void ensureLive($).catch(() => {});
-		const { Box, Text, Button } = $.ui.resolve(e);
+		const ui = $.ui.resolve(e);
+		const { Box, Text, Button } = ui;
 		const snapshot = await readScene($);
 		const list = Object.values(snapshot.members);
 		const log = snapshot.events;
@@ -1263,7 +1252,20 @@ export function register(on: On) {
 		await read($, viewTime);
 		const focused = await read($, focus);
 		const wallNow = await now($);
+		if (focused === "needs" && e.surface === "mobile")
+			return (
+				<Text>
+					Answer this decision in the terminal or desktop Bullpen pane.
+				</Text>
+			);
+		// Decisions the person dismissed or acted on are off every view.
+		const queue = waiting(model.decisions, await read($, decisionsHandled));
+		model.decisions = queue;
+		const first = queue[0];
+		if (first && config.animations)
+			followPulse($, wallNow, NEEDS_PULSE_MS - (at - first.at));
 		const view = paneView(model, list, columns, e.props.scroll.bodyRows, at, {
+			cursor: await read($, needsCursor),
 			mode: (await read($, replay))
 				? "replay"
 				: snapshot.readOnly
@@ -1375,99 +1377,83 @@ export function register(on: On) {
 				{renderLines(Text, view.regions, { Box, Button }, $)}
 				{renderLines(Text, view.footer.slice(0, -1), { Box, Button }, $)}
 				<Box>
-					<Button
-						key="answer"
-						plain
-						hotkey="a"
-						onPress={() => void openDecision($)}
-					>
-						answer
-					</Button>
-					<Text dimColor> · </Text>
-					<Button
-						key="shipping-focus"
-						plain
-						hotkey="s"
-						onPress={() => void focusRegion($, "shipping")}
-					>
-						{focused === "shipping" ? "back" : "shipping"}
-					</Button>
-					<Text dimColor> · </Text>
-					<Button
-						key="talk-focus"
-						plain
-						hotkey="t"
-						onPress={() => void focusRegion($, "talk")}
-					>
-						{focused === "talk" ? "back" : "messages"}
-					</Button>
-				</Box>
-			</Box>
-		);
-	});
-
-	on("ui.render", { component: "Pane", requestId: ANSWER }, async ($, e) => {
-		if (e.surface === "mobile") {
-			const { Text } = $.ui.resolve(e);
-			return (
-				<Text>
-					Answer this decision in the terminal or desktop Bullpen pane.
-				</Text>
-			);
-		}
-		const { Box, Text, Button, Input } = $.ui.resolve(e);
-		const selected = await read($, decision);
-		if (!selected) return <Text>No decision selected.</Text>;
-		const draft = await read($, decisionDraft);
-		const status = await read($, decisionStatus);
-		const config = await read($, profile);
-		const columns = Math.max(20, e.props.bodyColumns);
-		const safe = (s: string) =>
-			glyphLines([[{ text: s }]], config.glyphs)[0]?.[0]?.text ?? "";
-		return (
-			<Box flexDirection="column">
-				<Text bold>
-					{safe(
-						`${selected.from} needs your input${selected.issues.length ? ` · ${selected.issues.map((n) => `#${n}`).join(" ")}` : ""}`,
+					{focused === "needs" && (
+						<Button
+							key="need-reply"
+							plain
+							autoFocus
+							onPress={() => void replyToNeed($)}
+						>
+							reply (enter)
+						</Button>
 					)}
-				</Text>
-				{renderLines(
-					Text,
-					wrapText(selected.text, columns),
-					{ Box, Button },
-					$,
-				)}
-				<Input
-					key="human-answer"
-					label="Your answer"
-					placeholder="Give the agent your decision or direction"
-					rows={3}
-					value={draft}
-					autoFocus
-					onInput={(value) => {
-						void update($, decisionDraft, () => value);
-					}}
-					onSubmit={async (value) => {
-						await update($, decisionDraft, () => value);
-						await submitDecision($, value);
-					}}
-				/>
-				<Button
-					key="send-answer"
-					onPress={async () => {
-						await submitDecision($, await read($, decisionDraft));
-					}}
-				>
-					Send answer
-				</Button>
-				{renderLines(Text, wrapText(safe(status), columns), { Box, Button }, $)}
-				<Button
-					key="answer-back"
-					plain
-					onPress={() => void $.ui.close({ id: ANSWER })}
-				>
-					Back to Bullpen
-				</Button>
+					{focused === "needs" && <Text dimColor> · </Text>}
+					{focused === "needs" && (
+						<Button
+							key="need-next"
+							plain
+							hotkey="j"
+							onPress={() => void moveNeeds($, 1)}
+						>
+							next
+						</Button>
+					)}
+					{focused === "needs" && <Text dimColor> · </Text>}
+					{focused === "needs" && (
+						<Button
+							key="need-prev"
+							plain
+							hotkey="k"
+							onPress={() => void moveNeeds($, -1)}
+						>
+							prev
+						</Button>
+					)}
+					{focused === "needs" && <Text dimColor> · </Text>}
+					{focused === "needs" && (
+						<Button
+							key="need-dismiss"
+							plain
+							hotkey="d"
+							onPress={() => void dismissNeed($)}
+						>
+							dismiss
+						</Button>
+					)}
+					{focused === "needs" && <Text dimColor> · </Text>}
+					{(queue.length > 0 || focused === "needs") && (
+						<Button
+							key="needs-focus"
+							plain
+							hotkey="n"
+							onPress={() => void focusRegion($, "needs")}
+						>
+							{focused === "needs" ? "back" : `needs you (${queue.length})`}
+						</Button>
+					)}
+					{queue.length > 0 && focused !== "needs" && <Text dimColor> · </Text>}
+					{focused !== "needs" && (
+						<Button
+							key="shipping-focus"
+							plain
+							hotkey="s"
+							onPress={() => void focusRegion($, "shipping")}
+						>
+							{focused === "shipping" ? "back" : "shipping"}
+						</Button>
+					)}
+					{focused !== "needs" && <Text dimColor> · </Text>}
+					{focused !== "needs" && (
+						<Button
+							key="talk-focus"
+							plain
+							hotkey="t"
+							onPress={() => void focusRegion($, "talk")}
+						>
+							{focused === "talk" ? "back" : "messages"}
+						</Button>
+					)}
+				</Box>
 			</Box>
 		);
 	});

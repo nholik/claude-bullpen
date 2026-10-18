@@ -78,15 +78,17 @@ Click an issue number to see its story: everything the team did on that issue,
 merged from every teammate's events. Click a teammate's name to open Claude's own
 transcript for that agent.
 
-### Answering a question
+### What needs you
 
-When a teammate asks you something, click the amber row, press `a` with the pane
-focused, or run `/bullpen answer`. You get the question and a text box. Your answer
-goes to the agent that asked, as a message in its inbox. "Sent" means the message
-was delivered to the inbox, not that the agent has read it yet. If delivery fails,
-your draft stays put so you can try again.
+Needs-you lists only the decisions your lead puts to you: a line starting `Decision:`
+in its final answer of a turn (ask your lead to use it). Messages between teammates
+never appear there; they stay in the hallway. A decision clears when you send your
+next prompt. With nothing waiting there is no row and no key.
 
-![The reply form](docs/img/blocker-form-terminal.png)
+With the pane focused, press `n` to list them with the lead's words before each. `j`
+and `k` move, Enter puts a quote (`> re #204: skip or fix?`) in your prompt and closes
+the pane (it never sends anything), `d` dismisses one for the session, and `n` or Escape
+goes back. The first decision pulses for 10 seconds, then holds steady.
 
 ### When a card says a teammate might be stuck
 
@@ -116,7 +118,7 @@ rule. Open the transcript before stepping in.
 
 ### Keys
 
-With the pane focused: `a` answers, `s` toggles the shipping list, `t` toggles the
+With the pane focused: `n` opens what needs you (when something does), `s` toggles the shipping list, `t` toggles the
 hallway. In a story pane, `r` goes back. Escape returns to Claude's prompt.
 
 ### Replays and journals

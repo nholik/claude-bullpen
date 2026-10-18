@@ -92,12 +92,11 @@ export function header(
 			columns,
 		),
 	];
-	const ask = model.asks.find((a) => a.open);
+	const ask = model.decisions[0];
 	if (ask)
 		lines.push(
-			...wrapText(` NEEDS YOU · ${ask.from}: "${ask.text}"`, columns).map(
-				(line) =>
-					line.map((seg) => ({ ...seg, fg: STUDIO.amber, bg: STUDIO.panel })),
+			...wrapText(` NEEDS YOU · ${ask.text}`, columns).map((line) =>
+				line.map((seg) => ({ ...seg, fg: STUDIO.amber, bg: STUDIO.panel })),
 			),
 		);
 	else if (columns >= 60)
@@ -175,7 +174,7 @@ export function band(
 		{ text: "☰ bullpen" },
 		{ text: ` ${model.morale.glyph} ` },
 	];
-	const asks = model.asks.filter((a) => a.open).length;
+	const asks = model.decisions.length;
 	if (asks) segments.push({ text: ` !${asks} `, fg: STUDIO.amber, bold: true });
 	const stuck = Object.keys(model.stuck ?? {}).length;
 	if (stuck) segments.push({ text: ` ${stuck} stalled `, fg: STUDIO.coral });

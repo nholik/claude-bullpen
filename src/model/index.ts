@@ -133,6 +133,7 @@ export function modelOf(
 		huddles,
 		hallway: state.hallway,
 		asks: state.asks,
+		decisions: state.decisions.filter((d) => d.open),
 		kickbacks: state.kickbacks,
 		closed: state.closes.map((c) => c.issue),
 		ship: Object.values(state.ship.paths),

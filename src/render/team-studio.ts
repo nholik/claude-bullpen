@@ -12,7 +12,8 @@ import {
 import { age, align, clock, edge, inside, section, text } from "./layout";
 import { fit, glyphLines, type Line, textLine, width, wrapText } from "./lines";
 import { moodFor, snoozeFrame } from "./mood";
-import { needsYou, shippingRows, shippingSection } from "./shipping";
+import { needsSection, needsYou } from "./needs";
+import { shippingRows, shippingSection } from "./shipping";
 import { STUDIO } from "./studio";
 
 /** Short-lived signals use the existing one-second view refresh; no extra timer. */
@@ -256,7 +257,8 @@ export function teamStudioView(
 	mode: "live" | "demo" | "replay" = "live",
 	cardWidths?: CardWidthTracker,
 	wallNow = now,
-	focus?: "shipping" | "talk",
+	focus?: "shipping" | "talk" | "needs",
+	cursor = 0,
 ): { header: Line[]; regions: Line[] } {
 	const urgency = (m: Teammate) =>
 		model.asks.some((a) => a.open && a.from === m.name)
@@ -313,7 +315,7 @@ export function teamStudioView(
 			text(`${model.shipped} shipped this session `, STUDIO.muted),
 			columns,
 		),
-		...needsYou(model, columns, now),
+		...(focus === "needs" ? [] : needsYou(model.decisions, columns, now)),
 		fit(
 			text(` FLOW · ${flow.text}`, flow.pressure ? STUDIO.amber : STUDIO.mint),
 			columns,
@@ -329,12 +331,14 @@ export function teamStudioView(
 						0,
 						room,
 					)
-				: [
-						section("MESSAGES / hallway", columns),
-						...(model.hallway.length
-							? allMessages(model.hallway, profile, columns)
-							: [textLine("The hallway is quiet.", columns)]),
-					];
+				: focus === "needs"
+					? needsSection(model.decisions, columns, now, cursor, room)
+					: [
+							section("MESSAGES / hallway", columns),
+							...(model.hallway.length
+								? allMessages(model.hallway, profile, columns)
+								: [textLine("The hallway is quiet.", columns)]),
+						];
 		return {
 			header: glyphLines(header, profile.glyphs),
 			regions: glyphLines(

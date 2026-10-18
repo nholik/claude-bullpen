@@ -70,6 +70,19 @@ export type Ask = HallwayMessage & {
 	agentId?: string;
 };
 
+/** A decision the lead put to the person, from its `Decision:` line. */
+export type Decision = {
+	/** Stable across rebuilds: when it was raised, and which of that turn's. */
+	id: string;
+	at: number;
+	text: string;
+	/** The lead's words just before the decision line. */
+	context: string;
+	issues: number[];
+	/** False once the person has sent a prompt since. */
+	open: boolean;
+};
+
 /** Work sent back: by a gate failing it, or someone saying so. */
 export type Kickback = {
 	from: string;
@@ -107,6 +120,8 @@ export type BullpenModel = {
 	/** Recent messages, oldest first. */
 	hallway: HallwayMessage[];
 	asks: Ask[];
+	/** Decisions waiting on the person, oldest first. */
+	decisions: Decision[];
 	kickbacks: Kickback[];
 	/** Issues seen closed, in order. */
 	closed: number[];

@@ -184,19 +184,19 @@ for (const style of ["studio", "operations"] as const)
 	});
 
 test("studio compact and sidebar layouts retain open decisions and teammate overflow", () => {
-	const replay = demoAt(16000);
-	const now = demoClock(16000);
+	const replay = demoAt(18000);
+	const now = demoClock(18000);
 	const model = buildModel(replay.events, now);
 	for (const columns of [60, 80, 119, 120, 160]) {
 		const view = paneView(model, [], columns, 16, now, {
-			github: demoGithubAt(16000),
+			github: demoGithubAt(18000),
 		});
 		const content = [...view.header, ...view.regions]
 			.map((line) => line.map((s) => s.text).join(" "))
 			.join("\n");
 		expect(content).toContain("more teammates");
 		expect(content).toContain(
-			model.asks.find((ask) => ask.open)?.from ?? "missing ask",
+			model.decisions[0]?.text.slice(0, 20) ?? "missing decision",
 		);
 		expect(content).toContain("NEEDS YOU");
 	}
