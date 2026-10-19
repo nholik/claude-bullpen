@@ -24,7 +24,7 @@ const COMMENTS = 20;
 /** Longest title kept, in characters. */
 const TITLE = 120;
 
-const QUERY = `query($owner:String!,$name:String!){repository(owner:$owner,name:$name){pullRequests(states:OPEN,first:${PRS},orderBy:{field:UPDATED_AT,direction:DESC}){nodes{number title url headRefOid isDraft reviewDecision mergeable mergeStateStatus commits(last:1){nodes{commit{oid statusCheckRollup{state}}}} comments(last:${COMMENTS}){nodes{body authorAssociation author{login}}} reviewThreads(last:${THREADS}){pageInfo{hasPreviousPage} nodes{isResolved isOutdated comments(first:1){nodes{body}}}}}}}}`;
+const QUERY = `query($owner:String!,$name:String!){repository(owner:$owner,name:$name){pullRequests(states:OPEN,first:${PRS},orderBy:{field:UPDATED_AT,direction:DESC}){nodes{number title url headRefOid isDraft reviewDecision mergeable mergeStateStatus latestOpinionatedReviews(first:20){nodes{state}} commits(last:1){nodes{commit{oid statusCheckRollup{state}}}} comments(last:${COMMENTS}){nodes{body authorAssociation author{login}}} reviewThreads(last:${THREADS}){pageInfo{hasPreviousPage} nodes{isResolved isOutdated comments(first:1){nodes{body}}}}}}}}`;
 
 /** One read-only call for every open PR's gate comment, threads, checks and mergeability. */
 export function readyArgv(repo: string, host: string): string[] {
@@ -63,6 +63,9 @@ const PrSchema = looseObject({
 	headRefOid: string(),
 	isDraft: boolean(),
 	reviewDecision: optional(nullable(string())),
+	latestOpinionatedReviews: optional(
+		looseObject({ nodes: array(looseObject({ state: string() })) }),
+	),
 	mergeable: string(),
 	mergeStateStatus: string(),
 	commits: looseObject({
@@ -220,9 +223,9 @@ export function openCodexFindings(
 /**
  * The PRs ready to merge in `gh api graphql` output, or undefined if the output
  * isn't that. Readiness comes from GitHub's own signals: not a draft, mergeable,
- * the head's checks all SUCCESS, no changes requested, and `mergeStateStatus`
+ * the head's checks SUCCESS (or none exist), no changes requested, and `mergeStateStatus`
  * CLEAN (required reviews and checks satisfied). That excludes BEHIND, DIRTY,
- * UNSTABLE, HAS_HOOKS and DRAFT. Anything unknown (no checks, a long thread
+ * UNSTABLE, HAS_HOOKS and DRAFT. Anything unknown (a long thread
  * list we could not read whole, a mergeability GitHub has not computed) counts
  * as not ready.
  *
@@ -261,9 +264,14 @@ export function parseReady(
 				(needsReview && pr.mergeStateStatus === "BLOCKED")
 			) ||
 			pr.reviewDecision === "CHANGES_REQUESTED" ||
+			// reviewDecision is null where reviews are not required, so read the reviews.
+			pr.latestOpinionatedReviews?.nodes.some(
+				(r) => r.state === "CHANGES_REQUESTED",
+			) ||
 			pr.mergeable !== "MERGEABLE" ||
 			tip?.oid !== pr.headRefOid ||
-			tip.statusCheckRollup?.state !== "SUCCESS" ||
+			// No checks at all (a null rollup) passes; FAILURE, ERROR and PENDING block.
+			(tip.statusCheckRollup && tip.statusCheckRollup.state !== "SUCCESS") ||
 			pr.reviewThreads.pageInfo.hasPreviousPage ||
 			openCodexFindings(pr.reviewThreads.nodes) > 0 ||
 			(gate && !gatePassed(pr.comments.nodes, pr.headRefOid))

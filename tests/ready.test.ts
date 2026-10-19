@@ -25,8 +25,8 @@ const o = (...bodies: string[]) =>
 
 test("a PR is ready only when CI, mergeability and any gate or Codex in play all hold on the head", () => {
 	const ready = parseReady(MIXED, 5);
-	expect(ready?.map((p) => p.number)).toEqual([203, 210, 211, 214]);
-	expect(ready?.[1]).toEqual({
+	expect(ready?.map((p) => p.number)).toEqual([203, 207, 210, 211, 214]);
+	expect(ready?.[2]).toEqual({
 		gate: true,
 		codex: true,
 		number: 210,
@@ -128,7 +128,9 @@ test("Codex pending, an old sha, a draft or a blocked merge state keep a PR out 
 
 test("without a gate or Codex, GitHub's review decision, checks and merge state decide", () => {
 	const rows = parseReady(GITHUB, 0) ?? [];
-	// 233 changes requested, 234 blocked otherwise, 235 unstable: out.
+	// 233 and 238 changes requested (238 only through a review), 241 and 242
+	// have pending or erroring CI, 240 has no CI at all and is ready.
+	// 234 blocked otherwise, 235 unstable: out.
 	// 236 waits on the Codex review someone asked for; 237's "Gate:" line is
 	// not `Gate: PASS <sha>`, so the gate is in play and unmet: out.
 	expect(
@@ -138,6 +140,8 @@ test("without a gate or Codex, GitHub's review decision, checks and merge state 
 		[231, false, true],
 		[232, true, false],
 		[236, true, false],
+		[239, false, false],
+		[240, false, false],
 	]);
 });
 

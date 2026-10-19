@@ -21,6 +21,8 @@ function pr(
 		draft?: boolean;
 		/** GitHub's reviewDecision: null when the repo requires no reviews. */
 		decision?: string | null;
+		/** `latestOpinionatedReviews` states, newest per reviewer. */
+		reviews?: string[];
 		/** Codex's summary comment; null for none. Defaults to completed on the head. */
 		codex?: ReturnType<typeof codexSummary> | null;
 		ci?: string | null;
@@ -38,6 +40,9 @@ function pr(
 		headRefOid: head,
 		isDraft: over.draft ?? false,
 		reviewDecision: over.decision ?? null,
+		latestOpinionatedReviews: {
+			nodes: (over.reviews ?? []).map((state) => ({ state })),
+		},
 		mergeable: over.mergeable ?? "MERGEABLE",
 		mergeStateStatus: over.merge ?? "CLEAN",
 		commits: {
@@ -171,7 +176,18 @@ export const GITHUB = wrap([
 	pr(235, { comments: [], codex: null, merge: "UNSTABLE" }),
 	// A human asking for Codex puts it in play; with no answer yet the PR waits.
 	pr(236, { comments: ["@codex review"], codex: null }),
-	// A comment that merely starts with the word does not put the gate in play.
+	// Starts with `Gate:` but is not `Gate: PASS <sha>`: the gate is in play and unmet.
+	// No reviews are required (reviewDecision null) but a human requested changes.
+	pr(238, {
+		comments: [],
+		codex: null,
+		reviews: ["APPROVED", "CHANGES_REQUESTED"],
+	}),
+	pr(239, { comments: [], codex: null, reviews: ["APPROVED", "COMMENTED"] }),
+	// A repo with no CI: the rollup is null.
+	pr(240, { comments: [], codex: null, ci: null }),
+	pr(241, { comments: [], codex: null, ci: "PENDING" }),
+	pr(242, { comments: [], codex: null, ci: "ERROR" }),
 	pr(237, { comments: ["Gate: PASS is how we sign off"], codex: null }),
 ]);
 
