@@ -198,4 +198,7 @@ export const GITHUB = wrap([
 	pr(237, { comments: ["Gate: PASS is how we sign off"], codex: null }),
 ]);
 
+/** Review threads beyond the window, with the gate comment passing. */
+export const TRUTH_THREADS = wrap([pr(250, { moreThreads: true })]);
+
 export const NO_PRS = wrap([]);

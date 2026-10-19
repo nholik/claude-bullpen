@@ -71,8 +71,9 @@ function prNumbers(command: string): number[] {
 
 /**
  * A review verdict a `gh pr review` command carries, if it says. `--approve`
- * and `--request-changes` always count; a `Gate: PASS|CHANGES` body counts
- * only when the team requires a gate comment (`requireComment`).
+ * and `--request-changes` always count; a `<word>: PASS|CHANGES` body counts
+ * only when the team requires a gate comment, and `<word>` is the first word
+ * of its marker (`Gate` for `Gate: PASS`); with no marker there is none.
  */
 export function commandVerdict(
 	command: string,
@@ -82,9 +83,16 @@ export function commandVerdict(
 		return undefined;
 	if (/--request-changes\b/.test(command)) return "changes";
 	if (/--approve\b/.test(command)) return "pass";
-	if (!review.requireComment) return undefined;
-	const body =
-		/--body\s+\\?"?\s*Gate(?:\s+re-review)?:\s*(PASS|CHANGES)\b/i.exec(command);
+	// The marker's first word (`Gate` of `Gate: PASS`) opens a verdict body.
+	const word = review.requireComment
+		?.trim()
+		.split(/\s+/, 1)[0]
+		?.replace(/:$/, "");
+	if (!word) return undefined;
+	const body = new RegExp(
+		`--body\\s+\\\\?"?\\s*${word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:\\s+re-review)?:\\s*(PASS|CHANGES)\\b`,
+		"i",
+	).exec(command);
 	if (!body?.[1]) return undefined;
 	return body[1].toUpperCase() === "PASS" ? "pass" : "changes";
 }

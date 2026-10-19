@@ -188,9 +188,8 @@ export function parseReady(
 			// No checks at all (a null rollup) passes; FAILURE, ERROR and PENDING block.
 			(tip.statusCheckRollup && tip.statusCheckRollup.state !== "SUCCESS") ||
 			// The configured evidence may sit in comments or threads we did not read.
-			(readsComments &&
-				(pr.comments.pageInfo.hasPreviousPage ||
-					pr.reviewThreads.pageInfo.hasPreviousPage)) ||
+			(readsComments && pr.comments.pageInfo.hasPreviousPage) ||
+			(codex && pr.reviewThreads.pageInfo.hasPreviousPage) ||
 			(codex && openCodexFindings(pr.reviewThreads.nodes) > 0) ||
 			(marker !== undefined &&
 				!gatePassed(pr.comments.nodes, pr.headRefOid, marker))

@@ -252,3 +252,20 @@ test("the Gate: body verdict and the @codex ask count only when configured", () 
 			?.stage,
 	).toBe("pr-open");
 });
+
+test("the body verdict word comes from the configured marker", () => {
+	const lgtm = { requireComment: "LGTM", bots: [] };
+	const body = (word: string) =>
+		`gh pr review 61 --comment --body "${word}: CHANGES (P1)"`;
+	expect(commandVerdict(body("LGTM"), lgtm)).toBe("changes");
+	expect(commandVerdict(body("Gate"), lgtm)).toBeUndefined();
+	expect(commandVerdict(body("Gate"), FULL)).toBe("changes");
+	expect(commandVerdict(body("LGTM"), FULL)).toBeUndefined();
+	// A marker with regex characters is matched literally.
+	expect(
+		commandVerdict(body("A.B"), { requireComment: "A.B: PASS", bots: [] }),
+	).toBe("changes");
+	expect(
+		commandVerdict(body("AxB"), { requireComment: "A.B: PASS", bots: [] }),
+	).toBeUndefined();
+});

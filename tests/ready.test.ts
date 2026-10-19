@@ -17,6 +17,7 @@ import {
 	OLD,
 	READY_ONLY,
 	TRUTH,
+	TRUTH_THREADS,
 } from "./fixtures/ready-prs";
 
 /** Our own setup: a gate comment and Codex both required. */
