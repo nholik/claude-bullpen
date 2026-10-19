@@ -29,6 +29,8 @@ function pr(
 		comments?: (string | { body: string; by: string; login?: string })[];
 		threads?: Thread[];
 		moreThreads?: boolean;
+		/** Older comments exist beyond the window read. */
+		moreComments?: boolean;
 		title?: string;
 	} = {},
 ) {
@@ -57,6 +59,7 @@ function pr(
 			],
 		},
 		comments: {
+			pageInfo: { hasPreviousPage: over.moreComments ?? false },
 			nodes: [
 				...(over.comments ?? [`Gate: PASS ${head}\nChecked.`]),
 				...(over.codex === null
@@ -190,6 +193,8 @@ export const GITHUB = wrap([
 	pr(242, { comments: [], codex: null, ci: "ERROR" }),
 	// GitHub Enterprise with pre-receive hooks: mergeable, checks passing.
 	pr(243, { comments: [], codex: null, merge: "HAS_HOOKS" }),
+	// More comments than the window: a Gate: FAIL could be hidden, so not ready.
+	pr(244, { comments: [], codex: null, moreComments: true }),
 	pr(237, { comments: ["Gate: PASS is how we sign off"], codex: null }),
 ]);
 

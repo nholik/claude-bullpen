@@ -130,7 +130,7 @@ test("without a gate or Codex, GitHub's review decision, checks and merge state 
 	const rows = parseReady(GITHUB, 0) ?? [];
 	// 233 and 238 changes requested (238 only through a review), 241 and 242
 	// have pending or erroring CI, 240 has no CI at all and is ready.
-	// 234 blocked otherwise, 235 unstable: out.
+	// 234 blocked otherwise, 235 unstable, 244 has comments beyond the window: out.
 	// 236 waits on the Codex review someone asked for; 237's "Gate:" line is
 	// not `Gate: PASS <sha>`, so the gate is in play and unmet: out.
 	expect(

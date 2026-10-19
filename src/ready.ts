@@ -19,12 +19,12 @@ import {
 const PRS = 30;
 /** Review threads and comments read per PR. */
 const THREADS = 100;
-const COMMENTS = 20;
+const COMMENTS = 50;
 
 /** Longest title kept, in characters. */
 const TITLE = 120;
 
-const QUERY = `query($owner:String!,$name:String!){repository(owner:$owner,name:$name){pullRequests(states:OPEN,first:${PRS},orderBy:{field:UPDATED_AT,direction:DESC}){nodes{number title url headRefOid isDraft reviewDecision mergeable mergeStateStatus latestOpinionatedReviews(first:20){nodes{state}} commits(last:1){nodes{commit{oid statusCheckRollup{state}}}} comments(last:${COMMENTS}){nodes{body authorAssociation author{login}}} reviewThreads(last:${THREADS}){pageInfo{hasPreviousPage} nodes{isResolved isOutdated comments(first:1){nodes{body}}}}}}}}`;
+const QUERY = `query($owner:String!,$name:String!){repository(owner:$owner,name:$name){pullRequests(states:OPEN,first:${PRS},orderBy:{field:UPDATED_AT,direction:DESC}){nodes{number title url headRefOid isDraft reviewDecision mergeable mergeStateStatus latestOpinionatedReviews(first:20){nodes{state}} commits(last:1){nodes{commit{oid statusCheckRollup{state}}}} comments(last:${COMMENTS}){pageInfo{hasPreviousPage} nodes{body authorAssociation author{login}}} reviewThreads(last:${THREADS}){pageInfo{hasPreviousPage} nodes{isResolved isOutdated comments(first:1){nodes{body}}}}}}}}`;
 
 /** One read-only call for every open PR's gate comment, threads, checks and mergeability. */
 export function readyArgv(repo: string, host: string): string[] {
@@ -47,6 +47,7 @@ export function readyArgv(repo: string, host: string): string[] {
 const Body = looseObject({ body: string() });
 const Bodies = looseObject({ nodes: array(Body) });
 const Comments = looseObject({
+	pageInfo: looseObject({ hasPreviousPage: boolean() }),
 	nodes: array(
 		looseObject({
 			body: string(),
@@ -274,6 +275,8 @@ export function parseReady(
 			tip?.oid !== pr.headRefOid ||
 			// No checks at all (a null rollup) passes; FAILURE, ERROR and PENDING block.
 			(tip.statusCheckRollup && tip.statusCheckRollup.state !== "SUCCESS") ||
+			// The gate or Codex evidence may sit in comments we did not read.
+			pr.comments.pageInfo.hasPreviousPage ||
 			pr.reviewThreads.pageInfo.hasPreviousPage ||
 			openCodexFindings(pr.reviewThreads.nodes) > 0 ||
 			(gate && !gatePassed(pr.comments.nodes, pr.headRefOid))
