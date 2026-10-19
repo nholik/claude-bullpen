@@ -24,6 +24,9 @@ const bash = (who: string, detail: string): BullpenEvent => ({
 	issues: [],
 });
 
+/** Our own setup: the gate comment verdict and the Codex ask both count. */
+const FULL = { requireComment: "Gate: PASS", bots: ["codex"] };
+
 const pr = "https://github.com/nholik/claude-bullpen/pull";
 
 test("a PR announced, reviewed with CHANGES, resubmitted, then passed", () => {
@@ -39,7 +42,7 @@ test("a PR announced, reviewed with CHANGES, resubmitted, then passed", () => {
 			'gh pr review 61 --request-changes --body "Gate: CHANGES (P0…',
 		),
 	];
-	expect(shipPaths(events)[44]).toMatchObject({
+	expect(shipPaths(events, [], FULL)[44]).toMatchObject({
 		stage: "changes",
 		pr: 61,
 		verdict: "changes",
@@ -49,7 +52,7 @@ test("a PR announced, reviewed with CHANGES, resubmitted, then passed", () => {
 		...events,
 		msg("gate", "PR #61 (#44): PASS. PR #68 (#45): PASS, check green on both."),
 	];
-	const paths = shipPaths(later);
+	const paths = shipPaths(later, [], FULL);
 	expect(paths[44]).toMatchObject({ stage: "approved", verdict: "pass" });
 	expect(paths[45]).toMatchObject({ stage: "approved", pr: 68 });
 });
@@ -151,7 +154,7 @@ test("gh pr review verdicts", () => {
 		["gh pr review 61 --comment --body hello", undefined],
 		["gh pr view 61", undefined],
 	] as const)
-		expect(commandVerdict(command)).toBe(expected);
+		expect(commandVerdict(command, FULL)).toBe(expected);
 });
 
 test("a merge said in a message counts only for a known PR and a plain statement", () => {
@@ -220,4 +223,32 @@ test("a reviewer mentioning a PR in passing registers no link", () => {
 			shipPaths([msg("gate", `see PR #12 for context, and ${pr}/9`)], []),
 		).length,
 	).toBe(0);
+});
+
+test("the Gate: body verdict and the @codex ask count only when configured", () => {
+	const gate = 'gh pr review 61 --comment --body "Gate: CHANGES (P0, wrong …';
+	expect(commandVerdict(gate)).toBeUndefined();
+	expect(commandVerdict(gate, { bots: ["codex"] })).toBeUndefined();
+	expect(commandVerdict(gate, { requireComment: "Gate: PASS", bots: [] })).toBe(
+		"changes",
+	);
+	// GitHub's own verdicts always count.
+	expect(commandVerdict("gh pr review 61 --approve")).toBe("pass");
+	expect(commandVerdict("gh pr review 61 --request-changes")).toBe("changes");
+	const events = [
+		msg("ada", `#44 PR: ${pr}/61 (SSO phrase matching; …`),
+		bash("lead", 'gh pr comment 61 --body "@codex review"'),
+	];
+	expect(shipPaths(events)[44]).toMatchObject({
+		stage: "pr-open",
+		codex: false,
+	});
+	expect(shipPaths(events, [], { bots: ["codex"] })[44]).toMatchObject({
+		stage: "in-review",
+		codex: true,
+	});
+	expect(
+		shipPaths(events, [], { requireComment: "Gate: PASS", bots: [] })[44]
+			?.stage,
+	).toBe("pr-open");
 });

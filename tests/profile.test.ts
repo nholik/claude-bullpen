@@ -145,3 +145,44 @@ test("withMemberColors gives members distinct join-order colors unless the profi
 	// Name-only lookups (hallway, huddles, header) agree with the card.
 	expect(colorFor("kit", out, 3)).toBe(0xff0000);
 });
+
+test("review defaults to GitHub's own signals and reads its two fields", () => {
+	expect(DEFAULT_PROFILE.review).toEqual({ bots: [] });
+	const ok = parseProfile(
+		JSON.stringify({
+			review: { requireComment: " Gate: PASS ", bots: ["Codex", "codex"] },
+		}),
+	);
+	expect(ok.warnings).toEqual([]);
+	expect(ok.profile.review).toEqual({
+		requireComment: "Gate: PASS",
+		bots: ["codex"],
+	});
+	expect(parseProfile("{}").profile.review).toEqual({ bots: [] });
+});
+
+test("an unknown bot, a bad marker or a wrong shape warns and is ignored", () => {
+	const bots = parseProfile(
+		JSON.stringify({ review: { bots: ["codex", "copilot", 3] } }),
+	);
+	expect(bots.profile.review.bots).toEqual(["codex"]);
+	expect(bots.warnings.length).toBe(2);
+	expect(bots.warnings[0]).toContain('unknown reviewer "copilot"');
+	const bad = parseProfile(
+		JSON.stringify({ review: { requireComment: "", bots: "codex" } }),
+	);
+	expect(bad.profile.review).toEqual({ bots: [] });
+	expect(bad.warnings.length).toBe(2);
+	expect(parseProfile('{"review":[]}').warnings.length).toBe(1);
+});
+
+test("a project's review settings layer over the user's", () => {
+	const user = parsePartial(
+		'{"review":{"requireComment":"LGTM","bots":["codex"]}}',
+	);
+	const project = parsePartial('{"review":{"bots":[]}}');
+	expect(mergeProfiles(project.set, user.set).review).toEqual({
+		requireComment: "LGTM",
+		bots: [],
+	});
+});

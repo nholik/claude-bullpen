@@ -212,12 +212,11 @@ async function syncModel($: $, added: readonly BullpenEvent[], force: boolean) {
 	const stamped = await read($, modelVersion);
 	if (added.length === 0 && state && stamped === MODEL_VERSION && !force)
 		return;
-	const roles = roleNames(
-		await read($, profile),
-		Object.values(await read($, members)),
-	);
+	const config = await read($, profile);
+	const roles = roleNames(config, Object.values(await read($, members)));
 	const out = foldBatch(state, stamped, await read($, events), added, force, {
 		roles,
+		review: config.review,
 	});
 	await update($, teamModel, () => out.state);
 	await update($, modelVersion, () => out.version);
@@ -768,10 +767,11 @@ async function pollGithub($: $, generation = pollGeneration) {
 				}
 				prs = [...updated.values()].slice(-40);
 				// One batched query for the merge-ready queue; a failed run keeps the last list.
+				const { review } = await read($, profile);
 				const fresh = await $.process
 					.run(readyArgv(repoName, hostname), { timeoutMs: 10_000 })
 					.then(
-						(run) => readReady(run, at),
+						(run) => readReady(run, at, review),
 						() => undefined,
 					);
 				if (fresh) ready = fresh;
@@ -1299,6 +1299,7 @@ export function register(on: On) {
 		const model = sceneModel(snapshot, {
 			github: source,
 			roles: roleNames(config, list),
+			review: config.review,
 			present: Object.fromEntries(list.map((m) => [m.name, m.status])),
 			agentTypes: Object.fromEntries(
 				list.flatMap((m) => (m.agentType ? [[m.name, m.agentType]] : [])),
@@ -1589,6 +1590,7 @@ export function register(on: On) {
 		const model = sceneModel(snapshot, {
 			github: snapshot.github,
 			roles: roleNames(config, list),
+			review: config.review,
 			present: Object.fromEntries(
 				Object.values(snapshot.members).map((m) => [m.name, m.status]),
 			),
