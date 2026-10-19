@@ -1,6 +1,5 @@
 {
 	"review": {
-		"requireComment": "Gate: PASS",
-		"bots": ["codex"]
+		"requireComment": "Gate: PASS"
 	}
 }
