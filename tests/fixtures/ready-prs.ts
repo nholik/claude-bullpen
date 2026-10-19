@@ -19,12 +19,18 @@ function pr(
 		mergeable?: string;
 		merge?: string;
 		draft?: boolean;
+		/** GitHub's reviewDecision: null when the repo requires no reviews. */
+		decision?: string | null;
+		/** `latestOpinionatedReviews` states, newest per reviewer. */
+		reviews?: string[];
 		/** Codex's summary comment; null for none. Defaults to completed on the head. */
 		codex?: ReturnType<typeof codexSummary> | null;
 		ci?: string | null;
 		comments?: (string | { body: string; by: string; login?: string })[];
 		threads?: Thread[];
 		moreThreads?: boolean;
+		/** Older comments exist beyond the window read. */
+		moreComments?: boolean;
 		title?: string;
 	} = {},
 ) {
@@ -35,6 +41,10 @@ function pr(
 		url: `${URL}/${number}`,
 		headRefOid: head,
 		isDraft: over.draft ?? false,
+		reviewDecision: over.decision ?? null,
+		latestOpinionatedReviews: {
+			nodes: (over.reviews ?? []).map((state) => ({ state })),
+		},
 		mergeable: over.mergeable ?? "MERGEABLE",
 		mergeStateStatus: over.merge ?? "CLEAN",
 		commits: {
@@ -49,6 +59,7 @@ function pr(
 			],
 		},
 		comments: {
+			pageInfo: { hasPreviousPage: over.moreComments ?? false },
 			nodes: [
 				...(over.comments ?? [`Gate: PASS ${head}\nChecked.`]),
 				...(over.codex === null
@@ -145,6 +156,46 @@ export const TRUTH = wrap([
 		threads: [{ isResolved: false, isOutdated: false, body: BADGE("P1") }],
 	}),
 	pr(223, { codex: codexSummary(HEAD, "completed") }),
+]);
+
+/** A repo with no gate comment and no Codex: GitHub's own signals decide. */
+export const GITHUB = wrap([
+	pr(230, { comments: [], codex: null }),
+	pr(231, { comments: [], codex: null, decision: "APPROVED" }),
+	pr(232, {
+		comments: [],
+		codex: null,
+		decision: "REVIEW_REQUIRED",
+		merge: "BLOCKED",
+	}),
+	pr(233, {
+		comments: [],
+		codex: null,
+		decision: "CHANGES_REQUESTED",
+		merge: "BLOCKED",
+	}),
+	// Blocked for another reason (a failing required check or rule), not a missing review.
+	pr(234, { comments: [], codex: null, merge: "BLOCKED" }),
+	pr(235, { comments: [], codex: null, merge: "UNSTABLE" }),
+	// A human asking for Codex puts it in play; with no answer yet the PR waits.
+	pr(236, { comments: ["@codex review"], codex: null }),
+	// Starts with `Gate:` but is not `Gate: PASS <sha>`: the gate is in play and unmet.
+	// No reviews are required (reviewDecision null) but a human requested changes.
+	pr(238, {
+		comments: [],
+		codex: null,
+		reviews: ["APPROVED", "CHANGES_REQUESTED"],
+	}),
+	pr(239, { comments: [], codex: null, reviews: ["APPROVED", "COMMENTED"] }),
+	// A repo with no CI: the rollup is null.
+	pr(240, { comments: [], codex: null, ci: null }),
+	pr(241, { comments: [], codex: null, ci: "PENDING" }),
+	pr(242, { comments: [], codex: null, ci: "ERROR" }),
+	// GitHub Enterprise with pre-receive hooks: mergeable, checks passing.
+	pr(243, { comments: [], codex: null, merge: "HAS_HOOKS" }),
+	// More comments than the window: a Gate: FAIL could be hidden, so not ready.
+	pr(244, { comments: [], codex: null, moreComments: true }),
+	pr(237, { comments: ["Gate: PASS is how we sign off"], codex: null }),
 ]);
 
 export const NO_PRS = wrap([]);

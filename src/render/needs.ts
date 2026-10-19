@@ -52,7 +52,7 @@ export function needsYou(
 		lines.push(
 			textLine(` +${queue.length - SHOWN} more · n lists them`, columns),
 		);
-	const mergeable = ready.filter((pr) => !pr.codexPending).length;
+	const mergeable = ready.filter((pr) => !pr.reviewPending).length;
 	if (mergeable)
 		lines.push(
 			fit(
@@ -69,20 +69,33 @@ export function needsYou(
 	return lines;
 }
 
+/** The checks that hold on a ready PR; a waiting one shows `…` for the review. */
+function marks(pr: ReadyPr, waiting: boolean): string {
+	const done = waiting ? "…" : "✓";
+	const parts = [
+		...(pr.approved ? ["review ✓"] : []),
+		...(pr.gate ? ["gate ✓"] : []),
+		...(pr.codex ? [`codex ${done}`] : []),
+		...(waiting && !pr.codex ? ["review …"] : []),
+		"ci ✓",
+	];
+	return parts.join("  ");
+}
+
 /**
  * One merge-ready PR: number and title, the three marks, and what Enter does.
- * While Codex is still reviewing the head the row waits: a muted `…` for codex.
+ * While a review is outstanding the row waits: a muted `…` for it.
  */
 function readyBlock(pr: ReadyPr, i: number, on: boolean, columns: number) {
 	const wide = Math.max(1, columns - 3);
-	const waiting = pr.codexPending === true;
+	const waiting = pr.reviewPending === true;
 	const color = on && !waiting ? STUDIO.mint : STUDIO.muted;
 	return [
 		fit(
 			[
 				{ text: on ? " ▌ " : "   ", fg: STUDIO.mint, bold: true },
 				{
-					text: `${i + 1} · ${waiting ? "waiting on codex" : "merge-ready"} · #${pr.number}`,
+					text: `${i + 1} · ${waiting ? "waiting on review" : "merge-ready"} · #${pr.number}`,
 					fg: STUDIO.muted,
 				},
 			],
@@ -96,7 +109,7 @@ function readyBlock(pr: ReadyPr, i: number, on: boolean, columns: number) {
 			[
 				{ text: "   " },
 				{
-					text: waiting ? "gate ✓  codex …  ci ✓" : "gate ✓  codex ✓  ci ✓",
+					text: marks(pr, waiting),
 					fg: waiting ? STUDIO.muted : STUDIO.mint,
 				},
 				{ text: on ? " · enter: copy PR link" : "", fg: STUDIO.muted },

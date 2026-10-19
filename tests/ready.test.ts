@@ -2,6 +2,7 @@ import { expect, test } from "claude-code/testing";
 import {
 	codexReviewed,
 	freshReady,
+	gateEngaged,
 	gatePassed,
 	parseReady,
 	READY_TTL_MS,
@@ -10,6 +11,7 @@ import {
 } from "../src/ready";
 import {
 	codexSummary,
+	GITHUB,
 	HEAD,
 	MIXED,
 	NO_PRS,
@@ -21,10 +23,12 @@ import {
 const o = (...bodies: string[]) =>
 	bodies.map((body) => ({ body, authorAssociation: "OWNER" }));
 
-test("a PR is ready only when gate, Codex, CI and mergeability all hold on the head", () => {
+test("a PR is ready only when CI, mergeability and any gate or Codex in play all hold on the head", () => {
 	const ready = parseReady(MIXED, 5);
-	expect(ready?.map((p) => p.number)).toEqual([210, 211, 214]);
-	expect(ready?.[0]).toEqual({
+	expect(ready?.map((p) => p.number)).toEqual([203, 207, 210, 211, 214]);
+	expect(ready?.[2]).toEqual({
+		gate: true,
+		codex: true,
 		number: 210,
 		title: "Spaced title with a newline",
 		url: "https://github.com/example/repo/pull/210",
@@ -111,14 +115,43 @@ test("Codex counts only when its bot summary says completed on exactly the head"
 
 test("Codex pending, an old sha, a draft or a blocked merge state keep a PR out of ready", () => {
 	const rows = parseReady(TRUTH, 0) ?? [];
-	// 215 pending on the head, 216 reviewed an old sha, 219 an impostor, 220 no review yet.
-	expect(rows.map((p) => [p.number, p.codexPending === true])).toEqual([
+	// 215 pending on the head, 216 reviewed an old sha. 219 (an impostor quoting the
+	// marker) and 220 (no Codex at all) never put Codex in play, so they are ready.
+	expect(rows.map((p) => [p.number, p.reviewPending === true])).toEqual([
 		[215, true],
 		[216, true],
-		[219, true],
-		[220, true],
+		[219, false],
+		[220, false],
 		[223, false],
 	]);
+});
+
+test("without a gate or Codex, GitHub's review decision, checks and merge state decide", () => {
+	const rows = parseReady(GITHUB, 0) ?? [];
+	// 233 and 238 changes requested (238 only through a review), 241 and 242
+	// have pending or erroring CI, 240 has no CI at all and is ready.
+	// 234 blocked otherwise, 235 unstable, 244 has comments beyond the window: out.
+	// 236 waits on the Codex review someone asked for; 237's "Gate:" line is
+	// not `Gate: PASS <sha>`, so the gate is in play and unmet: out.
+	expect(
+		rows.map((p) => [p.number, p.reviewPending === true, p.approved === true]),
+	).toEqual([
+		[230, false, false],
+		[231, false, true],
+		[232, true, false],
+		[236, true, false],
+		[239, false, false],
+		[240, false, false],
+		[243, false, false],
+	]);
+});
+
+test("the gate is in play only for a trusted comment whose first line is Gate:", () => {
+	expect(gateEngaged(o("Gate: FAIL"))).toBe(true);
+	expect(gateEngaged(o("Looks good", "gate: pass"))).toBe(false);
+	expect(gateEngaged([{ body: "Gate: PASS", authorAssociation: "NONE" }])).toBe(
+		false,
+	);
 });
 
 test("a ready list older than three polls is dropped", () => {
