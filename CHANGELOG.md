@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.4.0
+
+Bullpen tells the truth: what it shows is read from explicit signals, not guessed
+from prose.
+
+- Turn needs-you into the human's queue. It lists the decisions your lead puts to
+  you (`Decision:` lines in its final answer) and the PRs ready for you to merge.
+  Press `n` to open it: Enter quotes an item into your prompt without sending,
+  `d` dismisses it, and a reply that quotes a decision closes exactly that one.
+  Teammate messages never enter it.
+- Read merge-ready from GitHub in one batched query: a reviewed head, no open
+  blocking findings, green CI, mergeable and not a draft. The list ages out when
+  polling fails.
+- Attribute work from worktrees, branches and `Closes #n` before prose, and stop
+  putting teammates on PR numbers, settled refs or report tables.
+- Stop flagging finished reviewers, finished helpers and waiting builders as
+  stuck, and recheck liveness past the grace window.
+- Route every role lookup through one place, so profile roles reach cards and
+  the model.
+- Derive the model version from a fingerprint of the reducer's output, so a
+  rule change rebuilds stored state on its own.
+- Scroll the talk view row by row and hold your place; cache wrapped messages per
+  width. Add a render perf budget test over a worst-case team.
+- Widen cards when the team is small. Keep GitHub polling alive across hot reloads.
+- Add `scripts/worktree.sh` for one-command worktree setup.
+
+Known follow-ups are in #189. Windows Terminal and real Enterprise verification
+remain outstanding.
+
 ## 0.3.0 (preview)
 
 - Rebuild the pane around three questions: what needs me, who is stuck, what is
