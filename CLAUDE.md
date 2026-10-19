@@ -102,9 +102,8 @@ The team runs on one laptop. Keep it cool:
 - `main` is protected by convention: work on a branch `<issue>-<slug>` (e.g. `12-journal`),
   in a git worktree under `.worktrees/` (gitignored), and open a PR that says `Closes #<issue>`.
 - No stacked PRs: squash merges conflict with stacks. Start dependent work after the base PR merges.
-- On each PR the lead comments `@codex review` to get a Codex review, plus our own gate
-  review; merge when both are satisfied and `npm run check` is green.
-- Review triage: only P0/P1 findings (Codex or gate) block a merge or get worked during a sprint.
+- Each PR gets our own gate review; merge when the gate passes and `npm run check` is green.
+- Review triage: only P0/P1 findings block a merge or get worked during a sprint.
   P2+ and nits are not filed one by one: the lead collects them in `.scratch/review-nits.md`
   and collates them once at the end of the sprint. MVP progress beats polishing a PR.
 - Commit messages: imperative subject, short body. **No attribution lines** (no
