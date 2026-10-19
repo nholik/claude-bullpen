@@ -147,6 +147,7 @@ default and shows a warning.
 		"smith": { "role": "builder", "color": "#4fc3f7" },
 		"gate": { "role": "reviewer", "color": 3 }
 	},
+	"review": { "requireComment": "Gate: PASS", "bots": ["codex"] },
 	"glyphs": "unicode",
 	"animations": true,
 	"palette": ["#4fc3f7", "#ffb74d", "#81c784", "#f06292"]
@@ -158,9 +159,19 @@ default and shows a warning.
 | `issues.filter` | `""` (all issues) | A `gh search issues` query. State qualifiers are dropped so the burndown counts open and closed issues. |
 | `issues.pollSeconds` | `60` | How often to poll GitHub. Minimum 15. |
 | `roles` | `{}` | Maps a teammate name or agent type to a role label and color. `color` is `#rrggbb` or an index into `palette`. Without an entry, the role comes from the agent type. |
+| `review.requireComment` | unset | Extra requirement for merge-ready: the newest comment by an owner, member or collaborator whose first line starts with this marker's first word (`Gate:`) must be exactly `<marker> <head-sha>` (`Gate: PASS 1a2b...`). It also lets a `Gate: PASS` or `Gate: CHANGES` body on `gh pr review` set an issue's review state. |
+| `review.bots` | `[]` | Bot reviewers whose completed review of the head is also required. Known: `codex` (the Codex connector's review, with no open P0/P1 findings; a `@codex review` request marks an issue as in review). An unknown name shows a warning. |
 | `glyphs` | `"unicode"` | `"ascii"` swaps every symbol and border for plain ASCII. Use it if your font shows boxes. |
 | `animations` | `true` | `false` turns off the short highlights for messages and finished turns. Everything else still updates. |
 | `palette` | built in | Teammate colors as `#rrggbb`, handed out in the order teammates join. |
+
+## Merge-ready
+
+Without a `review` setting, a PR joins the merge-ready queue on GitHub's own signals:
+not a draft, mergeable, its checks passing (or none), no review asking for changes and a
+clean merge state. A PR waiting only on a required review is shown as "waiting on
+review". `review.requireComment` and `review.bots` add the requirements above; when
+either is set, a PR with more comments than Bullpen reads is left out rather than guessed at.
 
 ## GitHub
 

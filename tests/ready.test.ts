@@ -1,8 +1,7 @@
 import { expect, test } from "claude-code/testing";
+import { codexReviewed } from "../src/codex";
 import {
-	codexReviewed,
 	freshReady,
-	gateEngaged,
 	gatePassed,
 	parseReady,
 	READY_TTL_MS,
@@ -20,13 +19,17 @@ import {
 	TRUTH,
 } from "./fixtures/ready-prs";
 
+/** Our own setup: a gate comment and Codex both required. */
+const FULL = { requireComment: "Gate: PASS", bots: ["codex"] };
+const MARKER = "Gate: PASS";
+
 const o = (...bodies: string[]) =>
 	bodies.map((body) => ({ body, authorAssociation: "OWNER" }));
 
-test("a PR is ready only when CI, mergeability and any gate or Codex in play all hold on the head", () => {
-	const ready = parseReady(MIXED, 5);
-	expect(ready?.map((p) => p.number)).toEqual([203, 207, 210, 211, 214]);
-	expect(ready?.[2]).toEqual({
+test("a PR is ready only when CI, mergeability and the configured gate and Codex all hold on the head", () => {
+	const ready = parseReady(MIXED, 5, FULL);
+	expect(ready?.map((p) => p.number)).toEqual([207, 210, 211, 214]);
+	expect(ready?.[1]).toEqual({
 		gate: true,
 		codex: true,
 		number: 210,
@@ -51,26 +54,38 @@ test("unreadable output is undefined, not an empty queue", () => {
 });
 
 test("the newest Gate: comment decides, and only on the exact head", () => {
-	expect(gatePassed(o(`Gate: PASS ${HEAD}`), HEAD)).toBe(true);
-	expect(gatePassed(o(`Gate: PASS ${HEAD}\r\nsummary`), HEAD)).toBe(true);
-	expect(gatePassed(o(`Gate: PASS ${OLD}`), HEAD)).toBe(false);
-	expect(gatePassed(o(`Gate: PASS ${HEAD.slice(0, 7)}`), HEAD)).toBe(false);
-	expect(gatePassed(o(`Gate: PASS ${HEAD}`, "Gate: CHANGES"), HEAD)).toBe(
-		false,
-	);
-	expect(gatePassed(o("Gate: CHANGES", `Gate: PASS ${HEAD}`, "ok"), HEAD)).toBe(
+	expect(gatePassed(o(`Gate: PASS ${HEAD}`), HEAD, MARKER)).toBe(true);
+	expect(gatePassed(o(`Gate: PASS ${HEAD}\r\nsummary`), HEAD, MARKER)).toBe(
 		true,
 	);
+	expect(gatePassed(o(`Gate: PASS ${OLD}`), HEAD, MARKER)).toBe(false);
+	expect(gatePassed(o(`Gate: PASS ${HEAD.slice(0, 7)}`), HEAD, MARKER)).toBe(
+		false,
+	);
 	expect(
-		gatePassed(o(`Not Gate: PASS ${HEAD}`, `gate: pass ${HEAD}`), HEAD),
+		gatePassed(o(`Gate: PASS ${HEAD}`, "Gate: CHANGES"), HEAD, MARKER),
 	).toBe(false);
-	expect(gatePassed(o(), HEAD)).toBe(false);
+	expect(
+		gatePassed(o("Gate: CHANGES", `Gate: PASS ${HEAD}`, "ok"), HEAD, MARKER),
+	).toBe(true);
+	expect(
+		gatePassed(o(`Not Gate: PASS ${HEAD}`, `gate: pass ${HEAD}`), HEAD, MARKER),
+	).toBe(false);
+	expect(gatePassed(o(), HEAD, MARKER)).toBe(false);
 	const outsider = (body: string) => ({ body, authorAssociation: "NONE" });
 	expect(
-		gatePassed([...o("Gate: CHANGES"), outsider(`Gate: PASS ${HEAD}`)], HEAD),
+		gatePassed(
+			[...o("Gate: CHANGES"), outsider(`Gate: PASS ${HEAD}`)],
+			HEAD,
+			MARKER,
+		),
 	).toBe(false);
 	expect(
-		gatePassed([outsider("Gate: FAIL"), ...o(`Gate: PASS ${HEAD}`)], HEAD),
+		gatePassed(
+			[outsider("Gate: FAIL"), ...o(`Gate: PASS ${HEAD}`)],
+			HEAD,
+			MARKER,
+		),
 	).toBe(true);
 });
 
@@ -114,44 +129,83 @@ test("Codex counts only when its bot summary says completed on exactly the head"
 });
 
 test("Codex pending, an old sha, a draft or a blocked merge state keep a PR out of ready", () => {
-	const rows = parseReady(TRUTH, 0) ?? [];
-	// 215 pending on the head, 216 reviewed an old sha. 219 (an impostor quoting the
-	// marker) and 220 (no Codex at all) never put Codex in play, so they are ready.
+	const rows = parseReady(TRUTH, 0, FULL) ?? [];
+	// 215 pending on the head, 216 reviewed an old sha, 219 an impostor quoting
+	// the marker, 220 no review yet: all queued as waiting. 222 has an open P1.
 	expect(rows.map((p) => [p.number, p.reviewPending === true])).toEqual([
 		[215, true],
 		[216, true],
-		[219, false],
-		[220, false],
+		[219, true],
+		[220, true],
 		[223, false],
 	]);
 });
 
-test("without a gate or Codex, GitHub's review decision, checks and merge state decide", () => {
+test("with no review config, Codex and the gate comment are ignored", () => {
+	const plain = parseReady(TRUTH, 0) ?? [];
+	// 222's open P1 and every Codex state are invisible; 217, 218 and 221 are
+	// out on GitHub's own signals.
+	expect(plain.map((p) => [p.number, p.reviewPending === true])).toEqual([
+		[215, false],
+		[216, false],
+		[219, false],
+		[220, false],
+		[222, false],
+		[223, false],
+	]);
+	expect(plain.some((p) => p.gate || p.codex)).toBe(false);
+	const gateOnly = parseReady(TRUTH, 0, {
+		requireComment: "Gate: PASS",
+		bots: [],
+	});
+	expect(gateOnly?.map((p) => p.number)).toEqual([
+		215, 216, 219, 220, 222, 223,
+	]);
+	expect(gateOnly?.every((p) => p.gate && !p.codex)).toBe(true);
+});
+
+test("without a gate or Codex configured, GitHub's review decision, checks and merge state decide", () => {
 	const rows = parseReady(GITHUB, 0) ?? [];
 	// 233 and 238 changes requested (238 only through a review), 241 and 242
 	// have pending or erroring CI, 240 has no CI at all and is ready.
-	// 234 blocked otherwise, 235 unstable, 244 has comments beyond the window: out.
-	// 236 waits on the Codex review someone asked for; 237's "Gate:" line is
-	// not `Gate: PASS <sha>`, so the gate is in play and unmet: out.
+	// 234 blocked otherwise and 235 unstable: out. 236, 237 and 244 carry
+	// comments we ignore; 244 has more than the window and is ready anyway.
 	expect(
 		rows.map((p) => [p.number, p.reviewPending === true, p.approved === true]),
 	).toEqual([
 		[230, false, false],
 		[231, false, true],
 		[232, true, false],
-		[236, true, false],
+		[236, false, false],
 		[239, false, false],
 		[240, false, false],
 		[243, false, false],
+		[244, false, false],
+		[237, false, false],
 	]);
 });
 
-test("the gate is in play only for a trusted comment whose first line is Gate:", () => {
-	expect(gateEngaged(o("Gate: FAIL"))).toBe(true);
-	expect(gateEngaged(o("Looks good", "gate: pass"))).toBe(false);
-	expect(gateEngaged([{ body: "Gate: PASS", authorAssociation: "NONE" }])).toBe(
-		false,
-	);
+test("a truncated comment history leaves a PR out only when comment rules are configured", () => {
+	const codex = parseReady(GITHUB, 0, { bots: ["codex"] }) ?? [];
+	expect(codex.some((p) => p.number === 244)).toBe(false);
+	// Everything else waits on a Codex summary that never came.
+	expect(codex.find((p) => p.number === 230)?.reviewPending).toBe(true);
+	const gate = parseReady(GITHUB, 0, {
+		requireComment: "Gate: PASS",
+		bots: [],
+	});
+	expect(gate?.some((p) => p.number === 244)).toBe(false);
+});
+
+test("a custom marker works like Gate: PASS", () => {
+	const lgtm = (body: string) => ({ body, authorAssociation: "MEMBER" });
+	expect(gatePassed([lgtm(`LGTM ${HEAD}`)], HEAD, "LGTM")).toBe(true);
+	expect(gatePassed([lgtm(`LGTM ${OLD}`)], HEAD, "LGTM")).toBe(false);
+	expect(
+		gatePassed([lgtm(`LGTM ${HEAD}`), lgtm(`LGTM ${OLD}`)], HEAD, "LGTM"),
+	).toBe(false);
+	expect(gatePassed([lgtm(`Gate: PASS ${HEAD}`)], HEAD, "LGTM")).toBe(false);
+	expect(gatePassed([lgtm(`LGTM ${HEAD}`)], HEAD, "  ")).toBe(false);
 });
 
 test("a ready list older than three polls is dropped", () => {

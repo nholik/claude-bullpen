@@ -3,7 +3,7 @@
 // keep its stale output until the session restarts. The state is stamped with
 // the version that reduced it; a mismatch rebuilds it from the event window.
 
-import type { BullpenEvent, TeamSnapshot } from "../../types";
+import type { BullpenEvent, ReviewConfig, TeamSnapshot } from "../../types";
 import { readJournal, STATE_EVENTS } from "../journal";
 import pinJournal from "./pin";
 import {
@@ -14,14 +14,15 @@ import {
 } from "./team";
 
 /**
- * Fingerprint of the reducer: FNV-1a over the JSON of the state it reduces the
- * frozen `pin` journal to. Any change to the reducer (`team.ts`, `ship.ts`,
+ * Fingerprint of the reducer: FNV-1a over the JSON of the states it reduces the
+ * frozen `pin` journal to, once with no `review` config and once with every
+ * rule on. Any change to the reducer (`team.ts`, `ship.ts`,
  * `detect.ts`) that moves that output changes the version, so nobody bumps it by
  * hand. A parser that runs only when recording (`toolText`, `briefIssue`) does
  * not count: it shapes new events, and stored ones keep their refs. Rules the
  * pin journal doesn't exercise aren't noticed; extend the journal when adding one.
  */
-export function fingerprintOf(state: TeamState): string {
+export function fingerprintOf(state: unknown): string {
 	const text = JSON.stringify(state);
 	let h = 0x811c9dc5;
 	for (let i = 0; i < text.length; i++) {
@@ -31,12 +32,27 @@ export function fingerprintOf(state: TeamState): string {
 	return `r${h.toString(16)}`;
 }
 
+/** The fingerprint of `events` reduced as the pin journal is: plain, then with every review rule on. */
+export function fingerprintPin(events: readonly BullpenEvent[]): string {
+	return fingerprintOf([
+		reduceEvents(events),
+		// Rules behind `review` in bullpen.json only act when configured.
+		reduceEvents(events, { review: PIN_REVIEW }),
+	]);
+}
+
+/** The review config the second pinned reduction runs under: every rule on. */
+export const PIN_REVIEW: ReviewConfig = {
+	requireComment: "Gate: PASS",
+	bots: ["codex"],
+};
+
 /**
  * The version stamped on stored state, computed once per module load. Older
  * builds stamped a number, which never equals this string and so rebuilds.
  */
-export const MODEL_VERSION: string = fingerprintOf(
-	reduceEvents(readJournal(pinJournal).events),
+export const MODEL_VERSION: string = fingerprintPin(
+	readJournal(pinJournal).events,
 );
 
 /** A stored stamp: the fingerprint, or a number from builds that bumped by hand. */

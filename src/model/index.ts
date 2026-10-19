@@ -33,8 +33,10 @@ export type * from "./types";
 export {
 	ensureState,
 	fingerprintOf,
+	fingerprintPin,
 	foldBatch,
 	MODEL_VERSION,
+	PIN_REVIEW,
 	rebuildState,
 	type Stamp,
 	stateFor,

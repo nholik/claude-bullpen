@@ -7,6 +7,7 @@ import type {
 	BullpenEventKind,
 	GithubSource,
 	MemberStatus,
+	ReviewConfig,
 	TeamSnapshot,
 } from "../../types";
 import { plain } from "../decisions";
@@ -44,6 +45,8 @@ export type ModelOptions = {
 	/** Agent type by team name, from the members atom; outlives the event window. */
 	agentTypes?: Readonly<Record<string, string>>;
 	github?: GithubSource;
+	/** Extra review requirements from `bullpen.json`; they change what counts as in review. */
+	review?: ReviewConfig;
 };
 
 export const DEFAULT_LEADS: readonly string[] = ["lead", "team-lead", "main"];
@@ -375,7 +378,7 @@ export function applyEvent(
 		decisions: state.decisions,
 		kickbacks,
 		closes,
-		ship: applyShip(state.ship, e),
+		ship: applyShip(state.ship, e, options.review),
 	};
 }
 

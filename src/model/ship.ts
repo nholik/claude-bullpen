@@ -1,10 +1,10 @@
 // Each issue's path to shipping: working, PR open, in review, changes asked,
 // approved, merged, shipped. Read from what teams already do: builders
 // announcing PRs, gate saying PASS or CHANGES, `gh pr` commands, @codex
-// comments. Heuristics over short journal details, so each errs toward not
+// comments (the last two only where `review` in bullpen.json asks for them). Heuristics over short journal details, so each errs toward not
 // firing; an event that cannot be tied to an issue moves nothing.
 
-import type { BullpenEvent } from "../../types";
+import type { BullpenEvent, ReviewConfig } from "../../types";
 import { mergedPrs, shellSegments } from "../command";
 
 export type ShipStage =
@@ -39,6 +39,9 @@ export type ShipState = {
 	prIssue: Record<number, number>;
 };
 
+/** No extra reviewers: GitHub's own verdicts only. */
+const NO_REVIEW: ReviewConfig = { bots: [] };
+
 export const EMPTY_SHIP: ShipState = { paths: {}, prIssue: {} };
 
 // "#44 PR: https://github.com/o/r/pull/61", "#59 PR open: .../pull/70"
@@ -66,12 +69,20 @@ function prNumbers(command: string): number[] {
 	return direct?.[1] ? [Number(direct[1])] : [];
 }
 
-/** A review verdict a `gh pr review` command carries, if it says. */
-export function commandVerdict(command: string): ShipVerdict | undefined {
+/**
+ * A review verdict a `gh pr review` command carries, if it says. `--approve`
+ * and `--request-changes` always count; a `Gate: PASS|CHANGES` body counts
+ * only when the team requires a gate comment (`requireComment`).
+ */
+export function commandVerdict(
+	command: string,
+	review: ReviewConfig = NO_REVIEW,
+): ShipVerdict | undefined {
 	if (!shellSegments(command).some((part) => /^gh\s+pr\s+review\b/.test(part)))
 		return undefined;
 	if (/--request-changes\b/.test(command)) return "changes";
 	if (/--approve\b/.test(command)) return "pass";
+	if (!review.requireComment) return undefined;
 	const body =
 		/--body\s+\\?"?\s*Gate(?:\s+re-review)?:\s*(PASS|CHANGES)\b/i.exec(command);
 	if (!body?.[1]) return undefined;
@@ -110,7 +121,11 @@ function move(
 }
 
 /** Folds one journal event into the ship paths. */
-export function applyShip(state: ShipState, e: BullpenEvent): ShipState {
+export function applyShip(
+	state: ShipState,
+	e: BullpenEvent,
+	review: ReviewConfig = NO_REVIEW,
+): ShipState {
 	let next = state;
 	if (e.kind === "message") {
 		for (const m of e.detail.matchAll(PR_ANNOUNCE))
@@ -156,13 +171,16 @@ export function applyShip(state: ShipState, e: BullpenEvent): ShipState {
 		for (const pr of prNumbers(e.detail)) {
 			const issue = next.prIssue[pr];
 			if (issue === undefined) continue;
-			const verdict = commandVerdict(e.detail);
+			const verdict = commandVerdict(e.detail, review);
 			if (verdict)
 				next = move(next, issue, e.at, {
 					stage: verdict === "pass" ? "approved" : "changes",
 					verdict,
 				});
-			else if (/@codex\s+review/i.test(e.detail))
+			else if (
+				review.bots.includes("codex") &&
+				/@codex\s+review/i.test(e.detail)
+			)
 				next = move(next, issue, e.at, { codex: true, stage: "in-review" });
 		}
 		for (const pr of e.outcome === "ok" ? mergedPrs(e.detail) : []) {
@@ -180,8 +198,9 @@ export function applyShip(state: ShipState, e: BullpenEvent): ShipState {
 export function shipPaths(
 	events: readonly BullpenEvent[],
 	closed: readonly number[] = [],
+	review: ReviewConfig = NO_REVIEW,
 ): Record<number, ShipPath> {
-	let state = events.reduce(applyShip, EMPTY_SHIP);
+	let state = events.reduce((s, e) => applyShip(s, e, review), EMPTY_SHIP);
 	for (const issue of closed)
 		state = move(state, issue, state.paths[issue]?.at ?? 0, {
 			stage: "shipped",

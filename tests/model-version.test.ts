@@ -2,9 +2,10 @@ import { expect, test } from "claude-code/testing";
 import { readJournal, STATE_EVENTS } from "../src/journal";
 import {
 	ensureState,
-	fingerprintOf,
+	fingerprintPin,
 	foldBatch,
 	MODEL_VERSION,
+	PIN_REVIEW,
 	rebuildState,
 	reduceEvents,
 	stateFor,
@@ -62,11 +63,17 @@ test("MODEL_VERSION fingerprints the reducer's output for the pin journal", asyn
 	expect(Object.values(state.teammates).some((t) => t.owned)).toBe(true);
 	// A ref the text calls a PR is not the sender's issue.
 	expect(state.teammates.iris?.issue).toBeUndefined();
-	expect(MODEL_VERSION).toBe(fingerprintOf(state));
+	expect(MODEL_VERSION).toBe(fingerprintPin(pin));
+	// The review rules move the state only when configured, and the version sees both.
+	const configured = reduceEvents(pin, { review: PIN_REVIEW });
+	expect(state.ship.paths[7]?.codex).toBe(false);
+	expect(configured.ship.paths[7]?.codex).toBe(true);
+	expect(configured.ship.paths[7]?.verdict).toBe("changes");
+	expect(state.ship.paths[7]?.verdict).toBe("pass");
 	expect(MODEL_VERSION).toMatch(/^r[0-9a-f]+$/);
 	// Different output, different version; same output, same version.
-	expect(fingerprintOf(reduceEvents(pin.slice(1)))).not.toBe(MODEL_VERSION);
-	expect(fingerprintOf(reduceEvents([...pin]))).toBe(MODEL_VERSION);
+	expect(fingerprintPin(pin.slice(1))).not.toBe(MODEL_VERSION);
+	expect(fingerprintPin([...pin])).toBe(MODEL_VERSION);
 });
 
 test("a number stamped by an older build always rebuilds", async () => {

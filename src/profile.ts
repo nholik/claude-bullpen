@@ -2,7 +2,7 @@
 // differ (issue filter, palette, who plays what role in what color, animations).
 // Parsing never throws: a bad field falls back to its default and says so.
 
-import type { Profile, ProfileRole } from "../types";
+import type { Profile, ProfileRole, ReviewConfig } from "../types";
 import { PALETTE } from "./palette";
 import {
 	array,
@@ -33,7 +33,16 @@ const IssuesSchema = looseObject({
 	pollSeconds: optional(pipe(number(), minValue(MIN_POLL_SECONDS))),
 });
 
+/** Bot reviewers with an adapter; `review.bots` may name only these. */
+export const KNOWN_BOTS: readonly string[] = ["codex"];
+
+const ReviewSchema = looseObject({
+	requireComment: optional(string()),
+	bots: optional(array(string())),
+});
+
 const ProfileSchema = looseObject({
+	review: optional(ReviewSchema),
 	issues: optional(IssuesSchema),
 	roles: optional(record(string(), RoleSchema)),
 	animations: optional(boolean()),
@@ -47,14 +56,16 @@ export type Role = ProfileRole;
 export const DEFAULT_PROFILE: Profile = {
 	issues: { filter: "", pollSeconds: 60 },
 	roles: {},
+	review: { bots: [] },
 	animations: true,
 	glyphs: "unicode",
 	palette: [...PALETTE],
 };
 
 /** The fields a file actually set; what `mergeProfiles` layers. */
-export type PartialProfile = Partial<Omit<Profile, "issues">> & {
+export type PartialProfile = Partial<Omit<Profile, "issues" | "review">> & {
 	issues?: Partial<Profile["issues"]>;
+	review?: Partial<ReviewConfig>;
 };
 
 export type Parsed = {
@@ -142,6 +153,43 @@ export function parsePartial(text: string | undefined): {
 			set.issues = issues;
 		}
 	}
+	if (obj.review !== undefined) {
+		const raw = obj.review;
+		if (!isPlain(raw))
+			warnings.push("review: must be an object; using the defaults");
+		else {
+			const review: Partial<ReviewConfig> = {};
+			const comment = (raw as Obj).requireComment;
+			if (comment !== undefined) {
+				if (typeof comment === "string" && comment.trim() !== "")
+					review.requireComment = comment.trim();
+				else
+					warnings.push(
+						"review.requireComment: must be a non-empty string; not requiring a comment",
+					);
+			}
+			const bots = (raw as Obj).bots;
+			if (bots !== undefined) {
+				if (!Array.isArray(bots))
+					warnings.push("review.bots: must be a list of names; ignoring it");
+				else {
+					const good: string[] = [];
+					for (const bot of bots) {
+						const name =
+							typeof bot === "string" ? bot.trim().toLowerCase() : "";
+						if (KNOWN_BOTS.includes(name)) {
+							if (!good.includes(name)) good.push(name);
+						} else
+							warnings.push(
+								`review.bots: unknown reviewer "${bot}" (known: ${KNOWN_BOTS.join(", ")}); ignoring it`,
+							);
+					}
+					review.bots = good;
+				}
+			}
+			set.review = review;
+		}
+	}
 	if (obj.animations !== undefined) {
 		const r = safeParse(fields.animations, obj.animations);
 		if (r.success) set.animations = r.output;
@@ -211,6 +259,7 @@ export function mergeProfiles(
 		...DEFAULT_PROFILE,
 		issues: { ...DEFAULT_PROFILE.issues },
 		roles: {},
+		review: { bots: [] },
 	};
 	for (const layer of [user, project]) {
 		out.issues = { ...out.issues, ...layer.issues };
@@ -218,6 +267,7 @@ export function mergeProfiles(
 		out.glyphs = layer.glyphs ?? out.glyphs;
 		out.palette = layer.palette?.length ? layer.palette : out.palette;
 		out.roles = { ...out.roles, ...layer.roles };
+		out.review = { ...out.review, ...layer.review };
 	}
 	return out;
 }

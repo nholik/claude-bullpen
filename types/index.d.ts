@@ -77,6 +77,20 @@ export type ProfileRole = {
 	color?: string | number;
 };
 
+/**
+ * Extra review requirements on top of GitHub's own signals (`review` in
+ * `.claude/bullpen.json`). With neither set, merge-ready is GitHub's call.
+ */
+export type ReviewConfig = {
+	/**
+	 * A trusted (OWNER/MEMBER/COLLABORATOR) PR comment whose first line is
+	 * `<requireComment> <head-sha>` must be the newest of its kind.
+	 */
+	requireComment?: string;
+	/** Known bot reviewers whose completed review on the head is required (`codex`). */
+	bots: string[];
+};
+
 /** `.claude/bullpen.json` merged over the defaults (`src/profile.ts`). */
 export type Profile = {
 	issues: {
@@ -87,6 +101,7 @@ export type Profile = {
 	};
 	/** Teammate name or agent type to role and color. */
 	roles: Record<string, ProfileRole>;
+	review: ReviewConfig;
 	animations: boolean;
 	glyphs: "unicode" | "ascii";
 	/** Member colors as 0xRRGGBB, in assignment order. */

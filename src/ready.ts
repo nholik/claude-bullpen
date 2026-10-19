@@ -2,7 +2,8 @@
 // query that asks about every open PR, and the rule that decides which are
 // ready for the human to merge. Pure; the hook layer runs the command.
 
-import type { ReadyPr } from "../types";
+import type { ReadyPr, ReviewConfig } from "../types";
+import { codexReviewed, openCodexFindings } from "./codex";
 import { POLL_MS, type RunOutput } from "./github";
 import {
 	array,
@@ -104,121 +105,29 @@ const ResponseSchema = looseObject({
 
 /** Only the repo's own people can speak for the gate; our gate posts as the owner. */
 const TRUSTED = ["OWNER", "MEMBER", "COLLABORATOR"];
-const GATE = /^Gate:\s*(\S.*)$/;
-const GATE_PASS = /^Gate: PASS ([0-9a-f]{40})\s*$/;
 /**
- * Codex's summary comment is posted by its connector bot. graphql names a bot
- * without the `[bot]` suffix REST adds; both are accepted.
- */
-const CODEX_BOT = /^chatgpt-codex-connector(\[bot\])?$/;
-const CODEX_STATE = /<!-- codex-review-state:v1 (\{.*?\}) -->/;
-const CodexState = looseObject({
-	code_review: looseObject({
-		commit_sha: nullable(string()),
-		status: nullable(string()),
-	}),
-});
-/** Codex's inline findings carry a severity badge: `![P1 Badge](...)`. */
-const BADGE = /\bP[01] Badge\b/;
-
-/** True when a trusted comment speaks for the gate (first line `Gate: ...`). */
-export function gateEngaged(
-	comments: readonly { body: string; authorAssociation: string }[],
-): boolean {
-	return comments.some(
-		(c) =>
-			TRUSTED.includes(c.authorAssociation) &&
-			GATE.test(c.body.replace(/\r/g, "").split("\n", 1)[0] ?? ""),
-	);
-}
-
-/** True when Codex is in play on the PR: its bot has commented or someone asked it to review. */
-export function codexEngaged(
-	comments: readonly {
-		body: string;
-		author?: { login: string } | null | undefined;
-	}[],
-): boolean {
-	return comments.some(
-		(c) =>
-			(c.author && CODEX_BOT.test(c.author.login)) ||
-			/@codex\s+review/i.test(c.body),
-	);
-}
-
-/**
- * True when the newest trusted comment that speaks for the gate (first line `Gate: ...`)
- * is `Gate: PASS <sha>` with exactly the PR's current head. A later FAIL or a
+ * True when the newest trusted comment that speaks for the gate is
+ * `<marker> <head>`: its first line is exactly that, with the PR's current
+ * head. A comment speaks for the gate when its first line starts with the
+ * marker's first word (`Gate:` of `Gate: PASS`), so a later `Gate: FAIL` or a
  * PASS for another sha means the gate has not passed this head.
  */
 export function gatePassed(
 	comments: readonly { body: string; authorAssociation: string }[],
 	head: string,
+	marker: string,
 ): boolean {
+	const word = marker.trim().split(/\s+/, 1)[0] ?? "";
+	if (word === "") return false;
 	// Each pass moves `i` toward 0, so the walk ends.
 	for (let i = comments.length - 1; i >= 0; i--) {
 		const comment = comments[i];
 		if (!comment || !TRUSTED.includes(comment.authorAssociation)) continue;
 		const first = comment.body.replace(/\r/g, "").split("\n", 1)[0] ?? "";
-		if (!GATE.test(first)) continue;
-		return GATE_PASS.exec(first)?.[1] === head;
+		if (!first.startsWith(word)) continue;
+		return first.trimEnd() === `${marker.trim()} ${head}`;
 	}
 	return false;
-}
-
-/**
- * True when the newest summary comment from the Codex connector bot carries a
- * `codex-review-state:v1` marker whose code review is `completed` on exactly
- * `head`. No marker, an older sha or a review still running is not reviewed;
- * a marker quoted by anyone else is ignored.
- */
-export function codexReviewed(
-	comments: readonly {
-		body: string;
-		author?: { login: string } | null | undefined;
-	}[],
-	head: string,
-): boolean {
-	// Each pass moves `i` toward 0, so the walk ends.
-	for (let i = comments.length - 1; i >= 0; i--) {
-		const comment = comments[i];
-		if (!comment?.author || !CODEX_BOT.test(comment.author.login)) continue;
-		const marker = CODEX_STATE.exec(comment.body)?.[1];
-		if (!marker) continue;
-		let json: unknown;
-		try {
-			json = JSON.parse(marker);
-		} catch {
-			continue;
-		}
-		const state = safeParse(CodexState, json);
-		if (!state.success) continue;
-		const review = state.output.code_review;
-		return review.commit_sha === head && review.status === "completed";
-	}
-	return false;
-}
-
-/**
- * Codex's P0/P1 findings still open on the head: a review thread that is
- * neither resolved nor outdated (its lines unchanged since) and whose opening
- * comment carries the P0 or P1 badge. Inline threads are the reliable signal:
- * the summary comment's `codex-review-state` marker only says which commit was
- * reviewed, not what is still open.
- */
-export function openCodexFindings(
-	threads: readonly {
-		isResolved: boolean;
-		isOutdated: boolean;
-		comments: { nodes: readonly { body: string }[] };
-	}[],
-): number {
-	return threads.filter(
-		(t) =>
-			!t.isResolved &&
-			!t.isOutdated &&
-			BADGE.test(t.comments.nodes[0]?.body ?? ""),
-	).length;
 }
 
 /**
@@ -234,15 +143,17 @@ export function openCodexFindings(
  * (`reviewDecision` REVIEW_REQUIRED) is kept, flagged `reviewPending`, so the
  * queue can show it waiting; it is not merge-ready.
  *
- * Our own gate comment and Codex are extra requirements that apply only on a PR
- * where they are in play (a trusted `Gate:` comment, or Codex asked or
- * answered), until #192 moves them behind configuration. Then the gate must
- * pass the head, Codex's P0/P1 findings must be closed, and a Codex review
- * still running on the head is `reviewPending`.
+ * `review` adds what a team asks for beyond GitHub: with `requireComment` set
+ * the newest trusted marker comment must pass the head; with `codex` among the
+ * `bots` Codex's P0/P1 findings must be closed and a Codex review still running
+ * on the head is `reviewPending`. Those rules read comments and threads, so a
+ * history truncated by the query window leaves the PR out only when one is
+ * configured; a plain GitHub repo ignores the window.
  */
 export function parseReady(
 	stdout: string,
 	checkedAt: number,
+	review: ReviewConfig = { bots: [] },
 ): ReadyPr[] | undefined {
 	let json: unknown;
 	try {
@@ -256,8 +167,9 @@ export function parseReady(
 	for (const pr of parsed.output.data.repository.pullRequests.nodes) {
 		const tip = pr.commits.nodes[0]?.commit;
 		const needsReview = pr.reviewDecision === "REVIEW_REQUIRED";
-		const gate = gateEngaged(pr.comments.nodes);
-		const codex = codexEngaged(pr.comments.nodes);
+		const marker = review.requireComment?.trim() || undefined;
+		const codex = review.bots.includes("codex");
+		const readsComments = marker !== undefined || codex;
 		if (
 			pr.isDraft ||
 			!(
@@ -275,11 +187,13 @@ export function parseReady(
 			tip?.oid !== pr.headRefOid ||
 			// No checks at all (a null rollup) passes; FAILURE, ERROR and PENDING block.
 			(tip.statusCheckRollup && tip.statusCheckRollup.state !== "SUCCESS") ||
-			// The gate or Codex evidence may sit in comments we did not read.
-			pr.comments.pageInfo.hasPreviousPage ||
-			pr.reviewThreads.pageInfo.hasPreviousPage ||
-			openCodexFindings(pr.reviewThreads.nodes) > 0 ||
-			(gate && !gatePassed(pr.comments.nodes, pr.headRefOid))
+			// The configured evidence may sit in comments or threads we did not read.
+			(readsComments &&
+				(pr.comments.pageInfo.hasPreviousPage ||
+					pr.reviewThreads.pageInfo.hasPreviousPage)) ||
+			(codex && openCodexFindings(pr.reviewThreads.nodes) > 0) ||
+			(marker !== undefined &&
+				!gatePassed(pr.comments.nodes, pr.headRefOid, marker))
 		)
 			continue;
 		const codexPending =
@@ -288,8 +202,8 @@ export function parseReady(
 		ready.push({
 			...(reviewPending ? { reviewPending } : {}),
 			...(pr.reviewDecision === "APPROVED" ? { approved: true } : {}),
-			...(gate ? { gate } : {}),
-			...(codex ? { codex } : {}),
+			...(marker !== undefined ? { gate: true } : {}),
+			...(codex ? { codex: true } : {}),
 			number: pr.number,
 			title: pr.title.replace(/\s+/g, " ").trim().slice(0, TITLE),
 			url: pr.url,
@@ -304,8 +218,11 @@ export function parseReady(
 export function readReady(
 	run: RunOutput,
 	checkedAt: number,
+	review?: ReviewConfig,
 ): ReadyPr[] | undefined {
-	return run.exitCode === 0 ? parseReady(run.stdout, checkedAt) : undefined;
+	return run.exitCode === 0
+		? parseReady(run.stdout, checkedAt, review)
+		: undefined;
 }
 
 /** The ready list is good for this many polls; older means polling has failed. */
