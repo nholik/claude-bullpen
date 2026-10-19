@@ -60,6 +60,8 @@ test("MODEL_VERSION fingerprints the reducer's output for the pin journal", asyn
 	expect(state.decisions.some((d) => d.issues.includes(59))).toBe(true);
 	expect(state.asks.some((a) => a.open)).toBe(true);
 	expect(Object.values(state.teammates).some((t) => t.owned)).toBe(true);
+	// A ref the text calls a PR is not the sender's issue.
+	expect(state.teammates.iris?.issue).toBeUndefined();
 	expect(MODEL_VERSION).toBe(fingerprintOf(state));
 	expect(MODEL_VERSION).toMatch(/^r[0-9a-f]+$/);
 	// Different output, different version; same output, same version.

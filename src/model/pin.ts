@@ -28,4 +28,5 @@ export default `
 {"version":1,"at":1792248400000,"kind":"decision","who":"lead","detail":"Merge #58 now?","issues":[58],"context":"Checks are green."}
 {"version":1,"at":1792248500000,"kind":"decision","who":"lead","detail":"merge  #58 NOW?","issues":[58],"context":"Dropped as a near-duplicate."}
 {"version":1,"at":1792248600000,"kind":"decision","who":"lead","detail":"MERGE #58 now?","issues":[59],"context":"Same words, another issue: kept."}
+{"version":1,"at":1792248700000,"kind":"message","agentId":"a-iris","who":"iris","target":"team-lead","detail":"reviewing PR #77 next","issues":[77]}
 `;
