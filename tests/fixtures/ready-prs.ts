@@ -188,6 +188,8 @@ export const GITHUB = wrap([
 	pr(240, { comments: [], codex: null, ci: null }),
 	pr(241, { comments: [], codex: null, ci: "PENDING" }),
 	pr(242, { comments: [], codex: null, ci: "ERROR" }),
+	// GitHub Enterprise with pre-receive hooks: mergeable, checks passing.
+	pr(243, { comments: [], codex: null, merge: "HAS_HOOKS" }),
 	pr(237, { comments: ["Gate: PASS is how we sign off"], codex: null }),
 ]);
 

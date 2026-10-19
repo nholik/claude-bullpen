@@ -224,8 +224,8 @@ export function openCodexFindings(
  * The PRs ready to merge in `gh api graphql` output, or undefined if the output
  * isn't that. Readiness comes from GitHub's own signals: not a draft, mergeable,
  * the head's checks SUCCESS (or none exist), no changes requested, and `mergeStateStatus`
- * CLEAN (required reviews and checks satisfied). That excludes BEHIND, DIRTY,
- * UNSTABLE, HAS_HOOKS and DRAFT. Anything unknown (a long thread
+ * CLEAN or HAS_HOOKS (required reviews and checks satisfied). That excludes
+ * BEHIND, DIRTY, UNSTABLE and DRAFT. Anything unknown (a long thread
  * list we could not read whole, a mergeability GitHub has not computed) counts
  * as not ready.
  *
@@ -261,6 +261,8 @@ export function parseReady(
 			pr.isDraft ||
 			!(
 				pr.mergeStateStatus === "CLEAN" ||
+				// Mergeable with passing checks; GitHub Enterprise pre-receive hooks.
+				pr.mergeStateStatus === "HAS_HOOKS" ||
 				(needsReview && pr.mergeStateStatus === "BLOCKED")
 			) ||
 			pr.reviewDecision === "CHANGES_REQUESTED" ||

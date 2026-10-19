@@ -142,6 +142,7 @@ test("without a gate or Codex, GitHub's review decision, checks and merge state 
 		[236, true, false],
 		[239, false, false],
 		[240, false, false],
+		[243, false, false],
 	]);
 });
 
