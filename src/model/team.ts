@@ -155,6 +155,14 @@ function step(
 	};
 }
 
+/** PR numbers the model already knows: announced in the journal or polled from GitHub. */
+function knownPrs(state: TeamState, options: ModelOptions): Set<number> {
+	return new Set([
+		...Object.keys(state.ship.prIssue).map(Number),
+		...(options.github?.prs ?? []).map((pr) => pr.number),
+	]);
+}
+
 /** Folds one event into the state. Unknown kinds and extra fields are ignored. */
 export function applyEvent(
 	state: TeamState,
@@ -233,7 +241,11 @@ export function applyEvent(
 		e.kind !== "leave" &&
 		e.kind !== "answer"
 	)
-		issue = nextIssue(e.kind, actor?.issue, attributableRefs(e, refs));
+		issue = nextIssue(
+			e.kind,
+			actor?.issue,
+			attributableRefs(e, refs, knownPrs(state, options)),
+		);
 	// A respawn under the same name starts without its predecessor's owner.
 	if (e.kind === "leave") owned = undefined;
 	let status = actor?.status ?? "running";

@@ -106,14 +106,29 @@ const REPORT_CELL = /\|[^|\n]*#\d{1,7}\b[^|\n]*\|/g;
 const SETTLED_REF =
 	/#(\d{1,7})\b\s*\(?\s*(?:merged|closed|shipped|done|✓)(?![\w-])/gi;
 
+// A ref the text itself calls a PR: "PR #186", "PRs #1", ".../pull/186".
+const PR_REF = /\bPRs?\s+#(\d{1,7})\b|\/pull\/(\d{1,7})\b/gi;
+
+/** Numbers `text` names as pull requests, not issues. */
+function prRefs(text: string): Set<number> {
+	return new Set([...text.matchAll(PR_REF)].map((m) => Number(m[1] ?? m[2])));
+}
+
 /**
  * The refs of a message that can say what its sender is working on. A report
  * table of PRs lists work, it doesn't claim it, and a ref the message calls
- * merged or closed is not open work. Drops refs found only in table cells or
- * settled cues; a ref also named outside them stays.
+ * merged or closed is not open work, and a PR is not an issue: a ref the text
+ * calls "PR #N", or that is a known PR (`knownPrs`), is dropped. Also drops
+ * refs found only in table cells or settled cues; a ref also named outside
+ * them stays.
  */
-export function ownedRefs(detail: string, refs: readonly number[]): number[] {
+export function ownedRefs(
+	detail: string,
+	refs: readonly number[],
+	knownPrs: ReadonlySet<number> = new Set(),
+): number[] {
 	if (!refs.length) return [];
+	const prs = prRefs(detail);
 	const outside = detail.replace(REPORT_CELL, " ");
 	const inCells = outside !== detail;
 	const named = new Set(
@@ -122,7 +137,13 @@ export function ownedRefs(detail: string, refs: readonly number[]): number[] {
 	const settled = new Set(
 		[...outside.matchAll(SETTLED_REF)].map((m) => Number(m[1])),
 	);
-	return refs.filter((n) => !settled.has(n) && (!inCells || named.has(n)));
+	return refs.filter(
+		(n) =>
+			!prs.has(n) &&
+			!knownPrs.has(n) &&
+			!settled.has(n) &&
+			(!inCells || named.has(n)),
+	);
 }
 
 /**
@@ -133,10 +154,11 @@ export function ownedRefs(detail: string, refs: readonly number[]): number[] {
 export function attributableRefs(
 	e: { kind: string; target?: string; detail: string },
 	refs: readonly number[],
+	knownPrs: ReadonlySet<number> = new Set(),
 ): number[] {
-	if (e.kind === "message") return ownedRefs(e.detail, refs);
+	if (e.kind === "message") return ownedRefs(e.detail, refs, knownPrs);
 	if (e.kind === "tool" && e.target === "SendMessage") return [];
-	return [...refs];
+	return refs.filter((n) => !knownPrs.has(n));
 }
 
 /**
