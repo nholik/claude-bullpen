@@ -325,7 +325,16 @@ test("repliedTo never closes a decision the quote does not single out", () => {
 
 test("merge-ready PRs join the needs view after the decisions, with their marks", () => {
 	const ready = [
-		{ number: 301, title: "Add the thing", url: "u", head: "h", checkedAt: 0 },
+		{
+			number: 301,
+			title: "Add the thing",
+			url: "u",
+			head: "h",
+			checkedAt: 0,
+			approved: true,
+			gate: true,
+			codex: true,
+		},
 	];
 	const model = buildModel([ev(0, "decision", "pick one?")], T + 1000);
 	const text = needsSection(model.decisions, 72, T + 1000, 1, 40, ready)
@@ -334,7 +343,7 @@ test("merge-ready PRs join the needs view after the decisions, with their marks"
 	expect(text).toContain("NEEDS YOU / 2 of 2");
 	expect(text).toContain("#301");
 	expect(text).toContain("Add the thing");
-	expect(text).toContain("gate ✓  codex ✓  ci ✓");
+	expect(text).toContain("review ✓  gate ✓  codex ✓  ci ✓");
 	expect(text).toContain("enter: copy PR link");
 	expect(text).not.toContain("merge #301");
 	const only = needsSection([], 72, T, 0, 40, ready).map(flat).join("\n");
@@ -342,6 +351,24 @@ test("merge-ready PRs join the needs view after the decisions, with their marks"
 	expect(needsYou([], 72, T, ready).map(flat).join("\n")).toContain(
 		"1 merge-ready",
 	);
+	const plain = {
+		number: 302,
+		title: "Bare",
+		url: "u",
+		head: "h",
+		checkedAt: 0,
+	};
+	const bare = needsSection([], 72, T, 0, 40, [plain]).map(flat).join("\n");
+	expect(bare).toContain("merge-ready");
+	expect(bare).toContain("ci ✓");
+	expect(bare).not.toContain("gate");
+	const waiting = needsSection([], 72, T, 0, 40, [
+		{ ...plain, reviewPending: true },
+	])
+		.map(flat)
+		.join("\n");
+	expect(waiting).toContain("waiting on review");
+	expect(waiting).toContain("review …  ci ✓");
 	expect(needsYou([], 72, T, [])).toEqual([]);
 	for (const line of needsSection([], 40, T, 0, 40, ready))
 		expect(width(line)).toBeLessThanOrEqual(40);

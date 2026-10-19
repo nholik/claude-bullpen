@@ -128,8 +128,9 @@ const sampleReady = Array.from(
 		url: `https://github.com/example/repo/pull/${300 + i}`,
 		head: "a".repeat(40),
 		checkedAt: 0,
-		// The third sample is still waiting on Codex.
-		...(i === 2 ? { codexPending: true } : {}),
+		// The first is approved by GitHub; the third waits on a Codex review.
+		...(i === 0 ? { approved: true } : {}),
+		...(i === 2 ? { reviewPending: true, codex: true } : {}),
 	}),
 );
 const color = (n: number, background = false) =>

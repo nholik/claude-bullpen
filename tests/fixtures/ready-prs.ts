@@ -19,6 +19,8 @@ function pr(
 		mergeable?: string;
 		merge?: string;
 		draft?: boolean;
+		/** GitHub's reviewDecision: null when the repo requires no reviews. */
+		decision?: string | null;
 		/** Codex's summary comment; null for none. Defaults to completed on the head. */
 		codex?: ReturnType<typeof codexSummary> | null;
 		ci?: string | null;
@@ -35,6 +37,7 @@ function pr(
 		url: `${URL}/${number}`,
 		headRefOid: head,
 		isDraft: over.draft ?? false,
+		reviewDecision: over.decision ?? null,
 		mergeable: over.mergeable ?? "MERGEABLE",
 		mergeStateStatus: over.merge ?? "CLEAN",
 		commits: {
@@ -145,6 +148,31 @@ export const TRUTH = wrap([
 		threads: [{ isResolved: false, isOutdated: false, body: BADGE("P1") }],
 	}),
 	pr(223, { codex: codexSummary(HEAD, "completed") }),
+]);
+
+/** A repo with no gate comment and no Codex: GitHub's own signals decide. */
+export const GITHUB = wrap([
+	pr(230, { comments: [], codex: null }),
+	pr(231, { comments: [], codex: null, decision: "APPROVED" }),
+	pr(232, {
+		comments: [],
+		codex: null,
+		decision: "REVIEW_REQUIRED",
+		merge: "BLOCKED",
+	}),
+	pr(233, {
+		comments: [],
+		codex: null,
+		decision: "CHANGES_REQUESTED",
+		merge: "BLOCKED",
+	}),
+	// Blocked for another reason (a failing required check or rule), not a missing review.
+	pr(234, { comments: [], codex: null, merge: "BLOCKED" }),
+	pr(235, { comments: [], codex: null, merge: "UNSTABLE" }),
+	// A human asking for Codex puts it in play; with no answer yet the PR waits.
+	pr(236, { comments: ["@codex review"], codex: null }),
+	// A comment that merely starts with the word does not put the gate in play.
+	pr(237, { comments: ["Gate: PASS is how we sign off"], codex: null }),
 ]);
 
 export const NO_PRS = wrap([]);

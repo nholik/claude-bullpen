@@ -24,7 +24,7 @@ const COMMENTS = 20;
 /** Longest title kept, in characters. */
 const TITLE = 120;
 
-const QUERY = `query($owner:String!,$name:String!){repository(owner:$owner,name:$name){pullRequests(states:OPEN,first:${PRS},orderBy:{field:UPDATED_AT,direction:DESC}){nodes{number title url headRefOid isDraft mergeable mergeStateStatus commits(last:1){nodes{commit{oid statusCheckRollup{state}}}} comments(last:${COMMENTS}){nodes{body authorAssociation author{login}}} reviewThreads(last:${THREADS}){pageInfo{hasPreviousPage} nodes{isResolved isOutdated comments(first:1){nodes{body}}}}}}}}`;
+const QUERY = `query($owner:String!,$name:String!){repository(owner:$owner,name:$name){pullRequests(states:OPEN,first:${PRS},orderBy:{field:UPDATED_AT,direction:DESC}){nodes{number title url headRefOid isDraft reviewDecision mergeable mergeStateStatus commits(last:1){nodes{commit{oid statusCheckRollup{state}}}} comments(last:${COMMENTS}){nodes{body authorAssociation author{login}}} reviewThreads(last:${THREADS}){pageInfo{hasPreviousPage} nodes{isResolved isOutdated comments(first:1){nodes{body}}}}}}}}`;
 
 /** One read-only call for every open PR's gate comment, threads, checks and mergeability. */
 export function readyArgv(repo: string, host: string): string[] {
@@ -62,6 +62,7 @@ const PrSchema = looseObject({
 	url: string(),
 	headRefOid: string(),
 	isDraft: boolean(),
+	reviewDecision: optional(nullable(string())),
 	mergeable: string(),
 	mergeStateStatus: string(),
 	commits: looseObject({
@@ -115,6 +116,31 @@ const CodexState = looseObject({
 });
 /** Codex's inline findings carry a severity badge: `![P1 Badge](...)`. */
 const BADGE = /\bP[01] Badge\b/;
+
+/** True when a trusted comment speaks for the gate (first line `Gate: ...`). */
+export function gateEngaged(
+	comments: readonly { body: string; authorAssociation: string }[],
+): boolean {
+	return comments.some(
+		(c) =>
+			TRUSTED.includes(c.authorAssociation) &&
+			GATE.test(c.body.replace(/\r/g, "").split("\n", 1)[0] ?? ""),
+	);
+}
+
+/** True when Codex is in play on the PR: its bot has commented or someone asked it to review. */
+export function codexEngaged(
+	comments: readonly {
+		body: string;
+		author?: { login: string } | null | undefined;
+	}[],
+): boolean {
+	return comments.some(
+		(c) =>
+			(c.author && CODEX_BOT.test(c.author.login)) ||
+			/@codex\s+review/i.test(c.body),
+	);
+}
 
 /**
  * True when the newest trusted comment that speaks for the gate (first line `Gate: ...`)
@@ -193,13 +219,22 @@ export function openCodexFindings(
 
 /**
  * The PRs ready to merge in `gh api graphql` output, or undefined if the output
- * isn't that. Anything unknown (no checks, a long thread list we could not read
- * whole, a mergeability GitHub has not computed) counts as not ready. A PR that
- * is ready but for Codex still reviewing the head is kept, flagged
- * `codexPending`, so the queue can show it waiting; it is not merge-ready.
- * `mergeStateStatus` must be CLEAN: mergeable, required checks and reviews
- * satisfied. That excludes BLOCKED, BEHIND, DIRTY, UNSTABLE, HAS_HOOKS and
- * DRAFT (also checked through `isDraft`).
+ * isn't that. Readiness comes from GitHub's own signals: not a draft, mergeable,
+ * the head's checks all SUCCESS, no changes requested, and `mergeStateStatus`
+ * CLEAN (required reviews and checks satisfied). That excludes BEHIND, DIRTY,
+ * UNSTABLE, HAS_HOOKS and DRAFT. Anything unknown (no checks, a long thread
+ * list we could not read whole, a mergeability GitHub has not computed) counts
+ * as not ready.
+ *
+ * A PR still BLOCKED only because a required review is missing
+ * (`reviewDecision` REVIEW_REQUIRED) is kept, flagged `reviewPending`, so the
+ * queue can show it waiting; it is not merge-ready.
+ *
+ * Our own gate comment and Codex are extra requirements that apply only on a PR
+ * where they are in play (a trusted `Gate:` comment, or Codex asked or
+ * answered), until #192 moves them behind configuration. Then the gate must
+ * pass the head, Codex's P0/P1 findings must be closed, and a Codex review
+ * still running on the head is `reviewPending`.
  */
 export function parseReady(
 	stdout: string,
@@ -216,20 +251,32 @@ export function parseReady(
 	const ready: ReadyPr[] = [];
 	for (const pr of parsed.output.data.repository.pullRequests.nodes) {
 		const tip = pr.commits.nodes[0]?.commit;
+		const needsReview = pr.reviewDecision === "REVIEW_REQUIRED";
+		const gate = gateEngaged(pr.comments.nodes);
+		const codex = codexEngaged(pr.comments.nodes);
 		if (
 			pr.isDraft ||
-			pr.mergeStateStatus !== "CLEAN" ||
+			!(
+				pr.mergeStateStatus === "CLEAN" ||
+				(needsReview && pr.mergeStateStatus === "BLOCKED")
+			) ||
+			pr.reviewDecision === "CHANGES_REQUESTED" ||
 			pr.mergeable !== "MERGEABLE" ||
 			tip?.oid !== pr.headRefOid ||
 			tip.statusCheckRollup?.state !== "SUCCESS" ||
 			pr.reviewThreads.pageInfo.hasPreviousPage ||
 			openCodexFindings(pr.reviewThreads.nodes) > 0 ||
-			!gatePassed(pr.comments.nodes, pr.headRefOid)
+			(gate && !gatePassed(pr.comments.nodes, pr.headRefOid))
 		)
 			continue;
-		const codexPending = !codexReviewed(pr.comments.nodes, pr.headRefOid);
+		const codexPending =
+			codex && !codexReviewed(pr.comments.nodes, pr.headRefOid);
+		const reviewPending = needsReview || codexPending;
 		ready.push({
-			...(codexPending ? { codexPending } : {}),
+			...(reviewPending ? { reviewPending } : {}),
+			...(pr.reviewDecision === "APPROVED" ? { approved: true } : {}),
+			...(gate ? { gate } : {}),
+			...(codex ? { codex } : {}),
 			number: pr.number,
 			title: pr.title.replace(/\s+/g, " ").trim().slice(0, TITLE),
 			url: pr.url,

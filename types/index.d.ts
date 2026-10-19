@@ -125,16 +125,22 @@ export type GhResult =
 /** Open and closed counts at one poll. */
 export type BurndownPoint = { at: number; open: number; closed: number };
 
-/** An open PR the gate passed on its current head, with Codex and CI clear. */
+/** An open PR whose checks pass and that GitHub reports mergeable (or only awaiting review). */
 export type ReadyPr = {
 	number: number;
 	title: string;
 	url: string;
-	/** The head sha the gate passed; a push changes it and the PR leaves the queue. */
+	/** The head sha it was judged on; a push changes it and the PR leaves the queue. */
 	head: string;
 	checkedAt: number;
-	/** Codex has not finished reviewing this head: queued, but not merge-ready. */
-	codexPending?: boolean;
+	/** A review is still outstanding (required, or Codex running): queued, but not merge-ready. */
+	reviewPending?: boolean;
+	/** GitHub's review decision is APPROVED. */
+	approved?: boolean;
+	/** A trusted `Gate: PASS` covers the head. */
+	gate?: boolean;
+	/** Codex is in play on this PR. */
+	codex?: boolean;
 };
 
 export type GithubSource = {
